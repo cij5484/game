@@ -1,5 +1,6 @@
 import { combatPosition } from "../battlefield/combatGeometry";
 import { magicConfigs } from "../data/magic";
+import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { selectAutoTarget } from "./targeting";
 
@@ -12,10 +13,15 @@ function distance(a: EnemyState, b: EnemyState): number {
 }
 
 export class Magic {
+  private ranks: UpgradeRanks = {};
   private cooldowns: Record<MagicId, number> = {
     "frost-nova": 0,
     "chain-lightning": 0,
   };
+
+  setUpgrades(ranks: UpgradeRanks): void {
+    this.ranks = { ...ranks };
+  }
 
   advance(deltaMs: number): void {
     for (const id of Object.keys(this.cooldowns) as MagicId[]) {
@@ -35,7 +41,21 @@ export class Magic {
     enemies: readonly EnemyState[],
   ): { enemies: EnemyState[]; hitIds: number[] } | null {
     if (this.cooldowns[id] > 0) return null;
-    const config = magicConfigs[id];
+    const base = magicConfigs[id];
+    const bonus = (upgrade: keyof UpgradeRanks) =>
+      (this.ranks[upgrade] ?? 0) * upgrades[upgrade].amount;
+    const config =
+      base.effect === "freeze"
+        ? {
+            ...base,
+            radiusPx: base.radiusPx + bonus("frost-radius"),
+            freezeDurationMs: base.freezeDurationMs + bonus("frost-duration"),
+          }
+        : {
+            ...base,
+            maxTargets: base.maxTargets + bonus("chain-targets"),
+            damagePerTarget: base.damagePerTarget + bonus("chain-damage"),
+          };
     this.cooldowns[id] = config.cooldownMs;
     const start = selectAutoTarget(enemies);
     const hits: EnemyState[] = [];

@@ -13,7 +13,9 @@ import { Magic } from "../combat/magic";
 import { recognizeGesture } from "../input/gestureRecognizer";
 import { bindTapInput } from "../input/tapInput";
 import { resolveAttackTarget } from "../combat/targeting";
-import { applyPrimaryDamage } from "../combat/damage";
+import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
+import { Progression } from "../progression/progression";
+import { LevelUpView } from "../ui/LevelUpView";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
@@ -34,6 +36,11 @@ export class CombatScene extends Phaser.Scene {
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
   private magic = new Magic();
+  private progression = new Progression();
+  private choices!: LevelUpView;
+  private get choosing(): boolean {
+    return this.progression.pendingChoices > 0;
+  }
 
   create(): void {
     this.run = createRunState(enemyPressureBalance.wallMaxHp);
@@ -43,13 +50,18 @@ export class CombatScene extends Phaser.Scene {
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
     this.magic = new Magic();
+    this.progression = new Progression();
+    this.choices = new LevelUpView();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.choices.destroy(),
+    );
     this.view = new EnemyPressureView(this);
     this.spawnBatch();
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
     const unbindInput = bindTapInput(
       this.game.canvas,
       (kind, x, y) => {
-        if (this.run.status === "failed") return;
+        if (this.run.status === "failed" || this.choosing) return;
         if (kind === "secondary") this.stimpack.activate();
         else if (this.stimpack.canAttack)
           this.rifle.request({
@@ -58,7 +70,7 @@ export class CombatScene extends Phaser.Scene {
         this.update(0, 0);
       },
       (points, displayPoints) => {
-        if (this.run.status === "failed") return;
+        if (this.run.status === "failed" || this.choosing) return;
         const gesture = recognizeGesture(points);
         this.view.showGesture(
           displayPoints,
@@ -77,14 +89,7 @@ export class CombatScene extends Phaser.Scene {
             (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
           ),
         );
-        for (const entry of this.enemies) {
-          entry.state = result.enemies.find(
-            (enemy) => enemy.id === entry.state.id,
-          )!;
-          if (entry.state.hp <= 0) entry.visual.destroy();
-          else this.view.renderEnemy(entry.visual, entry.state);
-        }
-        this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+        this.applyEnemyStates(result.enemies);
         this.renderMagic();
       },
     );
@@ -94,6 +99,7 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.attackSpeedMultiplier,
     );
     this.renderMagic();
+    this.renderProgression();
   }
 
   private spawnBatch(): void {
@@ -116,15 +122,16 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    if (this.run.status === "failed") return;
+    if (this.run.status === "failed" || this.choosing) return;
     let remaining = Math.max(0, deltaMs);
     do {
       const step = Math.min(remaining, this.stimpack.timeToBoundaryMs);
-      if (this.stimpack.canAttack) this.advanceCombat(step);
+      let consumed = step;
+      if (this.stimpack.canAttack) consumed = this.advanceCombat(step);
       else this.advanceWorld(step);
-      this.stimpack.advance(step);
-      remaining -= step;
-    } while (remaining > 0 && this.run.status === "running");
+      this.stimpack.advance(consumed);
+      remaining -= consumed;
+    } while (remaining > 0 && this.run.status === "running" && !this.choosing);
     this.view.renderStimpack(
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
@@ -144,7 +151,7 @@ export class CombatScene extends Phaser.Scene {
     );
   }
 
-  private advanceCombat(deltaMs: number): void {
+  private advanceCombat(deltaMs: number): number {
     let elapsed = 0;
     this.rifle.advance(
       this.stimpack.weaponTimeFor(deltaMs),
@@ -158,19 +165,23 @@ export class CombatScene extends Phaser.Scene {
           this.enemies.map((entry) => entry.state),
         );
         if (target) {
-          const entry = this.enemies.find(
-            (entry) => entry.state.id === target.id,
-          )!;
-          this.view.showShot(entry.visual);
-          entry.state = applyPrimaryDamage(
+          const result = primaryAttack(
             target,
+            this.enemies.map((entry) => entry.state),
+            this.progression.ranks,
             gaussRifleBalance.damagePerRound *
               marineConfig.baseStats.damageMultiplier,
           );
-          if (entry.state.hp <= 0) {
-            entry.visual.destroy();
-            this.enemies = this.enemies.filter((enemy) => enemy !== entry);
-          } else this.view.renderEnemy(entry.visual, entry.state);
+          this.view.showPrimary(
+            result.hitIds.map(
+              (id) =>
+                this.enemies.find((entry) => entry.state.id === id)!.visual,
+            ),
+            result.ricochetIds,
+            result.hitIds,
+          );
+          this.applyEnemyStates(result.enemies);
+          if (this.choosing) return false;
         }
       },
       !(
@@ -178,9 +189,55 @@ export class CombatScene extends Phaser.Scene {
         deltaMs === this.stimpack.timeToBoundaryMs
       ),
     );
+    if (this.choosing || this.run.status === "failed") return elapsed;
     if (this.run.status === "running")
       this.advanceWorld(Math.max(0, deltaMs) - elapsed);
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    return deltaMs;
+  }
+
+  private applyEnemyStates(states: readonly EnemyState[]): void {
+    let xp = 0;
+    for (const entry of this.enemies) {
+      entry.state = states.find((enemy) => enemy.id === entry.state.id)!;
+      if (entry.state.hp <= 0) {
+        xp += enemyConfigs[entry.state.kind].xpOnKill;
+        entry.visual.destroy();
+      } else this.view.renderEnemy(entry.visual, entry.state);
+    }
+    this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    this.progression.gainXp(xp);
+    this.renderProgression();
+    if (this.choosing) this.showChoices();
+  }
+
+  private renderProgression(): void {
+    this.view.renderProgression(
+      this.progression.level,
+      this.progression.xp,
+      this.progression.threshold,
+    );
+  }
+
+  private showChoices(): void {
+    const offered = this.progression.offer();
+    if (!offered.length) {
+      this.time.paused = false;
+      this.choices.hide();
+      return;
+    }
+    this.time.paused = true;
+    this.choices.show(this.progression.level, offered, (id) => {
+      if (!this.progression.choose(id)) return;
+      this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
+      this.magic.setUpgrades(this.progression.ranks);
+      if (this.choosing) this.showChoices();
+      else {
+        this.choices.hide();
+        this.time.paused = false;
+      }
+      this.renderProgression();
+    });
   }
 
   private advanceWorld(deltaMs: number): void {

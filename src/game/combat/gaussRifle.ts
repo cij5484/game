@@ -5,7 +5,7 @@ export interface AttackCommand {
 }
 
 export class GaussRifle {
-  private readonly config: GaussRifleConfig;
+  private config: GaussRifleConfig;
   private current: AttackCommand | null = null;
   private buffered: AttackCommand | null = null;
   private roundsRemaining = 0;
@@ -18,6 +18,11 @@ export class GaussRifle {
 
   get phase() {
     return this.state;
+  }
+
+  /** Keep the pending round and command intact; apply new tuning at future events. */
+  setConfig(config: GaussRifleConfig): void {
+    this.config = config;
   }
 
   request(command: AttackCommand): void {

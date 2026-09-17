@@ -1,6 +1,6 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재는 **Milestone 8: Gesture Magic + Integrated Wall HUD**까지 구현했습니다. 세로 전장에서 적의 성벽 공격, Marine의 탭 기반 3점사와 두 손가락 탭 Stimpack을 플레이할 수 있습니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재는 **Milestone 9: XP / Level Up / Build Growth**까지 구현했습니다. 세로 전장에서 적의 성벽 공격, Marine의 탭 기반 3점사와 두 손가락 탭 Stimpack을 플레이할 수 있습니다.
 
 ## 현재 화면 확인
 
@@ -35,6 +35,17 @@
 - 성벽 안 ○/Z 상태는 버튼이 아닙니다. 빈 전장에 시전해도 cooldown은 소모합니다. Gesture threshold는 data/gesture.ts, 입력 시간/샘플 한계는 data/input.ts에서 조절합니다.
 - D Debug에서만 완료된 입력 path와 인식 결과/confidence를 표시합니다. 화면 표시 좌표와 마법의 논리 거리(648×1075)는 분리되어 있습니다.
 - 포인터 경로→인식→마법 효과→cooldown 차단 통합 테스트를 실행했습니다. 브라우저에서는 Tap, 잘못된 선의 거부, 성벽 HUD/군중 배치를 확인했습니다. 현재 브라우저 도구는 자유곡선·동시 다중 터치를 지원하지 않아 실제 ○/Z 및 두 손가락 조작은 기기 확인이 필요합니다.
+
+## 성장 루프
+
+- 처치 XP: Grunt/Runner 1, Shield 3. Lv.1에서 다음 레벨 요구 XP는5, 이후 매 레벨 +3입니다. 초과 XP는 보존합니다.
+- 레벨업 시 적/생성/무기/Stimpack/마법 cooldown/VFX 시간을 멈추고 서로 다른 강화3개 중 하나를 선택합니다. 여러 레벨이 밀리면 차례대로 선택합니다.
+- 후보는 현재 능력의 비MAX 카드에서 중복 없는 weighted random(현재 각 weight1)으로 뽑습니다. Reroll 없음. 8종 총22rank를 모두 소진하면 빈 선택창 없이 계속 진행하며, 마지막 남은 후보가3개 미만이면 남은 카드만 표시합니다.
+- RAPID: 점사 +1발(rank3 MAX: 6발), 회복 −60ms(rank3 MAX: 200ms). 진행 중 탄환 예약을 초기화하지 않으며 다음 점사/발사 이벤트부터 적용합니다.
+- PENETRATION: 뒤쪽 논리 ray 내 추가 적 +1(rank3). RICOCHET: 마지막 적중점 주변180 내 미적중 적1명(rank1). 관통은 청록선, 도탄은 주황선으로 표시합니다. 같은 탄환에 중복 hit 없음.
+- Frost 범위 +60 / 동결 +500ms(각 rank3), Lightning 대상 +1 / 피해 +10(각 rank3). Cooldown은 유지합니다.
+- XP/Level은 성벽의 HP 옆에 작게 표시합니다. 공식 수치는 data/upgrades.ts와 data/primaryAttack.ts의 prototype tuning입니다.
+- Milestone 9 검증: 전체59 tests와 TypeScript/build 통과. 브라우저에서 XP 증가, 3장 선택창, 선택 후 재개와 주황색 도탄 연결선을 확인했습니다. Rapid/관통/마법 강화별 수치·피해·cooldown 보존은 핵심 테스트로 검증했으며 모든 강화 조합의 실제 기기 플레이 평가는 아직 하지 않았습니다.
 
 ## 실행
 

@@ -28,6 +28,8 @@ export class EnemyPressureView {
   private readonly stimText: Phaser.GameObjects.Text;
   private readonly hpText: Phaser.GameObjects.Text;
   private readonly hpFill: Phaser.GameObjects.Rectangle;
+  private readonly xpText: Phaser.GameObjects.Text;
+  private readonly xpFill: Phaser.GameObjects.Rectangle;
   private readonly failure: Phaser.GameObjects.Container;
   private readonly scene: Phaser.Scene;
   private readonly debug: Phaser.GameObjects.Container;
@@ -35,7 +37,10 @@ export class EnemyPressureView {
   private readonly debugStim: Phaser.GameObjects.Text;
   private debugVisible = false;
   private readonly enemyLabels = new Set<Phaser.GameObjects.Text>();
-  private readonly attackSlots = new Map<number, { lane: EnemyState["lane"]; slot: number }>();
+  private readonly attackSlots = new Map<
+    number,
+    { lane: EnemyState["lane"]; slot: number }
+  >();
   private readonly magicText: Phaser.GameObjects.Text;
   private readonly gesturePath: Phaser.GameObjects.Graphics;
   private readonly gestureText: Phaser.GameObjects.Text;
@@ -57,14 +62,23 @@ export class EnemyPressureView {
         .setOrigin(0.5);
 
     this.debug.add(text(360, 160, "MARINE · GAUSS RIFLE", 24));
-    this.hpText = text(360, 1227, "", 19);
+    this.hpText = text(190, 1227, "", 19);
     this.hpFill = scene.add
-      .rectangle(60, 1245, 600, 8, 0x77d7a0)
+      .rectangle(36, 1245, 312, 8, 0x77d7a0)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.hpText,
-      scene.add.rectangle(360, 1245, 600, 8, 0x34443d),
+      scene.add.rectangle(192, 1245, 312, 8, 0x34443d),
       this.hpFill,
+    ]);
+    this.xpText = text(530, 1227, "", 19);
+    this.xpFill = scene.add
+      .rectangle(372, 1245, 312, 8, 0x9dc7ff)
+      .setOrigin(0, 0.5);
+    this.hud.add([
+      this.xpText,
+      scene.add.rectangle(528, 1245, 312, 8, 0x263c50),
+      this.xpFill,
     ]);
 
     this.stimText = text(360, 1150, "", 20).setVisible(false);
@@ -107,7 +121,13 @@ export class EnemyPressureView {
       );
       this.debug.add(text(x, 325, `${title} LANE`, 23));
     }
-    const farGuide = scene.add.rectangle(360, field.farY, field.width, 2, 0x90a4ae);
+    const farGuide = scene.add.rectangle(
+      360,
+      field.farY,
+      field.width,
+      2,
+      0x90a4ae,
+    );
     const farLabel = text(360, field.farY + 28, "FAR", 20);
     this.debug.add([farGuide, farLabel]);
     const masonry = scene.add.graphics();
@@ -234,13 +254,19 @@ export class EnemyPressureView {
     let y = this.farY + (field.wallY - this.farY) * enemy.progress01;
     if (enemy.phase === "attacking") {
       if (!this.attackSlots.has(enemy.id)) {
-        const occupied = new Set([...this.attackSlots.values()]
-          .filter((entry) => entry.lane === enemy.lane).map((entry) => entry.slot));
+        const occupied = new Set(
+          [...this.attackSlots.values()]
+            .filter((entry) => entry.lane === enemy.lane)
+            .map((entry) => entry.slot),
+        );
         let slot = 0;
         while (occupied.has(slot)) slot++;
         this.attackSlots.set(enemy.id, { lane: enemy.lane, slot });
       }
-      const offset = attackSlotPosition(this.attackSlots.get(enemy.id)!.slot, field.width / 3);
+      const offset = attackSlotPosition(
+        this.attackSlots.get(enemy.id)!.slot,
+        field.width / 3,
+      );
       x = field.left + laneCenterX(enemy.lane, field.width) + offset.x;
       y = field.wallY + offset.y;
     }
@@ -248,12 +274,9 @@ export class EnemyPressureView {
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
       `${enemy.kind[0]!.toUpperCase()} ${enemy.hp} · ${enemy.progress01.toFixed(2)}`,
     );
-    (visual.getAt(0) as Phaser.GameObjects.Rectangle).setFillStyle(
-      enemy.frozenMs > 0 ? 0xb2f7ff : colors[enemy.kind],
-    ).setStrokeStyle(
-      enemy.phase === "attacking" ? 4 : 0,
-      0xff665f,
-    );
+    (visual.getAt(0) as Phaser.GameObjects.Rectangle)
+      .setFillStyle(enemy.frozenMs > 0 ? 0xb2f7ff : colors[enemy.kind])
+      .setStrokeStyle(enemy.phase === "attacking" ? 4 : 0, 0xff665f);
   }
 
   pickEnemy(
@@ -321,9 +344,38 @@ export class EnemyPressureView {
   }
 
   renderWall(hp: number, maxHp: number): void {
-    this.hpText.setText(`WALL HP ${hp} / ${maxHp}`);
-    this.hpFill.setDisplaySize(600 * (hp / maxHp), 8);
+    this.hpText.setText(`HP ${hp} / ${maxHp}`);
+    this.hpFill.setDisplaySize(312 * (hp / maxHp), 8);
     this.failure.setVisible(hp <= 0);
+  }
+
+  renderProgression(level: number, xp: number, threshold: number): void {
+    this.xpText.setText(`Lv.${level} · XP ${xp}/${threshold}`);
+    this.xpFill.setDisplaySize(312 * Math.min(1, xp / threshold), 8);
+  }
+
+  showPrimary(
+    targets: readonly Phaser.GameObjects.Container[],
+    ricochetIds: readonly number[],
+    hitIds: readonly number[],
+  ): void {
+    if (!targets.length) return;
+    this.showShot(targets[0]!);
+    if (targets.length < 2) return;
+    const effect = this.scene.add.graphics();
+    this.world.add(effect);
+    let previous = targets[0]!;
+    for (let index = 1; index < targets.length; index++) {
+      const target = targets[index]!;
+      effect.lineStyle(
+        3,
+        ricochetIds.includes(hitIds[index]!) ? 0xffab6b : 0x85eaff,
+      );
+      effect.lineBetween(previous.x, previous.y, target.x, target.y);
+      effect.strokeCircle(target.x, target.y, 12);
+      previous = target;
+    }
+    this.scene.time.delayedCall(120, () => effect.destroy());
   }
 
   renderDirector(status: string): void {
@@ -331,16 +383,23 @@ export class EnemyPressureView {
   }
 
   renderMagic(frostMs: number, chainMs: number): void {
-    const remaining = (ms: number) => ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
-    this.magicText.setText(`○ Frost Nova ${remaining(frostMs)}   ·   Z Chain Lightning ${remaining(chainMs)}`);
+    const remaining = (ms: number) =>
+      ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
+    this.magicText.setText(
+      `○ Frost Nova ${remaining(frostMs)}   ·   Z Chain Lightning ${remaining(chainMs)}`,
+    );
   }
 
-  showMagic(kind: "frost-nova" | "chain-lightning", targets: readonly Phaser.GameObjects.Container[]): void {
+  showMagic(
+    kind: "frost-nova" | "chain-lightning",
+    targets: readonly Phaser.GameObjects.Container[],
+  ): void {
     const effect = this.scene.add.graphics();
     this.world.add(effect);
     if (kind === "frost-nova") {
       effect.lineStyle(4, 0xb2f7ff, 0.9);
-      for (const target of targets) effect.strokeCircle(target.x, target.y, 42 * target.scaleX);
+      for (const target of targets)
+        effect.strokeCircle(target.x, target.y, 42 * target.scaleX);
     } else {
       effect.lineStyle(4, 0xe0c3ff, 1);
       let previous = { x: combatVisual.marineX, y: combatVisual.marineY };
@@ -355,7 +414,10 @@ export class EnemyPressureView {
     this.scene.time.delayedCall(300, () => effect.destroy());
   }
 
-  showGesture(points: readonly { x: number; y: number }[], result: string): void {
+  showGesture(
+    points: readonly { x: number; y: number }[],
+    result: string,
+  ): void {
     this.gestureText.setText(result);
     this.gesturePath.clear().lineStyle(3, 0xeeee77, 0.8);
     for (let i = 1; i < points.length; i++) {
