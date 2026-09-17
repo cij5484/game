@@ -1,16 +1,23 @@
-import { tapBalance } from "../data/input";
+import { tapBalance, drawingInputBalance } from "../data/input";
+
+type Point = { x: number; y: number };
+export type CombatInput =
+  | { kind: "primary" | "secondary"; x: number; y: number }
+  | { kind: "gesture"; points: Point[]; x: number; y: number };
 
 export class TapInput {
   private fingers = new Map<number, { x: number; y: number }>();
   private started = 0;
   private count = 0;
   private valid = true;
+  private path: Point[] = [];
 
   down(id: number, x: number, y: number, time: number): void {
     if (this.fingers.size === 0) {
       this.started = time;
       this.count = 0;
       this.valid = true;
+      this.path = [{ x, y }];
     } else if (time - this.started > tapBalance.joinWindowMs)
       this.valid = false;
     this.fingers.set(id, { x, y });
@@ -19,6 +26,15 @@ export class TapInput {
 
   move(id: number, x: number, y: number): void {
     const start = this.fingers.get(id);
+    if (start && this.count === 1) {
+      const last = this.path[this.path.length - 1]!;
+      if (
+        Math.hypot(x - last.x, y - last.y) >=
+          drawingInputBalance.sampleDistancePx &&
+        this.path.length < drawingInputBalance.maxPoints
+      )
+        this.path.push({ x, y });
+    }
     if (
       start &&
       Math.hypot(x - start.x, y - start.y) > tapBalance.maxMovementPx
@@ -26,15 +42,19 @@ export class TapInput {
       this.valid = false;
   }
 
-  up(
-    id: number,
-    x: number,
-    y: number,
-    time: number,
-  ): { kind: "primary" | "secondary"; x: number; y: number } | null {
+  up(id: number, x: number, y: number, time: number): CombatInput | null {
     if (!this.fingers.has(id)) return null;
     this.move(id, x, y);
     this.fingers.delete(id);
+    // Discard an overlong drawing instead of recognizing only its clipped prefix.
+    if (this.path.length >= drawingInputBalance.maxPoints) return null;
+    if (
+      !this.fingers.size &&
+      this.count === 1 &&
+      !this.valid &&
+      time - this.started <= drawingInputBalance.maxDurationMs
+    )
+      return { kind: "gesture", points: this.path, x, y };
     if (
       this.fingers.size ||
       !this.valid ||
@@ -54,6 +74,10 @@ export class TapInput {
 export function bindTapInput(
   canvas: HTMLCanvasElement,
   onTap: (kind: "primary" | "secondary", x: number, y: number) => void,
+  onGesture?: (
+    points: readonly Point[],
+    displayPoints: readonly Point[],
+  ) => void,
 ): () => void {
   const input = new TapInput();
   const down = (event: PointerEvent) => {
@@ -74,6 +98,16 @@ export function bindTapInput(
     );
     if (tap) {
       const rect = canvas.getBoundingClientRect();
+      if (tap.kind === "gesture") {
+        onGesture?.(
+          tap.points,
+          tap.points.map((point) => ({
+            x: ((point.x - rect.left) * canvas.width) / rect.width,
+            y: ((point.y - rect.top) * canvas.height) / rect.height,
+          })),
+        );
+        return;
+      }
       onTap(
         tap.kind,
         ((tap.x - rect.left) * canvas.width) / rect.width,

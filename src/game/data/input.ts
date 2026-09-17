@@ -4,3 +4,9 @@ export const tapBalance = {
   maxMovementPx: 20,
   joinWindowMs: 120,
 } as const;
+
+export const drawingInputBalance = {
+  maxDurationMs: 2500,
+  maxPoints: 256,
+  sampleDistancePx: 3,
+} as const;

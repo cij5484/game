@@ -9,6 +9,8 @@ import {
 import { GaussRifle } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
 import { SpawnDirector } from "../waves/spawnDirector";
+import { Magic } from "../combat/magic";
+import { recognizeGesture } from "../input/gestureRecognizer";
 import { bindTapInput } from "../input/tapInput";
 import { resolveAttackTarget } from "../combat/targeting";
 import { applyPrimaryDamage } from "../combat/damage";
@@ -31,6 +33,7 @@ export class CombatScene extends Phaser.Scene {
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
+  private magic = new Magic();
 
   create(): void {
     this.run = createRunState(enemyPressureBalance.wallMaxHp);
@@ -39,23 +42,58 @@ export class CombatScene extends Phaser.Scene {
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
+    this.magic = new Magic();
     this.view = new EnemyPressureView(this);
     this.spawnBatch();
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
-    const unbindInput = bindTapInput(this.game.canvas, (kind, x, y) => {
-      if (this.run.status === "failed") return;
-      if (kind === "secondary") this.stimpack.activate();
-      else if (this.stimpack.canAttack)
-        this.rifle.request({
-          manualTargetId: this.view.pickEnemy(x, y, this.enemies),
-        });
-      this.update(0, 0);
-    });
+    const unbindInput = bindTapInput(
+      this.game.canvas,
+      (kind, x, y) => {
+        if (this.run.status === "failed") return;
+        if (kind === "secondary") this.stimpack.activate();
+        else if (this.stimpack.canAttack)
+          this.rifle.request({
+            manualTargetId: this.view.pickEnemy(x, y, this.enemies),
+          });
+        this.update(0, 0);
+      },
+      (points, displayPoints) => {
+        if (this.run.status === "failed") return;
+        const gesture = recognizeGesture(points);
+        this.view.showGesture(
+          displayPoints,
+          `${gesture.kind} ${gesture.confidence.toFixed(2)}`,
+        );
+        if (gesture.kind === "unknown") return;
+        const id = gesture.kind === "circle" ? "frost-nova" : "chain-lightning";
+        const result = this.magic.cast(
+          id,
+          this.enemies.map((entry) => entry.state),
+        );
+        if (!result) return;
+        this.view.showMagic(
+          id,
+          result.hitIds.map(
+            (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
+          ),
+        );
+        for (const entry of this.enemies) {
+          entry.state = result.enemies.find(
+            (enemy) => enemy.id === entry.state.id,
+          )!;
+          if (entry.state.hp <= 0) entry.visual.destroy();
+          else this.view.renderEnemy(entry.visual, entry.state);
+        }
+        this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+        this.renderMagic();
+      },
+    );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput);
     this.view.renderStimpack(
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
     );
+    this.renderMagic();
   }
 
   private spawnBatch(): void {
@@ -92,9 +130,17 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.attackSpeedMultiplier,
     );
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    this.renderMagic();
     const settings = this.director.settings;
     this.view.renderDirector(
       `DIRECTOR ${Math.floor(this.director.elapsedMs / 1000)}s · ${settings.phase} · stage ${settings.stage + 1}\nACTIVE ${this.enemies.length}/${settings.maxActiveEnemies} · batch ${settings.batchSize} / ${settings.spawnIntervalMs}ms`,
+    );
+  }
+
+  private renderMagic(): void {
+    this.view.renderMagic(
+      this.magic.remaining("frost-nova"),
+      this.magic.remaining("chain-lightning"),
     );
   }
 
@@ -157,6 +203,7 @@ export class CombatScene extends Phaser.Scene {
         if (this.run.status === "failed") break;
       }
       this.director.advance(step);
+      this.magic.advance(step);
       remaining -= step;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
         this.spawnBatch();

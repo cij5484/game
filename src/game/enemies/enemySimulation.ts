@@ -3,6 +3,7 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 export interface EnemyState {
   id: number;
   hp: number;
+  frozenMs: number;
   kind: EnemyKind;
   lane: LaneId;
   offset01: number;
@@ -16,6 +17,10 @@ export function advanceEnemy(
   config: EnemyConfig,
 ): { enemy: EnemyState; wallTimeMs: number } {
   if (deltaMs <= 0 || enemy.hp <= 0) return { enemy, wallTimeMs: 0 };
+  const frozenTime = Math.min(deltaMs, enemy.frozenMs);
+  enemy = { ...enemy, frozenMs: Math.max(0, enemy.frozenMs - deltaMs) };
+  deltaMs -= frozenTime;
+  if (deltaMs <= 0) return { enemy, wallTimeMs: 0 };
   if (enemy.progress01 >= 1) {
     return {
       enemy: { ...enemy, progress01: 1, phase: "attacking" },

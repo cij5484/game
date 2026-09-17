@@ -55,6 +55,8 @@ The core fantasy is:
 - Supporting 9:16, 9:19.5, 9:20 and portrait tablet ratios is a global requirement. Additional space shows environment/far battlefield; it must not change movement timing, attack ranges or combat balance.
 - Gameplay logical coordinates remain separate from visual scale and physical pixels. HUD and battlefield remain separate roots for future safe-area handling.
 - Empty-space tap means a battlefield tap outside enemy touch hitboxes.
+- Top is battlefield-only: far spawn depth reaches the viewport top. The lower masonry wall anchors Wall HP and compact combat status; no empty slots for future systems. Magic cooldown labels are indicators, never buttons.
+- Extra portrait height extends distant presentation only. Wall attackers use stable visual slots within each lane; these offsets do not alter arrival time, spell distance or wall damage.
 
 - Player and wall are at the **bottom**.
 - Enemies spawn from the **far top** and move downward.
