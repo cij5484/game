@@ -32,11 +32,15 @@ export class GaussRifle {
   advance(
     deltaMs: number,
     onRound: (command: AttackCommand, offsetMs: number) => void | boolean,
+    includeEndpoint = true,
   ): void {
     let remainingMs = Math.max(0, deltaMs);
     let offsetMs = 0;
     while (this.state !== "idle") {
-      if (remainingMs < this.untilEventMs) {
+      if (
+        remainingMs < this.untilEventMs ||
+        (!includeEndpoint && remainingMs === this.untilEventMs)
+      ) {
         this.untilEventMs -= remainingMs;
         return;
       }

@@ -54,7 +54,7 @@ These remain in the GDD but are outside Prototype v0.1.
 ## 3. Runtime Target
 
 Primary target:
-- Mobile browser, landscape orientation
+- Mobile browser, **Portrait orientation**
 - Android Chrome first
 - iPhone Safari test early, not at the end
 
@@ -68,6 +68,8 @@ Prototype must remain usable with touch input.
 ## 4. Scene Layout
 
 Single combat scene.
+
+**Global presentation requirement:** Mobile Portrait with Full-Bleed Presentation. Support 9:16, 9:19.5, 9:20 and portrait tablet ratios through Phaser Scale Manager. A 720×1280 logical presentation reference fits a bounded playfield; full-viewport environment absorbs additional space instead of black letterboxing. Enemy progress, travel duration and combat rules remain independent of viewport dimensions and visual scale. Keep HUD and battlefield roots separate so future safe-area insets can be applied independently.
 
 ### Screen regions
 
@@ -562,7 +564,7 @@ Important eventual categories:
 
 ### Milestone 0 — Foundation
 - Phaser + TypeScript + Vite
-- landscape canvas
+- portrait full-bleed canvas
 - basic game loop
 - mobile test page
 
