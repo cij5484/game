@@ -4,6 +4,20 @@ import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
 describe("enemy simulation", () => {
+  it("freezes movement and wall attack time, then resumes only after thaw", () => {
+    const enemy = {
+      ...createPrototypeEnemy("grunt", "left", 1),
+      frozenMs: 1500,
+    };
+    expect(advanceEnemy(enemy, 1000, enemyConfigs.grunt).enemy.progress01).toBe(
+      0,
+    );
+    expect(
+      advanceEnemy(enemy, 2000, enemyConfigs.grunt).enemy.progress01,
+    ).toBeCloseTo(0.02);
+    const atWall = { ...enemy, progress01: 1 };
+    expect(advanceEnemy(atWall, 2000, enemyConfigs.grunt).wallTimeMs).toBe(500);
+  });
   it.each(["grunt", "runner", "shield"] as const)(
     "moves %s at its configured speed without mutating its spawn",
     (kind) => {
@@ -11,6 +25,7 @@ describe("enemy simulation", () => {
       expect(enemy).toEqual({
         id: 7,
         hp: enemyConfigs[kind].hp,
+        frozenMs: 0,
         kind,
         lane: "left",
         offset01: 0.5,

@@ -14,6 +14,7 @@ export function createPrototypeEnemy(
     lane,
     offset01,
     hp: enemyConfigs[kind].hp,
+    frozenMs: 0,
     progress01: 0,
     phase: "moving",
   };
