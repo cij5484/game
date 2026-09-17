@@ -21,3 +21,19 @@ export function resolveAttackTarget(
     selectAutoTarget(enemies)
   );
 }
+
+/** A focus remains until a blank tap, death, or disappearance; no attack state lives here. */
+export class TargetFocus {
+  private id: number | null = null;
+  get targetId() {
+    return this.id;
+  }
+  set(id: number | null) {
+    this.id = id;
+  }
+  resolve(enemies: readonly EnemyState[]): EnemyState | null {
+    if (this.id !== null && !enemies.some((e) => e.id === this.id && e.hp > 0))
+      this.id = null;
+    return resolveAttackTarget(this.id, enemies);
+  }
+}

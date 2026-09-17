@@ -2,11 +2,8 @@ import { expect, it } from "vitest";
 import { primaryAttack } from "../../src/game/combat/primaryAttack";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { weaponTraitIds } from "../../src/game/data/traits";
-import {
-  traitCombatBalance,
-  tickTraitStatuses,
-  propagateTraitDeaths,
-} from "../../src/game/combat/traitCombat";
+import { primaryAttackBalance } from "../../src/game/data/primaryAttack";
+import { synergyRecipes } from "../../src/game/data/synergies";
 import { RelicCombat } from "../../src/game/combat/relicCombat";
 import { Magic } from "../../src/game/combat/magic";
 
@@ -31,36 +28,34 @@ it("bounds repeated 300-enemy all-trait attacks and secondary effects", () => {
     const hit = primaryAttack(pack[0]!, pack, ranks, 10, {}, ["hyper-gauss"], {
       shotIndex: shot,
       random: () => 0,
-      heatRatio: 0.9,
+      branches: {
+        penetration: "b",
+        ricochet: "a",
+        multishot: "a",
+        explosive: "a",
+        execution: "b",
+      },
+      activeSynergyIds: new Set(synergyRecipes.map((recipe) => recipe.id)),
       synergyMultiplier: 1.5,
     });
     expect(new Set([...hit.hitIds, ...hit.splashIds]).size).toBeLessThanOrEqual(
-      traitCombatBalance.roundTargetBudget,
+      primaryAttackBalance.roundTargetBudget,
     );
     expect(hit.explosionIds.length).toBeLessThanOrEqual(
-      traitCombatBalance.roundSplashBudget,
+      primaryAttackBalance.roundSplashBudget,
     );
     const shatter = relic.onPrimaryFrost(hit.enemies, hit.hitIds, true);
     expect(shatter.hitIds.length).toBeLessThanOrEqual(24);
     const arc = relic.afterPrimary(shatter.enemies, hit.hitIds, true);
     expect(arc.hitIds.length).toBeLessThanOrEqual(5);
-    const tick = tickTraitStatuses(arc.enemies, 5000);
-    const spread = propagateTraitDeaths(
-      tick.enemies,
-      tick.enemies.filter((e) => e.hp <= 0),
-      ranks,
+    expect(arc.enemies.every((e) => Number.isFinite(e.hp) && e.hp >= 0)).toBe(
+      true,
     );
-    expect(spread.burnIds.length + spread.markIds.length).toBeLessThanOrEqual(
-      64,
-    );
-    expect(
-      spread.enemies.every((e) => Number.isFinite(e.hp) && e.hp >= 0),
-    ).toBe(true);
     times.push(performance.now() - start);
   }
   const magic = new Magic();
   magic.setUpgrades(ranks);
-  magic.setSynergyMultiplier(1.5);
+
   expect(magic.cast("frost-nova", pack)!.enemies).toHaveLength(300);
   times.sort((a, b) => a - b);
   console.info(

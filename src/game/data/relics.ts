@@ -59,7 +59,8 @@ export const relicBalance = {
   lowWallRatio: 0.3,
   echoDelayMs: 180,
   echoQueueCap: 4,
-  echoMaxRounds: 6,
+  echoMaxRounds: 3,
+  echoCycleShots: 3,
   nearWallProgress: 0.85,
   reclaimWindowMs: 1000,
   shatterTotalTargetCap: 24,
@@ -176,12 +177,12 @@ export const relics: Record<RelicId, RelicDefinition> = {
     symbol: "⧉",
     maxLevel: 5,
     levels: [0, 1, 2, 3, 4].map((rank) => ({
-      description: `${[8, 6, 5, 4, 3][rank]}점사마다 0.18초 뒤 다른 적에게 ${[30, 40, 50, 65, 85][rank]}% 복제 점사 (최대 ${[2, 2, 3, 4, 6][rank]}발)${rank >= 4 ? " · 전체 특성 계승" : rank >= 2 ? " · 관통·도탄·다중탄 일부 계승" : ""} · 복제 재귀 없음`,
+      description: `${[24, 18, 15, 12, 9][rank]}발 자동 사격마다 0.18초 뒤 다른 적에게 ${[30, 40, 50, 65, 85][rank]}% 복제 사격 (최대 ${[2, 2, 3, 3, 3][rank]}발)${rank >= 4 ? " · 전체 특성 계승" : rank >= 2 ? " · 관통·도탄·다중탄 일부 계승" : ""} · 복제 재귀 없음`,
       effects: {
         echoEveryVolleys: [8, 6, 5, 4, 3][rank]!,
         echoDamageMultiplier: [0.3, 0.4, 0.5, 0.65, 0.85][rank]!,
         echoTraitLevel: rank >= 4 ? 5 : rank >= 2 ? rank - 1 : 0,
-        echoRoundCap: [2, 2, 3, 4, 6][rank]!,
+        echoRoundCap: [2, 2, 3, 3, 3][rank]!,
       },
     })),
   },
@@ -210,7 +211,7 @@ export const relics: Record<RelicId, RelicDefinition> = {
     symbol: "ϟ",
     maxLevel: 5,
     levels: [0, 1, 2, 3, 4].map((rank) => ({
-      description: `강화 중 처치: Boost +${[60, 80, 100, 120, 150][rank]}ms (회당 최대 +${[1000, 1400, 1800, 2400, 3000][rank]! / 1000}초) · 연장한 시간의 50%만큼 회복 지연${rank >= 2 ? ` · 강화 피해 +${[0, 0, 10, 15, 25][rank]}%` : ""} · Crash 1초 유지`,
+      description: `강화 중 처치: Boost +${[60, 80, 100, 120, 150][rank]}ms (회당 최대 +${[1000, 1400, 1800, 2400, 3000][rank]! / 1000}초) · 연장한 시간의 50%만큼 회복 지연${rank >= 2 ? ` · 강화 피해 +${[0, 0, 10, 15, 25][rank]}%` : ""} · 선택한 투약의 탈진 시간 유지`,
       effects: {
         boostExtensionPerKillMs: [60, 80, 100, 120, 150][rank]!,
         boostExtensionCapMs: [1000, 1400, 1800, 2400, 3000][rank]!,

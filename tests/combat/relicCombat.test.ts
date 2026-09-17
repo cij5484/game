@@ -155,3 +155,51 @@ it("only boost kills return bounded-extension parameters", () => {
   expect(reward.boostExtensionCapMs).toBe(3000);
   expect(reward.recoveryCostRatio).toBe(0.5);
 });
+
+it("snapshots Full Echo branches and selected synergies independently of later build changes", () => {
+  const combat = new RelicCombat();
+  combat.setLevels({ "ammo-replicator": 5 });
+  const branches: import("../../src/game/data/growth").GrowthBranches = {
+    penetration: "b",
+    explosive: "a",
+  };
+  const activeSynergyIds = new Set(["deep-blast"]);
+  const snapshot = {
+    targetId: 1,
+    ranks: { penetration: 5, explosive: 5 },
+    branches,
+    activeSynergyIds,
+    baseDamage: 10,
+    rounds: 3,
+  };
+  for (let i = 0; i < 3; i++) combat.onVolley(snapshot);
+  branches.penetration = "a";
+  activeSynergyIds.clear();
+  const echo = combat.advance(180)[0]!;
+  expect(echo.branches).toEqual({ penetration: "b", explosive: "a" });
+  expect(echo.activeSynergyIds).toEqual(new Set(["deep-blast"]));
+  expect(echo.rounds).toBe(3);
+});
+it("partial Echo cannot inherit a branch below level three or unlock an unselected synergy", () => {
+  const combat = new RelicCombat();
+  combat.setLevels({ "ammo-replicator": 4 });
+  for (let i = 0; i < 4; i++)
+    combat.onVolley({
+      targetId: 1,
+      ranks: {
+        penetration: 5,
+        ricochet: 5,
+        multishot: 5,
+        explosive: 5,
+        execution: 5,
+      },
+      branches: { penetration: "b", explosive: "a" },
+      activeSynergyIds: new Set(),
+      baseDamage: 10,
+      rounds: 3,
+    });
+  const echo = combat.advance(180)[0]!;
+  expect(echo.ranks).toEqual({ penetration: 2, ricochet: 2, multishot: 2 });
+  expect(echo.branches).toEqual({});
+  expect(echo.activeSynergyIds?.size).toBe(0);
+});

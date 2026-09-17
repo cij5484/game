@@ -1,7 +1,8 @@
 import { combatPosition } from "../battlefield/combatGeometry";
 import { relicBalance, type RelicLevels } from "../data/relics";
 import { weaponTraitIds } from "../data/traits";
-import { upgrades, type UpgradeRanks } from "../data/upgrades";
+import type { UpgradeRanks } from "../data/upgrades";
+import type { GrowthBranches } from "../data/growth";
 import { relicEffects } from "../progression/relics";
 import type { EnemyState } from "../enemies/enemySimulation";
 import type { MagicId } from "./magic";
@@ -11,6 +12,8 @@ export interface VolleySnapshot {
   /** Original target; the caller retargets the echo to a different living enemy. */
   targetId: number;
   ranks: UpgradeRanks;
+  branches?: GrowthBranches;
+  activeSynergyIds?: ReadonlySet<string>;
   baseDamage: number;
   rounds?: number;
 }
@@ -118,6 +121,7 @@ export class RelicCombat {
     };
   }
 
+  /** Called once per three original automatic shots; echo rounds never call back. */
   onVolley(snapshot: VolleySnapshot, isEcho = false): void {
     if (isEcho || this.effects.echoEveryVolleys <= 0) return;
     this.volleyCount++;
@@ -125,15 +129,13 @@ export class RelicCombat {
     this.volleyCount = 0;
     if (this.echoes.length >= relicBalance.echoQueueCap) return;
     const ranks = { ...snapshot.ranks };
-    if (this.effects.echoTraitLevel < 5) {
-      // Legendary weapon behavior is part of Full Echo, not a backdoor to Lv1 relays.
-      for (const card of Object.values(upgrades)) {
-        if (card.ability === "gauss-rifle" && card.rarity === "LEGENDARY")
-          delete ranks[card.id];
-      }
-    }
+    const branches: GrowthBranches = {};
     for (const id of weaponTraitIds) {
-      if (this.effects.echoTraitLevel >= 5) continue;
+      if (this.effects.echoTraitLevel >= 5) {
+        if ((ranks[id] ?? 0) >= 3 && snapshot.branches?.[id])
+          branches[id] = snapshot.branches[id];
+        continue;
+      }
       const inherited =
         this.effects.echoTraitLevel > 0 &&
         (id === "penetration" || id === "ricochet" || id === "multishot");
@@ -146,6 +148,8 @@ export class RelicCombat {
       volley: {
         ...snapshot,
         ranks,
+        branches,
+        activeSynergyIds: new Set(snapshot.activeSynergyIds ?? []),
         rounds: Math.max(
           1,
           Math.min(

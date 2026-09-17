@@ -53,6 +53,11 @@ export class EnemyPressureView {
   private readonly gesturePath: Phaser.GameObjects.Graphics;
   private readonly gestureText: Phaser.GameObjects.Text;
   private farY = field.farY;
+  private focusId: number | null = null;
+
+  setFocus(id: number | null): void {
+    this.focusId = id;
+  }
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -162,7 +167,7 @@ export class EnemyPressureView {
     );
     this.debug.add(text(360, 1060, "NEAR / WALL", 24));
     this.debug.add(
-      text(360, 1095, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 22),
+      text(360, 1095, "자동 사격 · 적 탭: 집중 · 빈 곳 탭: 집중 해제", 22),
     );
     this.debug.add(
       text(360, 1130, "두 손가락 탭 / 마우스 좌우 동시 클릭: STIMPACK", 22),
@@ -300,26 +305,18 @@ export class EnemyPressureView {
     );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
       .setFillStyle(
-        enemy.burn
-          ? 0xff984c
-          : slowed
-            ? 0xb2f7ff
-            : (enemy.suppressionMs ?? 0) > 0
-              ? 0x9da7ba
-              : enemy.elite
-                ? 0xe8bd50
-                : colors[enemy.kind],
+        slowed ? 0xb2f7ff : enemy.elite ? 0xe8bd50 : colors[enemy.kind],
       )
       .setStrokeStyle(
-        (enemy.markStacks ?? 0) > 0
-          ? Math.min(7, 2 + enemy.markStacks!)
+        enemy.id === this.focusId
+          ? 7
           : enemy.elite
             ? 5
             : enemy.phase === "attacking"
               ? 4
               : 0,
-        (enemy.markStacks ?? 0) > 0
-          ? 0xff6cce
+        enemy.id === this.focusId
+          ? 0xffffff
           : enemy.elite
             ? 0xffedb5
             : 0xff665f,
@@ -488,7 +485,7 @@ export class EnemyPressureView {
 
   // BuildBar owns the visible relic inventory; retained until scene integration.
   showImpacts(
-    kind: "frost" | "lightning" | "fire" | "suppression" | "emergency",
+    kind: "frost" | "lightning" | "emergency",
     targets: readonly Phaser.GameObjects.Container[],
   ): void {
     if (!targets.length) return;
@@ -496,15 +493,7 @@ export class EnemyPressureView {
     this.world.add(effect);
     effect.lineStyle(
       5,
-      kind === "fire"
-        ? 0xff984c
-        : kind === "suppression"
-          ? 0xbecbdf
-          : kind === "emergency"
-            ? 0x75ffc7
-            : kind === "frost"
-              ? 0x93eeff
-              : 0xffffbd,
+      kind === "emergency" ? 0x75ffc7 : kind === "frost" ? 0x93eeff : 0xffffbd,
       0.9,
     );
     for (const target of targets.slice(0, 12)) {

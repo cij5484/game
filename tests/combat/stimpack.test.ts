@@ -62,19 +62,48 @@ describe("Stimpack", () => {
   });
 });
 
-it("upgrades stim without resetting its phase or allowing negative boundaries", () => {
+it("compressed foundation growth keeps the current phase and stable branch safely shortens recovery", () => {
   const stim = new Stimpack(stimpackBalance);
   stim.activate();
   stim.advance(2000);
-  stim.setUpgrades({ "stim-duration": 2, "stim-speed": 2 });
+  stim.setUpgrades({ "stim-growth": 2 });
   expect(stim.timeToBoundaryMs).toBe(4000);
-  expect(stim.attackSpeedMultiplier).toBeCloseTo(1.7);
+  expect(stim.attackSpeedMultiplier).toBeCloseTo(1.8);
   stim.advance(4000);
   expect(stim.timeToBoundaryMs).toBe(1000);
   stim.advance(2800);
-  stim.setUpgrades({ "stim-recovery": 2 });
+  stim.setUpgrades({ "stim-growth": 5 }, { "stim-growth": "b" });
   expect(stim.phase).toBe("normal");
-  expect(stim.timeToBoundaryMs).toBe(Infinity);
+});
+it("high-dose trades powerful automatic fire for longer recovery while stable dose shortens the cycle", () => {
+  const high = new Stimpack(stimpackBalance);
+  high.setUpgrades({ "stim-growth": 5 }, { "stim-growth": "a" });
+  high.activate();
+  expect(high.attackSpeedMultiplier).toBeCloseTo(2.7);
+  expect(high.primaryDamageMultiplier).toBe(1.35);
+  high.advance(7000);
+  expect(high.phase).toBe("crash");
+  expect(high.timeToBoundaryMs).toBe(1000);
+  high.advance(1000);
+  expect(high.timeToBoundaryMs).toBe(4000);
+  expect(high.primaryDamageMultiplier).toBe(1);
+  const stable = new Stimpack(stimpackBalance);
+  stable.setUpgrades({ "stim-growth": 5 }, { "stim-growth": "b" });
+  stable.activate();
+  expect(stable.attackSpeedMultiplier).toBeCloseTo(1.7);
+  stable.advance(5500);
+  expect(stable.timeToBoundaryMs).toBe(500);
+  stable.advance(500);
+  expect(stable.timeToBoundaryMs).toBe(700);
+});
+it("stable crash shortening never creates a negative phase boundary when upgraded during crash", () => {
+  const stim = new Stimpack(stimpackBalance);
+  stim.activate();
+  stim.advance(5900);
+  stim.setUpgrades({ "stim-growth": 5 }, { "stim-growth": "b" });
+  expect(stim.phase).toBe("recovery");
+  expect(stim.timeToBoundaryMs).toBe(700);
+  expect(stim.attackSpeedMultiplier).toBe(0);
 });
 
 it("caps adrenaline extension across all kill transactions and increases recovery without changing crash", () => {
@@ -121,4 +150,19 @@ it("integrates and inverts the longer recovery consistently after partial recove
   expect(firstQuarter + secondQuarter + stim.weaponTimeFor(1750)).toBeCloseTo(
     1750,
   );
+});
+
+it("adrenaline debt remains bounded on stable dosing and its shorter recovery still integrates correctly", () => {
+  const stim = new Stimpack(stimpackBalance);
+  stim.setUpgrades({ "stim-growth": 5 }, { "stim-growth": "b" });
+  stim.activate();
+  expect(stim.extendBoost(10000, 3000, 0.5)).toBe(3000);
+  expect(stim.extendBoost(10000, 3000, 0.5)).toBe(0);
+  stim.advance(8500);
+  expect(stim.phase).toBe("crash");
+  expect(stim.timeToBoundaryMs).toBe(500);
+  stim.advance(500);
+  expect(stim.timeToBoundaryMs).toBe(2200);
+  expect(stim.weaponTimeFor(1100)).toBe(275);
+  expect(stim.realTimeFor(275)).toBe(1100);
 });

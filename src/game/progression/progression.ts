@@ -1,57 +1,61 @@
-import { progressionBalance, rarityWeights, upgrades } from "../data/upgrades";
+import {
+  progressionBalance,
+  rarityWeights,
+  upgrades,
+  type UpgradeAbility,
+  type UpgradeDefinition,
+  type UpgradeId,
+  type UpgradeRanks,
+  type UpgradeChoice,
+  type ChoiceId,
+  type AbilityGrowthId,
+} from "../data/upgrades";
 import {
   traitBalance,
   weaponTraitIds,
   weaponTraits,
+  traitLevel,
   type WeaponTraitId,
   type WeaponTraitLevels,
 } from "../data/traits";
-import type {
-  UpgradeAbility,
-  UpgradeDefinition,
-  UpgradeId,
-  UpgradeRanks,
-  UpgradeRarity,
-} from "../data/upgrades";
-
-function tagRanks(tag: UpgradeDefinition["tag"], ranks: UpgradeRanks): number {
-  return Object.values(upgrades).reduce(
-    (sum, card) => sum + (card.tag === tag ? (ranks[card.id] ?? 0) : 0),
-    0,
-  );
-}
+import { abilityGrowth, abilityLevel } from "../data/abilityGrowth";
+import type { GrowthBranches, GrowthBranch } from "../data/growth";
+import { unlockedSynergies } from "./synergy";
 
 export function effectiveUpgradeWeight(
   card: UpgradeDefinition,
   ranks: UpgradeRanks,
-  rarityModifiers: Partial<Record<UpgradeRarity, number>> = {},
 ): number {
+  const investment = Object.values(upgrades).reduce(
+    (sum, c) => sum + (c.tag === card.tag ? (ranks[c.id] ?? 0) : 0),
+    0,
+  );
   const bias = Math.min(
     progressionBalance.maxBuildBias,
-    1 + progressionBalance.buildBiasPerRank * tagRanks(card.tag, ranks),
+    1 + progressionBalance.buildBiasPerRank * investment,
   );
   return (
     card.weight *
     rarityWeights[card.rarity] *
     bias *
-    (rarityModifiers[card.rarity] ?? 1) *
     (weaponTraitIds.includes(card.id as WeaponTraitId)
       ? progressionBalance.traitWeightMultiplier
       : 1)
   );
 }
-
 export class Progression {
   level = 1;
   xp = 0;
   pendingChoices = 0;
   readonly ranks: UpgradeRanks = {};
+  readonly branches: GrowthBranches = {};
+  readonly activeSynergyIds = new Set<string>();
   traitLimit: number = traitBalance.initialLimit;
-  private rarityModifiers: Partial<Record<UpgradeRarity, number>> = {};
-  private choices: UpgradeDefinition[] | null = null;
+  private choiceCount: number = progressionBalance.choiceCount;
+  private choices: UpgradeChoice[] | null = null;
+  private synergyOffers = new Map<string, number>();
   private readonly random: () => number;
   private readonly availableAbilities: readonly UpgradeAbility[];
-
   constructor(
     random = Math.random,
     availableAbilities: readonly UpgradeAbility[] = [
@@ -64,15 +68,13 @@ export class Progression {
     this.random = random;
     this.availableAbilities = availableAbilities;
   }
-
-  get threshold(): number {
+  get threshold() {
     return (
       progressionBalance.initialXp +
       (this.level - 1) * progressionBalance.xpPerLevel +
       (this.level - 1) ** 2 * progressionBalance.xpQuadratic
     );
   }
-
   get traitLevels(): WeaponTraitLevels {
     return Object.fromEntries(
       weaponTraitIds
@@ -80,38 +82,19 @@ export class Progression {
         .map((id) => [id, this.ranks[id]]),
     );
   }
-
-  expandTraitLimit(): boolean {
+  expandTraitLimit() {
     if (this.traitLimit >= traitBalance.maximumLimit) return false;
     this.traitLimit = traitBalance.maximumLimit;
     this.choices = null;
     return true;
   }
-
-  growOwnedTraits(): number {
-    let grown = 0;
-    for (const id of weaponTraitIds) {
-      const level = this.ranks[id] ?? 0;
-      if (level > 0 && level < traitBalance.maxLevel) {
-        this.ranks[id] = level + 1;
-        grown++;
-      }
-    }
+  expandChoices() {
+    if (this.choiceCount === 4) return false;
+    this.choiceCount = 4;
     this.choices = null;
-    this.clearExhaustedChoices();
-    return grown;
+    return true;
   }
-
-  setRarityModifiers(modifiers: Partial<Record<UpgradeRarity, number>>): void {
-    this.rarityModifiers = Object.fromEntries(
-      Object.entries(modifiers).filter(
-        ([, value]) => Number.isFinite(value) && value >= 0,
-      ),
-    );
-    this.choices = null;
-  }
-
-  gainXp(amount: number): void {
+  gainXp(amount: number) {
     if (!Number.isFinite(amount) || amount <= 0) return;
     this.xp += amount;
     while (this.xp >= this.threshold) {
@@ -119,94 +102,142 @@ export class Progression {
       this.level++;
       this.pendingChoices++;
     }
-    this.clearExhaustedChoices();
+    this.clearExhausted();
   }
-
-  offer(): UpgradeDefinition[] {
-    if (this.pendingChoices === 0) return [];
-    if (this.choices) return this.choices;
-    const pool = this.eligible().filter(
+  private growth(id: UpgradeId) {
+    return weaponTraitIds.includes(id as WeaponTraitId)
+      ? weaponTraits[id as WeaponTraitId]
+      : id in abilityGrowth
+        ? abilityGrowth[id as AbilityGrowthId]
+        : undefined;
+  }
+  private description(id: UpgradeId, level: number, branch?: GrowthBranch) {
+    return weaponTraitIds.includes(id as WeaponTraitId)
+      ? traitLevel(id as WeaponTraitId, level, branch).description
+      : abilityLevel(id as AbilityGrowthId, level, branch).description;
+  }
+  private eligible(): UpgradeDefinition[] {
+    return Object.values(upgrades).filter(
       (card) =>
-        effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers) > 0,
+        card.weight > 0 &&
+        this.availableAbilities.includes(card.ability) &&
+        (this.ranks[card.id] ?? 0) < card.maxRank &&
+        (!weaponTraitIds.includes(card.id as WeaponTraitId) ||
+          (this.ranks[card.id] ?? 0) > 0 ||
+          Object.keys(this.traitLevels).length < this.traitLimit),
     );
-    const choices: UpgradeDefinition[] = [];
-    while (pool.length > 0 && choices.length < progressionBalance.choiceCount) {
-      const candidates = pool;
+  }
+  private unlocked() {
+    return unlockedSynergies(this.ranks).filter(
+      (s) => !this.activeSynergyIds.has(s.id),
+    );
+  }
+  offer(): UpgradeChoice[] {
+    if (this.pendingChoices <= 0) return [];
+    if (this.choices) return this.choices;
+    const result: UpgradeChoice[] = [];
+    const synergy = this.unlocked().sort(
+      (a, b) =>
+        (this.synergyOffers.get(a.id) ?? 0) -
+        (this.synergyOffers.get(b.id) ?? 0),
+    )[0];
+    if (synergy)
+      result.push({
+        id: `synergy:${synergy.id}`,
+        synergyId: synergy.id,
+        title: synergy.title,
+        description: synergy.description,
+        symbol: synergy.symbol,
+        rarity: "EPIC",
+        tag: "general",
+        ability: "gauss-rifle",
+        maxRank: 1,
+        weight: 1,
+        amount: 0,
+      });
+    const pool = this.eligible();
+    while (result.length < this.choiceCount && pool.length) {
+      // A branch is always a genuine A/B pair; never hide one behind RNG or a full row.
+      const candidates = pool.filter(
+        (c) =>
+          (this.ranks[c.id] === 2 && this.growth(c.id) && !this.branches[c.id]
+            ? 2
+            : 1) <=
+          this.choiceCount - result.length,
+      );
+      if (!candidates.length) break;
       let roll =
         this.random() *
         candidates.reduce(
-          (sum, card) =>
-            sum +
-            effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers),
+          (sum, c) => sum + effectiveUpgradeWeight(c, this.ranks),
           0,
         );
-      let selected = candidates[candidates.length - 1]!;
-      for (const card of candidates) {
-        roll -= effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers);
-        if (roll < 0) {
-          selected = card;
-          break;
-        }
-      }
-      choices.push(selected);
-      pool.splice(pool.indexOf(selected), 1);
+      const card =
+        candidates.find(
+          (c) => (roll -= effectiveUpgradeWeight(c, this.ranks)) < 0,
+        ) ?? candidates.at(-1)!;
+      pool.splice(pool.indexOf(card), 1);
+      const level = (this.ranks[card.id] ?? 0) + 1;
+      const growth = this.growth(card.id);
+      const branch = this.branches[card.id];
+      if (growth && level === 3 && !branch) {
+        for (const side of ["a", "b"] as const)
+          result.push({
+            ...card,
+            id: `${card.id}:${side}`,
+            growthId: card.id,
+            branch: side,
+            title: `${card.title} · ${growth.branches[side].title}`,
+            description: this.description(card.id, level, side),
+            rarity: "EPIC",
+          });
+      } else
+        result.push({
+          ...card,
+          growthId: card.id,
+          ...(growth
+            ? {
+                title: `${card.title}${branch ? ` · ${growth.branches[branch].title}` : ""}`,
+                description: this.description(card.id, level, branch),
+                rarity: level === 5 ? ("LEGENDARY" as const) : card.rarity,
+              }
+            : {}),
+        });
     }
-    this.choices = choices;
-    if (choices.length === 0) this.pendingChoices = 0;
-    return choices;
+    this.choices = result;
+    if (!result.length) this.pendingChoices = 0;
+    return result;
   }
-
-  choose(id: UpgradeId): boolean {
-    if (!this.offer().some((card) => card.id === id)) return false;
-    this.ranks[id] = (this.ranks[id] ?? 0) + 1;
+  choose(id: ChoiceId): boolean {
+    const offered = this.offer();
+    const card = offered.find((c) => c.id === id);
+    if (!card) return false;
+    if (card.synergyId) this.activeSynergyIds.add(card.synergyId);
+    else {
+      const base = card.growthId ?? (card.id as UpgradeId);
+      if (card.branch) {
+        if (this.branches[base] || this.ranks[base] !== 2) return false;
+        this.branches[base] = card.branch;
+      }
+      this.ranks[base] = (this.ranks[base] ?? 0) + 1;
+    }
+    for (const shown of offered)
+      if (shown.synergyId)
+        this.synergyOffers.set(
+          shown.synergyId,
+          (this.synergyOffers.get(shown.synergyId) ?? 0) + 1,
+        );
     this.pendingChoices--;
     this.choices = null;
-    this.clearExhaustedChoices();
+    this.clearExhausted();
     return true;
   }
-
-  private tagRanks(tag: UpgradeDefinition["tag"]): number {
-    return tagRanks(tag, this.ranks);
-  }
-
-  private eligible(): UpgradeDefinition[] {
-    const ownedTraits = Object.keys(this.traitLevels).length;
-    return Object.values(upgrades)
-      .filter(
-        (card) =>
-          card.weight > 0 &&
-          this.availableAbilities.includes(card.ability) &&
-          (this.ranks[card.id] ?? 0) < card.maxRank &&
-          (!weaponTraitIds.includes(card.id as WeaponTraitId) ||
-            (this.ranks[card.id] ?? 0) > 0 ||
-            ownedTraits < this.traitLimit) &&
-          (!card.requires ||
-            (card.requires.upgrade
-              ? (this.ranks[card.requires.upgrade] ?? 0)
-              : weaponTraitIds.includes(card.requires.tag as WeaponTraitId)
-                ? (this.ranks[card.requires.tag as WeaponTraitId] ?? 0)
-                : this.tagRanks(card.requires.tag)) >= card.requires.ranks),
-      )
-      .map((card) => {
-        if (!weaponTraitIds.includes(card.id as WeaponTraitId)) return card;
-        const nextLevel = (this.ranks[card.id] ?? 0) + 1;
-        return {
-          ...card,
-          description:
-            weaponTraits[card.id as WeaponTraitId].levels[nextLevel - 1]!
-              .description,
-          rarity:
-            weaponTraits[card.id as WeaponTraitId].levels[nextLevel - 1]!
-              .rarity,
-        };
-      });
-  }
-
-  private clearExhaustedChoices(): void {
-    // A finite prototype pool can run out: levels still grow without an empty modal.
-    if (this.pendingChoices > 0 && this.eligible().length === 0) {
+  private clearExhausted() {
+    if (
+      this.pendingChoices > 0 &&
+      !this.eligible().length &&
+      !this.unlocked().length
+    )
       this.pendingChoices = 0;
-      this.choices = null;
-    }
   }
 }

@@ -5,6 +5,8 @@ import {
 } from "../data/upgrades";
 import { relics, type RelicLevels } from "../data/relics";
 import { weaponTraits, weaponTraitIds } from "../data/traits";
+import type { GrowthBranches } from "../data/growth";
+import { abilityGrowth } from "../data/abilityGrowth";
 import { activeSynergies } from "../progression/synergy";
 import { display, levelLabel } from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
@@ -17,6 +19,8 @@ export interface RunResult {
   level: number;
   wallHp: number;
   ranks: UpgradeRanks;
+  branches: GrowthBranches;
+  activeSynergyIds: ReadonlySet<string>;
   relics: RelicLevels;
   traitLimit: number;
   cores: ReadonlySet<CoreId>;
@@ -47,14 +51,15 @@ export class ResultView {
         )
         .map(
           (upgrade) =>
-            `${upgrade.title} ${levelLabel(result.ranks[upgrade.id]!)}`,
+            `${upgrade.title} ${levelLabel(result.ranks[upgrade.id]!)}${result.branches[upgrade.id] && upgrade.id in abilityGrowth ? ` · ${abilityGrowth[upgrade.id as keyof typeof abilityGrowth].branches[result.branches[upgrade.id]!].title}` : ""}`,
         )
         .join(" · ") || display.none;
     const direction =
       weaponTraitIds
         .filter((id) => (result.ranks[id] ?? 0) > 0)
         .map(
-          (id) => `${weaponTraits[id].title} ${levelLabel(result.ranks[id]!)}`,
+          (id) =>
+            `${weaponTraits[id].title} ${levelLabel(result.ranks[id]!)}${result.branches[id] ? ` · ${weaponTraits[id].branches[result.branches[id]!].title}` : ""}`,
         )
         .join(" · ") || display.baseWeapon;
     const seconds = Math.floor(result.elapsedMs / 1000);
@@ -86,7 +91,7 @@ export class ResultView {
       ],
       [
         display.synergy,
-        activeSynergies(result.ranks)
+        activeSynergies(result.ranks, result.activeSynergyIds)
           .map((recipe) => recipe.title)
           .join(" · ") || display.none,
       ],

@@ -19,13 +19,13 @@ const enemy = (id: number, hp = 50): EnemyState => ({
 });
 const noCrit = { shotIndex: 1, random: () => 1 };
 
-it("a low-level delayed echo cannot inherit legendary kill relays before trait inheritance", () => {
+it("a low-level delayed echo omits weapon behavior before trait inheritance", () => {
   const relic = new RelicCombat();
   relic.setLevels({ "ammo-replicator": 1 });
   const ranks: UpgradeRanks = {
-    "rapid-overdrive": 1,
-    "siege-lance": 1,
-    "ricochet-cascade": 1,
+    penetration: 5,
+    ricochet: 5,
+    multishot: 5,
   };
   for (let i = 0; i < 8; i++)
     relic.onVolley({ targetId: 99, ranks, baseDamage: 10 });

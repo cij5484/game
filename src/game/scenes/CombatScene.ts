@@ -5,13 +5,15 @@ import {
   gaussRifleBalance,
   stimpackBalance,
 } from "../data/balance";
-import { GaussRifle, type AttackCommand } from "../combat/gaussRifle";
+import { GaussRifle } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
 import { SpawnDirector } from "../waves/spawnDirector";
 import { Magic } from "../combat/magic";
 import { recognizeGesture } from "../input/gestureRecognizer";
+import { recognizeUltimateGesture } from "../input/ultimateGesture";
+import type { Point } from "../input/gestureRecognizer";
 import { bindTapInput } from "../input/tapInput";
-import { resolveAttackTarget } from "../combat/targeting";
+import { resolveAttackTarget, TargetFocus } from "../combat/targeting";
 import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
 import { Progression } from "../progression/progression";
 import { LevelUpView } from "../ui/LevelUpView";
@@ -21,12 +23,6 @@ import { coreEffects } from "../data/cores";
 import { BuildBar } from "../ui/BuildBar";
 import { buildSummary } from "../ui/buildSummary";
 import { relicBalance } from "../data/relics";
-import {
-  WeaponHeat,
-  tickTraitStatuses,
-  propagateTraitDeaths,
-  traitCombatBalance,
-} from "../combat/traitCombat";
 import { RelicCombat, type EchoVolley } from "../combat/relicCombat";
 import { activeSynergies } from "../progression/synergy";
 import { display } from "../data/display";
@@ -68,7 +64,7 @@ export class CombatScene extends Phaser.Scene {
   private cores = new Cores();
   private buildBar!: BuildBar;
   private shotIndex = 0;
-  private heat = new WeaponHeat();
+  private focus = new TargetFocus();
   private echoRounds: { dueMs: number; volley: EchoVolley }[] = [];
   private synergies = new Set<string>();
   private pauseUi!: PauseView;
@@ -105,7 +101,7 @@ export class CombatScene extends Phaser.Scene {
     this.relicCombat = new RelicCombat();
     this.cores = new Cores();
     this.shotIndex = 0;
-    this.heat = new WeaponHeat();
+    this.focus = new TargetFocus();
     this.echoRounds = [];
     this.synergies = new Set();
     this.manualPaused = false;
@@ -113,33 +109,33 @@ export class CombatScene extends Phaser.Scene {
     this.notices = [];
     this.burst = new Burst();
     this.ultimateRemainingMs = 0;
-    this.time.timeScale = 1;
     this.time.paused = false;
     this.choices = new LevelUpView();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       this.choices.destroy(),
     );
     this.view = new EnemyPressureView(this);
-    this.burstUi = new BurstView(
-      () => {
-        if (
-          this.run.status !== "running" ||
-          this.manualPaused ||
-          this.choosing ||
-          this.ultimateRemainingMs > 0
-        )
-          return;
-        if (this.burst.activate()) this.time.timeScale = burstBalance.timeScale;
-        this.renderBurst();
+    this.burstUi = new BurstView({
+      stim: () => {
+        this.activateStim();
       },
-      () => this.rhythmTap(),
-    );
+      frost: () => {
+        this.castMagic("frost-nova");
+      },
+      chain: () => {
+        this.castMagic("chain-lightning");
+      },
+      hint: () => {
+        if (this.canUseAbility) this.burstUi.showHint();
+      },
+    });
     this.pauseUi = new PauseView(
       (paused) => {
         this.manualPaused = paused;
         this.cancelInput();
         this.time.paused = paused;
         this.renderBurst();
+        this.renderMagic();
       },
       () => this.scene.restart(),
     );
@@ -161,86 +157,10 @@ export class CombatScene extends Phaser.Scene {
     const unbindInput = bindTapInput(
       this.game.canvas,
       (kind, x, y) => {
-        if (this.run.status !== "running" || this.choosing || this.manualPaused)
-          return;
-        if (this.burst.phase === "rhythm") {
-          if (kind === "primary") this.rhythmTap();
-          return;
-        }
-        if (this.ultimateRemainingMs > 0) return;
-        if (kind === "secondary") {
-          if (this.stimpack.activate()) {
-            const effect = this.relicCombat.onStim();
-            this.run = {
-              ...this.run,
-              wallHp: Math.max(1, this.run.wallHp - effect.wallCost),
-            };
-            this.magic.refundCooldowns(effect.cooldownRefunds);
-          }
-        } else if (this.stimpack.canAttack)
-          this.rifle.request({
-            manualTargetId: this.view.pickEnemy(x, y, this.enemies),
-          });
-        this.update(0, 0);
+        if (kind === "secondary") this.activateStim();
+        else this.focusAt(x, y);
       },
-      (points, displayPoints) => {
-        if (
-          this.run.status !== "running" ||
-          this.manualPaused ||
-          this.choosing ||
-          this.burst.phase === "rhythm" ||
-          this.ultimateRemainingMs > 0
-        )
-          return;
-        const gesture = recognizeGesture(points);
-        const debugGesture = `${gesture.kind} · ○ ${gesture.circleScore.toFixed(2)} / Z ${gesture.zScore.toFixed(2)}\n${gesture.reason} · samples ${gesture.metrics?.samples ?? points.length} · length ${(gesture.metrics?.pathLength ?? 0).toFixed(0)}px`;
-        this.view.showGesture(
-          displayPoints,
-          debugGesture,
-          gesture.kind === "unknown",
-        );
-        if (gesture.kind === "unknown") return;
-        const id = gesture.kind === "circle" ? "frost-nova" : "chain-lightning";
-        const result = this.magic.cast(
-          id,
-          this.enemies.map((entry) => entry.state),
-        );
-        if (!result) {
-          this.view.showGesture(
-            displayPoints,
-            `${debugGesture}\ncooldown blocked`,
-          );
-          return;
-        }
-        this.heat.cool(result.heatCooling);
-        this.showStatusImpacts("fire", result.thermalShockIds);
-        this.view.showMagic(
-          id,
-          result.hitIds.map(
-            (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
-          ),
-        );
-        this.view.showImpacts(
-          "lightning",
-          result.strikeIds.map(
-            (id) => this.enemies.find((e) => e.state.id === id)!.visual,
-          ),
-        );
-        const relicCast = this.relicCombat.onMagic(
-          id,
-          this.run.wallHp / runBalance.wallMaxHp,
-        );
-        this.run = {
-          ...this.run,
-          wallHp: Math.min(
-            runBalance.wallMaxHp,
-            this.run.wallHp + relicCast.wallHealing,
-          ),
-        };
-        this.magic.refundCooldowns(relicCast.cooldownRefunds);
-        this.applyEnemyStates(result.enemies, true, true);
-        this.renderMagic();
-      },
+      (points, displayPoints) => this.handleGesture(points, displayPoints),
     );
     this.cancelInput = unbindInput.cancel;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput.destroy);
@@ -254,11 +174,105 @@ export class CombatScene extends Phaser.Scene {
     this.refreshBuild();
   }
 
-  private rhythmTap(): void {
-    if (this.run.status !== "running" || this.choosing || this.manualPaused)
-      return;
-    this.burst.tap();
+  private get canUseAbility(): boolean {
+    return (
+      this.run.status === "running" && !this.manualPaused && !this.choosing
+    );
+  }
+
+  private focusAt(x: number, y: number): void {
+    if (!this.canUseAbility) return;
+    this.focus.set(this.view.pickEnemy(x, y, this.enemies));
+    this.view.setFocus(this.focus.targetId);
+    for (const entry of this.enemies)
+      this.view.renderEnemy(
+        entry.visual,
+        entry.state,
+        this.magic.frostRemainingMs > 0,
+      );
+  }
+
+  private activateStim(): boolean {
+    if (!this.canUseAbility || !this.stimpack.activate()) return false;
+    const effect = this.relicCombat.onStim();
+    this.run = {
+      ...this.run,
+      wallHp: Math.max(1, this.run.wallHp - effect.wallCost),
+    };
+    this.magic.refundCooldowns(effect.cooldownRefunds);
     this.renderBurst();
+    this.renderMagic();
+    return true;
+  }
+
+  private castMagic(id: "frost-nova" | "chain-lightning"): boolean {
+    if (!this.canUseAbility) return false;
+    const result = this.magic.cast(
+      id,
+      this.enemies.map((e) => e.state),
+    );
+    if (!result) return false;
+    this.view.showMagic(
+      id,
+      result.hitIds.flatMap((id) => {
+        const entry = this.enemies.find((e) => e.state.id === id);
+        return entry ? [entry.visual] : [];
+      }),
+    );
+    this.showStatusImpacts("lightning", result.strikeIds);
+    const effect = this.relicCombat.onMagic(
+      id,
+      this.run.wallHp / runBalance.wallMaxHp,
+    );
+    this.run = {
+      ...this.run,
+      wallHp: Math.min(
+        runBalance.wallMaxHp,
+        this.run.wallHp + effect.wallHealing,
+      ),
+    };
+    this.magic.refundCooldowns(effect.cooldownRefunds);
+    this.applyEnemyStates(result.enemies, true, true);
+    this.renderMagic();
+    return true;
+  }
+
+  private handleGesture(
+    points: readonly Point[],
+    displayPoints: readonly Point[],
+  ): void {
+    if (!this.canUseAbility) return;
+    if (recognizeUltimateGesture(points, this.burst.ready)) {
+      this.view.showGesture(displayPoints, "V · 억제 사격");
+      this.activateUltimate();
+      return;
+    }
+    const gesture = recognizeGesture(points);
+    this.view.showGesture(
+      displayPoints,
+      `${gesture.kind} · ${gesture.reason}`,
+      gesture.kind === "unknown",
+    );
+    if (gesture.kind !== "unknown")
+      this.castMagic(
+        gesture.kind === "circle" ? "frost-nova" : "chain-lightning",
+      );
+  }
+
+  private activateUltimate(): boolean {
+    if (!this.canUseAbility || !this.burst.activate()) return false;
+    this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
+    const result = suppressiveBarrage(this.enemies.map((e) => e.state));
+    this.view.showBarrage(
+      result.hitIds.flatMap((id) => {
+        const entry = this.enemies.find((e) => e.state.id === id);
+        return entry ? [entry.visual] : [];
+      }),
+    );
+    this.applyEnemyStates(result.enemies, false, false, false);
+    this.renderBurst();
+    this.renderMagic();
+    return true;
   }
 
   private renderBurst(): void {
@@ -293,66 +307,38 @@ export class CombatScene extends Phaser.Scene {
   update(_time: number, deltaMs: number): void {
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
-    if (this.burst.phase === "rhythm") {
-      const step = Math.min(
-        Math.max(0, deltaMs),
-        burstBalance.rhythmMs - this.burst.elapsedMs,
-      );
-      const consumed = this.advanceWorld(step * burstBalance.timeScale);
-      this.stimpack.advance(consumed);
-      const result = this.burst.advance(consumed / burstBalance.timeScale);
-      if (result && this.run.status === "running") {
-        this.time.timeScale = 1;
-        this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
-        const barrage = suppressiveBarrage(
-          this.enemies.map((entry) => entry.state),
-          result.score,
-        );
-        this.view.showBarrage(
-          barrage.hitIds.map(
-            (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
-          ),
-        );
-        this.applyEnemyStates(barrage.enemies, false, false, false);
-      }
-      if (this.run.wallHp <= 0) this.time.timeScale = 1;
-      this.renderCombat();
-      return;
-    }
-    if (this.ultimateRemainingMs > 0) {
-      const step = Math.min(Math.max(0, deltaMs), this.ultimateRemainingMs);
-      const consumed = this.advanceWorld(step);
-      this.stimpack.advance(consumed);
-      this.ultimateRemainingMs -= consumed;
-      if (this.choosing && this.run.status === "running") this.showChoices();
-      else if (this.ultimateRemainingMs === 0) this.flushNotices();
-      this.renderCombat();
-      return;
-    }
     let remaining = Math.max(0, deltaMs);
     do {
+      const presenting = this.ultimateRemainingMs > 0;
       const step = Math.min(
         remaining,
         this.stimpack.timeToBoundaryMs,
         16,
-        this.heat.locked ? this.heat.remainingLockMs : Infinity,
+        presenting ? this.ultimateRemainingMs : Infinity,
       );
       let consumed = step;
-      if (this.stimpack.canAttack && !this.heat.locked)
-        consumed = this.advanceCombat(step);
+      if (this.stimpack.canAttack) consumed = this.advanceCombat(step);
       else consumed = this.advanceWorld(step);
       this.stimpack.advance(consumed);
+      this.ultimateRemainingMs = Math.max(
+        0,
+        this.ultimateRemainingMs - consumed,
+      );
       remaining -= consumed;
+      // Ultimate visuals defer choice overlays, never combat or ability input.
+      if (
+        presenting &&
+        this.ultimateRemainingMs === 0 &&
+        this.run.status === "running"
+      ) {
+        if (this.choosing) this.showChoices();
+        else this.flushNotices();
+      }
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
     this.renderCombat();
   }
 
   private renderCombat(): void {
-    this.buildBar.renderHeat(
-      !!this.progression.ranks.overheat,
-      this.heat.ratio,
-      this.heat.locked,
-    );
     this.finishRun();
     this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
     this.renderBurst();
@@ -388,7 +374,6 @@ export class CombatScene extends Phaser.Scene {
   private finishRun(): void {
     if (this.run.status === "running" || this.resultShown) return;
     this.resultShown = true;
-    this.time.timeScale = 1;
     this.time.paused = true;
     this.choices.hide();
     this.result.show(
@@ -399,6 +384,8 @@ export class CombatScene extends Phaser.Scene {
         level: this.progression.level,
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
+        branches: this.progression.branches,
+        activeSynergyIds: this.progression.activeSynergyIds,
         relics: this.relics.levels,
         traitLimit: this.progression.traitLimit,
         cores: this.cores.owned,
@@ -418,7 +405,7 @@ export class CombatScene extends Phaser.Scene {
     );
     const step = Math.min(deltaMs, untilRound);
     const consumed = this.advanceWorld(step);
-    // Advance clocks without crossing the firing endpoint. DoT/echo can open a choice here.
+    // Delayed strikes or echoes can open a choice before the firing endpoint.
     const weaponElapsed =
       consumed === untilRound
         ? this.rifle.timeToEventMs
@@ -430,44 +417,31 @@ export class CombatScene extends Phaser.Scene {
     if (
       !this.choosing &&
       this.run.status === "running" &&
-      !this.heat.locked &&
       !(
         this.stimpack.phase === "boost" &&
         consumed === this.stimpack.timeToBoundaryMs
       )
     ) {
-      this.rifle.advance(0, (command, _offset, firstInBurst) =>
-        this.firePrimary(command, firstInBurst),
-      );
+      this.rifle.advance(0, () => this.firePrimary());
     }
     return consumed;
   }
 
-  private firePrimary(
-    command: AttackCommand,
-    firstInBurst: boolean,
-  ): void | boolean {
-    this.shotIndex++;
-    const target = resolveAttackTarget(
-      command.manualTargetId,
-      this.enemies.map((entry) => entry.state),
-    );
+  private firePrimary(): void | boolean {
+    const target = this.focus.resolve(this.enemies.map((entry) => entry.state));
+    this.view.setFocus(this.focus.targetId);
     if (target) {
-      const heatRatio = this.heat.ratio;
-      const heatDamage = this.heat.damageMultiplier(this.progression.ranks);
-      this.heat.fire(
-        this.progression.ranks,
-        !!this.progression.ranks.multishot &&
-          heatRatio >= traitCombatBalance.highHeatRatio,
-      );
-      if (firstInBurst)
+      this.shotIndex++;
+      if (this.shotIndex % relicBalance.echoCycleShots === 0)
         this.relicCombat.onVolley({
           targetId: target.id,
           ranks: this.progression.ranks,
+          branches: this.progression.branches,
+          activeSynergyIds: this.progression.activeSynergyIds,
           baseDamage:
             gaussRifleBalance.damagePerRound *
             marineConfig.baseStats.damageMultiplier,
-          rounds: gaussRifleBalance.roundsPerBurst,
+          rounds: relicBalance.echoCycleShots,
         });
       const result = primaryAttack(
         target,
@@ -476,14 +450,15 @@ export class CombatScene extends Phaser.Scene {
         gaussRifleBalance.damagePerRound *
           marineConfig.baseStats.damageMultiplier *
           this.magic.primaryDamageMultiplier *
-          heatDamage,
+          this.stimpack.primaryDamageMultiplier,
         this.relicCombat.primaryModifiersFor(
           this.run.wallHp / runBalance.wallMaxHp,
           this.stimpack.phase === "boost",
         ),
         [...this.evolutions],
         {
-          heatRatio,
+          branches: this.progression.branches,
+          activeSynergyIds: this.progression.activeSynergyIds,
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -501,8 +476,6 @@ export class CombatScene extends Phaser.Scene {
         result.criticalIds,
         result.explosionIds,
       );
-      this.showStatusImpacts("fire", result.burnIds);
-      this.showStatusImpacts("suppression", result.suppressionIds);
       const relicResult = this.relicCombat.afterPrimary(
         result.enemies,
         result.hitIds,
@@ -523,7 +496,7 @@ export class CombatScene extends Phaser.Scene {
       );
       this.showStatusImpacts("frost", frost.shatterIds);
       this.applyEnemyStates(frost.enemies);
-      if (this.choosing || this.heat.locked) return false;
+      if (this.choosing) return false;
     } else
       this.relicCombat.afterPrimary(
         this.enemies.map((entry) => entry.state),
@@ -548,13 +521,7 @@ export class CombatScene extends Phaser.Scene {
         (id) => this.enemies.find((e) => e.state.id === id)!.visual,
       ),
     );
-    const propagated = propagateTraitDeaths(
-      frostBurst.enemies,
-      frostBurst.enemies.filter((e) => e.hp <= 0),
-      this.progression.ranks,
-    );
-    this.showStatusImpacts("fire", propagated.burnIds);
-    const byId = new Map(propagated.enemies.map((enemy) => [enemy.id, enemy]));
+    const byId = new Map(frostBurst.enemies.map((enemy) => [enemy.id, enemy]));
     let buildChanged = false;
     let xp = 0;
     let nearWallKills = 0;
@@ -571,12 +538,16 @@ export class CombatScene extends Phaser.Scene {
         if (entry.state.progress01 >= relicBalance.nearWallProgress)
           nearWallKills++;
         if (entry.state.elite) {
-          const core = this.cores.tryDrop(this.progression.traitLevels);
+          const core = this.cores.tryDrop();
           if (core) {
             if (core.id === "tactical-expansion")
               this.progression.expandTraitLimit();
-            if (core.id === "relic-expansion") this.relics.expandCapacity();
-            if (core.id === "overload") this.progression.growOwnedTraits();
+            if (core.id === "relic-expansion") {
+              this.relics.expandCapacity();
+              this.relics.reward();
+            }
+            if (core.id === "choice-expansion")
+              this.progression.expandChoices();
             this.notices.push(`${core.title}\n${core.description}`);
             buildChanged = true;
           }
@@ -592,6 +563,8 @@ export class CombatScene extends Phaser.Scene {
         );
     }
     this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    this.focus.resolve(this.enemies.map((e) => e.state));
+    this.view.setFocus(this.focus.targetId);
     this.kills += kills;
     const reward = this.relicCombat.onKills(kills, {
       frost: this.magic.frostRemainingMs > 0,
@@ -683,7 +656,10 @@ export class CombatScene extends Phaser.Scene {
       this.evolutions.add(recipe.id);
       this.notices.push(`${display.evolution}\n${recipe.title}`);
     }
-    for (const recipe of activeSynergies(this.progression.ranks)) {
+    for (const recipe of activeSynergies(
+      this.progression.ranks,
+      this.progression.activeSynergyIds,
+    )) {
       if (!this.synergies.has(recipe.id))
         this.notices.push(
           `${display.synergy} 활성화 · ${recipe.symbol} ${recipe.title}`,
@@ -691,24 +667,26 @@ export class CombatScene extends Phaser.Scene {
       this.synergies.add(recipe.id);
     }
     this.relicCombat.setLevels(this.relics.levels);
-    const core = coreEffects(this.cores.owned);
-    this.progression.setRarityModifiers(core.rarityModifiers);
-    this.magic.setSynergyMultiplier(core.synergyMultiplier);
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
-    this.magic.setUpgrades(this.progression.ranks);
-    this.stimpack.setUpgrades(this.progression.ranks);
+    this.magic.setUpgrades(this.progression.ranks, this.progression.branches);
+    this.stimpack.setUpgrades(
+      this.progression.ranks,
+      this.progression.branches,
+    );
     const summary = buildSummary(
       this.progression.ranks,
       this.relics.levels,
       this.cores.owned,
       this.evolutions,
+      this.progression.branches,
+      this.progression.activeSynergyIds,
     );
     this.buildBar.render(summary);
     this.pauseUi.setBuildDetails(summary);
   }
 
   private showStatusImpacts(
-    kind: "fire" | "frost" | "suppression" | "emergency",
+    kind: "lightning" | "frost" | "emergency",
     ids: readonly number[],
   ): void {
     this.view.showImpacts(
@@ -784,7 +762,8 @@ export class CombatScene extends Phaser.Scene {
         { damageMultiplier: pending.volley.damageMultiplier },
         [],
         {
-          isEcho: true,
+          branches: pending.volley.branches ?? {},
+          activeSynergyIds: pending.volley.activeSynergyIds ?? new Set(),
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -804,7 +783,6 @@ export class CombatScene extends Phaser.Scene {
         result.explosionIds,
         true,
       );
-      this.showStatusImpacts("fire", result.burnIds);
       this.applyEnemyStates(result.enemies, false);
       if (this.choosing || this.run.status !== "running") break;
     }
@@ -832,14 +810,9 @@ export class CombatScene extends Phaser.Scene {
           this.magic.movementMultiplier,
         );
         entry.state = movement.enemy;
-        const delay = Math.min(
-          movement.wallTimeMs,
-          entry.state.suppressionAttackDelayMs ?? 0,
-        );
-        if (delay > 0) entry.state.suppressionAttackDelayMs! -= delay;
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
-          movement.wallTimeMs - delay,
+          movement.wallTimeMs,
           config,
         );
         entry.attackElapsedMs = attack.elapsedMs;
@@ -851,7 +824,6 @@ export class CombatScene extends Phaser.Scene {
         );
         if (this.run.status !== "running") break;
       }
-      this.heat.tick(step, this.progression.ranks);
       const echoes = this.relicCombat.advance(step);
       for (const volley of echoes) {
         for (let i = 0; i < volley.rounds && this.echoRounds.length < 24; i++)
@@ -860,21 +832,20 @@ export class CombatScene extends Phaser.Scene {
             volley,
           });
       }
-      const statuses = tickTraitStatuses(
-        this.enemies.map((e) => e.state),
-        step,
-      );
-      if (statuses.hitIds.length)
-        this.applyEnemyStates(statuses.enemies, false);
-      else
-        this.enemies.forEach((entry, i) => {
-          entry.state = statuses.enemies[i]!;
-        });
       this.director.advance(step);
       this.magic.advance(step);
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
+      if (this.run.status === "running") {
+        const strikes = this.magic.drainStrikes(
+          this.enemies.map((e) => e.state),
+        );
+        if (strikes.hitIds.length) {
+          this.showStatusImpacts("lightning", strikes.strikeIds);
+          this.applyEnemyStates(strikes.enemies, true, true);
+        }
+      }
       if (this.run.status === "running" && !this.choosing) this.fireEchoes();
       if (this.choosing) break;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {

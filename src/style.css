@@ -121,66 +121,6 @@ canvas {
   user-select: none;
   -webkit-user-select: none;
 }
-.burst-button {
-  position: absolute;
-  left: 500px;
-  top: 1190px;
-  width: 190px;
-  height: 80px;
-  pointer-events: auto;
-  touch-action: none;
-  white-space: pre-line;
-  border: 2px solid #93a7af;
-  border-radius: 8px;
-  background: linear-gradient(
-    to right,
-    #52796d var(--charge),
-    #314c58 var(--charge)
-  );
-  color: inherit;
-  font: bold 23px sans-serif;
-}
-.burst-button.ready {
-  border-color: #ffe08a;
-  color: #fff1b5;
-}
-.burst-button:disabled {
-  cursor: default;
-}
-.burst-button:focus-visible {
-  outline: 4px solid #fff1b5;
-}
-.rhythm {
-  position: absolute;
-  left: 60px;
-  top: 950px;
-  width: 600px;
-  padding: 18px 0;
-  border-radius: 10px;
-  background: #162d38dd;
-  text-align: center;
-  font-size: 25px;
-}
-.rhythm-track {
-  position: relative;
-  height: 36px;
-  margin: 16px 30px 0;
-  border-bottom: 3px solid #91b5bd;
-}
-.rhythm-track b {
-  position: absolute;
-  height: 30px;
-  width: 6px;
-  background: #ffe08a;
-  transform: translateX(-50%);
-}
-.rhythm-cursor {
-  position: absolute;
-  height: 38px;
-  width: 8px;
-  background: #87ffff;
-  transform: translateX(-50%);
-}
 .level-up span {
   margin-top: 8px;
   line-height: 1.5;
@@ -226,13 +166,13 @@ canvas {
   font-size: clamp(11px, 2.8vw, 14px);
 }
 .upgrade-cards {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(var(--choice-count, 3), minmax(0, 1fr));
   justify-content: center;
   gap: 6px;
 }
 .upgrade-cards .upgrade-card {
   box-sizing: border-box;
-  flex: 0 0 calc((100% - 12px) / 3);
   min-width: 0;
   aspect-ratio: 1;
   margin: 0;
@@ -280,4 +220,18 @@ canvas {
 }
 .upgrade-card .choice-rarity {
   font-weight: bold;
+}
+
+.upgrade-card[data-category="시너지"] {
+  border: 2px solid #ffbd66;
+  background: linear-gradient(160deg, #503322, #212d36);
+}
+.upgrade-card[data-category="특성 개조"] {
+  border-color: #8cd9ff;
+}
+
+@media (max-width: 520px) {
+  .upgrade-cards[data-count="4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

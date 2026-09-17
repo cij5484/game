@@ -2,9 +2,6 @@ import type { GaussRifleConfig } from "../model/types";
 
 export const gaussRifleBalance = {
   id: "gauss-rifle",
-  roundsPerBurst: 3,
-  maxBufferedCommands: 1,
-  roundIntervalMs: 110, // prototype tuning value
-  burstRecoveryMs: 380, // prototype tuning value
+  shotIntervalMs: 200, // same average rate as the former 3 rounds / 600ms cycle
   damagePerRound: 10, // prototype tuning value
 } as const satisfies GaussRifleConfig;

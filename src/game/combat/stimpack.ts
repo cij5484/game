@@ -1,4 +1,6 @@
-import { upgrades, type UpgradeRanks } from "../data/upgrades";
+import type { UpgradeRanks } from "../data/upgrades";
+import type { GrowthBranches } from "../data/growth";
+import { getAbilityEffects } from "../data/abilityGrowth";
 import type { StimpackConfig } from "../model/types";
 
 export type StimpackPhase = "normal" | "boost" | "crash" | "recovery";
@@ -8,6 +10,7 @@ export class Stimpack {
   private readonly base: StimpackConfig;
   private state: StimpackPhase = "normal";
   private elapsedMs = 0;
+  private boostDamageMultiplier = 1;
   private extensionMs = 0;
   private recoverySurchargeMs = 0;
 
@@ -20,17 +23,25 @@ export class Stimpack {
     this.base = config;
   }
 
-  setUpgrades(ranks: UpgradeRanks): void {
-    const bonus = (id: keyof UpgradeRanks) =>
-      (ranks[id] ?? 0) * upgrades[id].amount;
+  setUpgrades(ranks: UpgradeRanks, branches: GrowthBranches = {}): void {
+    const effects = getAbilityEffects(ranks, branches);
+    this.boostDamageMultiplier = effects.stimDamageMultiplier;
     this.config = {
       ...this.base,
-      boostMs: this.base.boostMs + bonus("stim-duration"),
+      boostMs: this.base.boostMs + effects.stimDurationBonusMs,
       boostAttackSpeedMultiplier:
-        this.base.boostAttackSpeedMultiplier + bonus("stim-speed"),
-      recoveryMs: Math.max(1, this.base.recoveryMs - bonus("stim-recovery")),
+        this.base.boostAttackSpeedMultiplier + effects.stimSpeedBonus,
+      crashMs: Math.max(1, this.base.crashMs * effects.stimCrashMultiplier),
+      recoveryMs: Math.max(
+        1,
+        this.base.recoveryMs * effects.stimRecoveryMultiplier,
+      ),
     };
     this.advance(0);
+  }
+
+  get primaryDamageMultiplier(): number {
+    return this.state === "boost" ? this.boostDamageMultiplier : 1;
   }
 
   get phase(): StimpackPhase {
@@ -68,7 +79,7 @@ export class Stimpack {
           this.config.boostMs + this.extensionMs - this.elapsedMs,
         );
       case "crash":
-        return this.config.crashMs - this.elapsedMs;
+        return Math.max(0, this.config.crashMs - this.elapsedMs);
       case "recovery":
         return Math.max(0, this.recoveryDurationMs - this.elapsedMs);
       case "normal":

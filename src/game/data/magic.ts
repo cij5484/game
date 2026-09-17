@@ -18,13 +18,3 @@ export const magicConfigs = {
     chainRadiusPx: 360,
   },
 } as const satisfies Record<MagicConfig["id"], MagicConfig>;
-
-export const magicBehaviorBalance = {
-  forkDamageFactor: 0.6,
-  minimumFrostMoveSpeedMultiplier: 0.25,
-  frostDeathRadius: 130,
-  maxFrostDeathCenters: 8,
-  maxKillChainBonus: 12,
-  strikeEveryHits: 6,
-  strikeRadius: 150,
-} as const;
