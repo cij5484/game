@@ -6,4 +6,10 @@ export const primaryAttackBalance = {
   penetrationHalfWidth: 32,
   ricochetRadius: 180,
   marineDepthOffset: 48,
+  legendaryRelayDamageFactor: 1,
+  legendaryPierceRetention: 1,
+  legendaryShockwaveRadius: 140,
+  legendaryShockwaveDamageFactor: 1,
+  legendaryForkRadius: 220,
+  legendaryForkDamageFactor: 0.8,
 } as const;

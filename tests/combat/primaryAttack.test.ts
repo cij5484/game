@@ -109,7 +109,7 @@ it("Hyper Gauss widens the beam and pierces more real targets", () => {
 });
 
 it("reduces secondary-hit damage and rewards retention and advanced conditions", () => {
-  const target = { ...enemy(1, 0.9), hp: 10, frozenMs: 1000 };
+  const target = { ...enemy(1, 0.9), hp: 10 };
   const pack = [target, enemy(2, 0.8), enemy(3, 0.7), enemy(4, 0.6)];
   const tapered = primaryAttack(target, pack, { penetration: 1 }, 10);
   expect(tapered.enemies[1]!.hp).toBe(24.5);
@@ -122,9 +122,63 @@ it("reduces secondary-hit damage and rewards retention and advanced conditions",
   expect(deep.enemies[1]!.hp).toBeCloseTo(22.9);
   expect(deep.hitIds).toHaveLength(3);
   expect(
-    primaryAttack(target, pack, { ricochet: 1, "frozen-ricochet": 1 }, 10)
-      .ricochetIds,
+    primaryAttack(
+      target,
+      pack,
+      { ricochet: 1, "frozen-ricochet": 1 },
+      10,
+      {},
+      [],
+      true,
+    ).ricochetIds,
   ).toHaveLength(3);
+});
+
+it("legendary rapid relays full damage to three distinct targets once, never recursively", () => {
+  const pack = Array.from({ length: 6 }, (_, i) => ({
+    ...enemy(i + 1, 0.9 - i * 0.025),
+    hp: 10,
+  }));
+  const result = primaryAttack(
+    pack[0]!,
+    pack,
+    { "rapid-overdrive": 1, "rapid-relay": 1 },
+    10,
+  );
+  expect(result.hitIds).toEqual([1, 2, 3, 4]);
+  expect(result.enemies.map((e) => e.hp)).toEqual([0, 0, 0, 0, 10, 10]);
+});
+
+it("legendary penetration retains full damage and splashes only after an actual pierce", () => {
+  const target = enemy(1, 0.9);
+  const pack = [target, enemy(2, 0.8), enemy(3, 0.79, 0.95)];
+  const ranks = { penetration: 1, "siege-lance": 1 } as const;
+  const result = primaryAttack(target, pack, ranks, 10);
+  expect(result.hitIds).toEqual([1, 2]);
+  expect(result.splashIds).toEqual([3]);
+  expect(result.enemies.map((e) => e.hp)).toEqual([20, 20, 20]);
+  expect(
+    primaryAttack(target, [target, pack[2]!], ranks, 10).splashIds,
+  ).toEqual([]);
+});
+
+it("legendary ricochet forks from the final bounce to three unhit enemies", () => {
+  const pack = Array.from({ length: 6 }, (_, i) =>
+    enemy(i + 1, 0.9 - i * 0.02),
+  );
+  const result = primaryAttack(
+    pack[0]!,
+    pack,
+    { ricochet: 1, "ricochet-cascade": 1 },
+    10,
+  );
+  expect(result.hitIds).toEqual([1, 2, 3, 4, 5]);
+  expect(result.ricochetIds).toEqual([2, 3, 4, 5]);
+  expect(result.enemies.map((e) => e.hp)).toEqual([20, 24, 22, 22, 22, 30]);
+  expect(new Set(result.hitIds).size).toBe(result.hitIds.length);
+  expect(
+    primaryAttack(pack[0]!, pack, { "ricochet-cascade": 1 }, 10).hitIds,
+  ).toEqual([1]);
 });
 
 it("advanced armor restores half shield mitigation and ricochet ranks add actual bounces", () => {

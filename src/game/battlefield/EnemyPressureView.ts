@@ -224,7 +224,7 @@ export class EnemyPressureView {
     );
   }
 
-  createEnemy(enemy: EnemyState): Phaser.GameObjects.Container {
+  createEnemy(enemy: EnemyState, slowed = false): Phaser.GameObjects.Container {
     const shape = this.scene.add.rectangle(
       0,
       0,
@@ -258,11 +258,15 @@ export class EnemyPressureView {
       this.attackSlots.delete(enemy.id);
     });
     this.world.add(visual);
-    this.renderEnemy(visual, enemy);
+    this.renderEnemy(visual, enemy, slowed);
     return visual;
   }
 
-  renderEnemy(visual: Phaser.GameObjects.Container, enemy: EnemyState): void {
+  renderEnemy(
+    visual: Phaser.GameObjects.Container,
+    enemy: EnemyState,
+    slowed = false,
+  ): void {
     let x = field.left + laneX(enemy.lane, field.width, enemy.offset01);
     let y = this.farY + (field.wallY - this.farY) * enemy.progress01;
     if (enemy.phase === "attacking") {
@@ -287,15 +291,11 @@ export class EnemyPressureView {
       .setPosition(x, y)
       .setScale(perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1));
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
-      `${enemy.kind[0]!.toUpperCase()} ${enemy.hp} · ${enemy.progress01.toFixed(2)}`,
+      `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
     );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
       .setFillStyle(
-        enemy.frozenMs > 0
-          ? 0xb2f7ff
-          : enemy.elite
-            ? 0xe8bd50
-            : colors[enemy.kind],
+        slowed ? 0xb2f7ff : enemy.elite ? 0xe8bd50 : colors[enemy.kind],
       )
       .setStrokeStyle(
         enemy.elite ? 5 : enemy.phase === "attacking" ? 4 : 0,
@@ -456,12 +456,15 @@ export class EnemyPressureView {
     this.directorText.setText(status);
   }
 
-  renderMagic(frostMs: number, chainMs: number): void {
+  renderMagic(frostMs: number, chainMs: number, fieldMs: number): void {
     const remaining = (ms: number) =>
       ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
     this.magicText.setText(
-      `○ FROST ${remaining(frostMs)}  ·  Z CHAIN ${remaining(chainMs)}`,
+      fieldMs > 0
+        ? `○ SLOW ${remaining(fieldMs)} / CD ${Math.ceil(frostMs / 1000)}s · Z ${remaining(chainMs)}`
+        : `○ FROST ${remaining(frostMs)}  ·  Z CHAIN ${remaining(chainMs)}`,
     );
+    this.magicText.setColor(fieldMs > 0 ? "#b2f7ff" : "#ffffff");
   }
 
   showMagic(

@@ -22,6 +22,7 @@ export class LevelUpView {
         id: choice.id,
         title: `${choice.tag.toUpperCase()} · ${choice.title}`,
         description: choice.description,
+        rarity: choice.rarity,
       })),
       select,
     );
@@ -48,7 +49,12 @@ export class LevelUpView {
 
   private render<T extends string>(
     title: string,
-    choices: readonly { id: T; title: string; description: string }[],
+    choices: readonly {
+      id: T;
+      title: string;
+      description: string;
+      rarity?: UpgradeDefinition["rarity"];
+    }[],
     select: (id: T) => void,
   ): void {
     this.dialog.replaceChildren();
@@ -61,6 +67,12 @@ export class LevelUpView {
     for (const choice of choices) {
       const card = document.createElement("button");
       card.type = "button";
+      if (choice.rarity) {
+        card.dataset.rarity = choice.rarity;
+        const badge = document.createElement("small");
+        badge.textContent = choice.rarity;
+        card.append(badge);
+      }
       const title = document.createElement("strong");
       title.textContent = choice.title;
       const detail = document.createElement("span");

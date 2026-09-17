@@ -1,6 +1,6 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재 구현 범위는 **Milestone 12 — Combat Depth Rebalance + 5-Minute Playtest Run**입니다. 아래 수치는 모두 실제 모바일 플레이로 조정할 prototype tuning입니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재 구현 범위는 **Milestone 12 — Combat Rebalance Pass**입니다. 아래 수치는 모두 실제 모바일 플레이로 조정할 prototype tuning입니다.
 
 ## 한 판과 조작
 
@@ -12,26 +12,26 @@
 
 ## Horde / Encounter
 
-처음부터 약한 Grunt45마리가 progress0.08~0.45에 분산 등장합니다. cap은 밀도 상한이며 실제 active 수를 보장하지 않습니다. 일반 적은 Elite용 한 칸을 예약하고, 막힌 spawn은 누적하지 않습니다.
+처음부터 약한 Grunt65마리가 progress0.08~0.45에 분산 등장합니다. cap은 밀도 상한이며 실제 active 수를 보장하지 않습니다. 일반 적은 Elite용 한 칸을 예약하고, 막힌 spawn은 누적하지 않습니다.
 
 | 시작(초) | Encounter            | 간격(ms) / batch | cap | Grunt/Runner/Shield |
 | -------- | -------------------- | ---------------- | --- | ------------------- |
-| 0        | GRUNT FLOOD          | 1500 / 6         | 80  | 95/5/0              |
-| 30       | BREATHING ROOM       | 2200 / 3         | 80  | 90/10/0             |
-| 45       | RUNNER RUSH          | 1400 / 7         | 90  | 65/30/5             |
-| 60       | ARMORED HORDE        | 1200 / 8         | 95  | 60/20/20            |
-| 90       | REGROUP              | 2200 / 3         | 95  | 85/10/5             |
-| 105      | SHIELD ADVANCE       | 1200 / 9         | 100 | 50/15/35            |
-| 135      | MIXED ONSLAUGHT      | 1100 / 10        | 110 | 50/30/20            |
-| 165      | COUNTERATTACK WINDOW | 2200 / 4         | 110 | 80/15/5             |
-| 180      | BREAK THE LINE       | 1000 / 10        | 115 | 45/30/25            |
-| 210      | LAST BREATHER        | 2000 / 4         | 115 | 75/15/10            |
-| 225      | SIEGE                | 1000 / 11        | 120 | 45/25/30            |
-| 255      | FINAL PRESSURE       | 900 / 12         | 120 | 40/30/30            |
+| 0        | GRUNT FLOOD          | 1500 / 6         | 90  | 95/5/0              |
+| 30       | BREATHING ROOM       | 2200 / 3         | 90  | 90/10/0             |
+| 45       | RUNNER RUSH          | 1400 / 7         | 100 | 65/30/5             |
+| 60       | ARMORED HORDE        | 1200 / 8         | 110 | 60/20/20            |
+| 90       | REGROUP              | 2200 / 3         | 110 | 85/10/5             |
+| 105      | SHIELD ADVANCE       | 1200 / 9         | 120 | 50/15/35            |
+| 135      | MIXED ONSLAUGHT      | 1100 / 10        | 130 | 50/30/20            |
+| 165      | COUNTERATTACK WINDOW | 2200 / 4         | 130 | 80/15/5             |
+| 180      | BREAK THE LINE       | 900 / 12         | 135 | 45/30/25            |
+| 210      | LAST BREATHER        | 2000 / 4         | 135 | 75/15/10            |
+| 225      | SIEGE                | 800 / 14         | 150 | 45/25/30            |
+| 255      | FINAL PRESSURE       | 650 / 16         | 160 | 40/30/30            |
 
-30/90/165/210초부터 각각15초는 완화 구간입니다. 마지막45초는 최대 압박입니다. Lane 가중치는1/1/1이며, 단계 경계에서 새 설정을 즉시 적용합니다. 생성표의 상한 없는 이론치는 약2,279마리/3,356XP이며 실제 수는 생존 적·처리량에 크게 제한됩니다.
+30/90/165/210초부터 각각15초는 완화 구간입니다. 마지막45초는 최대 압박입니다. Lane 가중치는1/1/1이며, 단계 경계에서 새 설정을 즉시 적용합니다. 초반 cap90에서 중반110~135, 후반150~160으로 밀도와 보충 속도를 높입니다. 실제 적 수와 XP는 생존 적·처리량에 제한됩니다.
 
-- Runner/Grunt/Shield 이동속도는 progress/s0.08/0.04/0.025입니다. 표시 scale이나 화면비는 이동 시간에 영향을 주지 않습니다.
+- Runner/Grunt/Shield 이동속도는 progress/s0.08/0.032/0.025입니다. Grunt만 이전보다20% 느리며 표시 scale이나 화면비는 이동 시간에 영향을 주지 않습니다.
 - 성벽 도착 적은 lane별 표시 슬롯으로 분산합니다. 이 시각 배치는 공격/거리 판정에 사용하지 않습니다.
 - 개발 서버에서 D로 Lane/FAR/NEAR, 적 종류/HP/progress, Stim, encounter/active 수, Gesture 경로/score/실패 이유를 표시합니다. 기본 OFF, 모바일 debug 버튼 없음.
 
@@ -39,26 +39,28 @@
 
 - 처치 XP는 Grunt/Runner1, Shield3. 현재 Level을 L이라 할 때 다음 요구 XP는 `8 + 6×(L−1) + 2×(L−1)²`입니다. 초과 XP와 밀린 선택을 보존합니다.
 - 획득1,000~2,500XP에서 계산상 약10~14회 선택을 목표로 합니다. 시간만으로 보장되는 횟수나 플레이 검증 결과는 아닙니다.
-- Pool은 **21종 / 총73rank**. 현재 사용 가능한 능력, prerequisite 충족, 비MAX 카드에서 서로 다른3장을 weighted random으로 제안합니다. 이미 투자한 tag의 후보가 있으면 첫 슬롯에 해당 후보를 배정하고 나머지는 Hybrid 가능성을 유지합니다. Reroll 없음.
+- Pool은 **24종 / 총76rank**. 현재 사용 가능한 능력, prerequisite 충족, 비MAX 카드에서 서로 다른3장을 weighted random으로 제안합니다. COMMON/RARE/EPIC/LEGENDARY 기본 가중치는10/4/1/0.25이며 실제 확률은 후보 구성에 따라 달라집니다. tag 투자당 가중치 +8%, 최대×1.6. 이미 투자한 tag의 후보가 있으면 첫 슬롯에 해당 후보를 배정하고 나머지는 Hybrid 가능성을 유지합니다. Reroll 없음.
 - 레벨/Module 선택 중 이동·공격·spawn·cooldown·Stim·VFX·Run 시간이 멈춥니다. 선택 완료 후 즉시 효과를 적용하고 재개합니다.
 
 | 방향        | 기본 성장 / 최대 rank                          | 고급 효과                                                  |
 | ----------- | ---------------------------------------------- | ---------------------------------------------------------- |
 | RAPID       | 점사 +1발×5, 회복 −30ms×5, 발사 간격 −10ms×4   | tag6rank: 탄환 처치 시 주변1명에게60% 추가 피해, 탄환당1회 |
 | PENETRATION | 관통 +1명×5, 피해 유지율 +8%p×4                | tag6rank: Shield 방어로 감소하는 피해의 절반 회복          |
-| RICOCHET    | 도탄 +1회×3, 거리 +30×4, 피해 유지율 +8%p×4    | tag6rank: 첫 대상이 동결되어 있으면 도탄 +2회              |
+| RICOCHET    | 도탄 +1회×3, 거리 +30×4, 피해 유지율 +8%p×4    | tag6rank: 전역 서리 활성 중 도탄 +2회                      |
 | Stimpack    | Boost +0.5초×4, 배율 +0.1×3, Recovery −0.2초×3 | CRASH 1초의 위험은 유지                                    |
-| Frost       | 범위 +60×5, 동결 +0.4초×5                      | tag6rank: 시전 범위에 즉시30 피해                          |
+| Frost       | 이동속도 감소 +4%p×5, 지속시간 +0.6초×5        | tag6rank: 현재 전장 전체에 즉시30 피해                    |
 | Lightning   | 대상 +2×5, 피해 +12×5, 거리 +40×4              | tag6rank: 연쇄 주변 미적중3명에게60% 추가 피해             |
 
 관통/도탄의 기본 추가 대상 피해 유지율은55%/60%이며 반복할 때마다 곱하는 감쇠가 아닙니다. 유지율 강화와 도탄 거리 강화는 해당 tag1rank부터 열립니다. Shield의 Primary 배율은0.5, Magic은 이 저항을 무시합니다. 기본 직접 피해10은 유지하면서 광역 확장 효율·spawn 처리량을 함께 조정했습니다.
 
+LEGENDARY3종은 해당 tag6rank에서 후보로 해금되며 각1rank입니다. 폭주 연쇄는 탄환 처치 시 주변3명에게100% 추가 피해(탄환당1회), 공성 관통포는 관통 피해100% 유지·마지막 관통 반경140 충격파, 연쇄 폭풍탄은 마지막 도탄에서 미적중3명에게80% 분기 피해를 줍니다. Epic/Module 효과와 중복 재귀 타격하지 않습니다.
+
 ## Tactical Magic / Burst
 
-- Frost Nova: 가장 전방 적 중심 논리 반경550, 동결3.5초, cooldown20초. 동결은 이동과 Wall 공격을 멈춥니다. Runner 압박을 멈추고 고급 도탄과 연계할 수 있습니다.
-- Chain Lightning: 반경300 내 최대12명에게 각50 피해, cooldown14초. 중복 타격 없이 연쇄합니다. 범위·대상·피해/분기 성장으로 순간 처리량을 늘립니다.
+- Frost Nova: 전역 이동속도×0.5,7초 지속, cooldown30초. 효과 중 새로 생성되는 적도 느려집니다. Wall 공격·spawn·Primary·다른 cooldown은 느려지지 않습니다. 범위 강화는 전역 감속 강화로 대체했습니다.
+- Chain Lightning: 연결 반경360 내 최대30명에게 각75 피해, cooldown24초. 중복 타격 없이 연쇄합니다. 범위·대상·피해/분기 성장으로 순간 처리량을 늘립니다.
 - 빈 전장 시전도 cooldown을 소모합니다. 긴 cooldown과 압박/완화 구간을 유지하며, Magic 없는 상황을 금지하는 hard counter는 만들지 않았습니다.
-- Burst Gauge100: 명중0.2/처치1/Elite 추가8. READY에서 성벽 BURST 버튼을 직접 눌러 발동합니다.
+- Burst Gauge100: 명중0.02/처치0.08/Elite 추가6. 일반 전투 기여의 허용량은 최대3, 전투 시뮬레이션1초당0.45씩 회복하며 Elite 보너스는 제한 밖입니다. 시간만으로 Gauge가 차거나 초과 기여가 이월되지 않습니다. READY는 성벽 BURST 버튼을 직접 누를 때까지 유지합니다. 무제한 명중·처치와 Elite7회도300초 총180 이하로 제한되어 이번 수치에서는 한 번의 완충이 상한입니다. 1~2회 목표 중1회 쪽의 보수적 시작값이며 실제 전투 기여가 낮으면0회에 그칠 위험이 있습니다.
 - Rhythm은 실제 시간3초,0.5초 간격의5회 판정. PERFECT±70ms, GOOD±150ms, 나머지MISS. 전장0.08배속. 점수에 따라24~60명에게60~140 피해를 주며 모두MISS여도 최소 효과가 있습니다. Ultimate 처치 자체는 Gauge를 재충전하지 않습니다.
 
 ## Elite / Module / Evolution
@@ -73,16 +75,18 @@
 
 Phaser RESIZE와720×1280 논리 전장, Full-Bleed 환경을 유지합니다. 긴 화면 위쪽/태블릿 좌우 공간은 환경으로 채우며 전투 거리·난이도는 viewport 크기로 바뀌지 않습니다. 하단 성벽에 HP·Level/XP·Module·Magic·Burst·Run 시간을 모으고 상단에 새 패널을 만들지 않습니다.
 
-`viewport-fit=cover`와 CSS `env(safe-area-inset-*)`를 읽어 전장/HUD를 안전 영역에 맞추고, 배경은 화면 끝까지 유지합니다. Canvas touch scroll/selection/callout과 overscroll을 억제합니다. 선택/결과 dialog는 가용 높이 안에서 스크롤합니다. iOS/Android의 홈 인디케이터, 노치, 두 손가락 시스템 제스처,120마리에서의 FPS·터치감은 실제 기기 확인이 필요합니다.
+`viewport-fit=cover`와 CSS `env(safe-area-inset-*)`를 읽어 전장/HUD를 안전 영역에 맞추고, 배경은 화면 끝까지 유지합니다. Canvas touch scroll/selection/callout과 overscroll을 억제합니다. 선택/결과 dialog는 가용 높이 안에서 스크롤합니다. iOS/Android의 홈 인디케이터, 노치, 두 손가락 시스템 제스처,160마리에서의 FPS·터치감은 실제 기기 확인이 필요합니다.
 
 ## 검증 범위 / 과거 기록
 
-- Milestone12: `npm.cmd run check` 23개 파일/83 tests, TypeScript/build 통과. XP/prerequisite, 효과, Encounter, Run 종료, Safe Area 핵심 동작의 RED→GREEN 확인.
-- 390×844 브라우저 Run 관찰:273초 FINAL PRESSURE에서119/120마리, Lv14, Wall HP11,726. 이후 화면이 새 Run으로 넘어가 CLEAR 결과창 자체는 읽지 못했습니다. 별도 무입력 Run은0:54에 FAILED 결과 표시, RETRY 후5:00/Lv1/HP12,000/Burst0% 초기화 확인. 콘솔 오류/경고 없음.
+- Combat Rebalance Pass: `npm.cmd run check` 23개 파일/89 tests와 TypeScript/build 통과. 브라우저에서16초68/90,34초83/90,53초64/100마리 및 ○/Z 사용 후 cooldown을 관찰했습니다. Burst는53초23%,68초29%,94초47%였습니다. Frost 중 신규 spawn의 시각 변화·후반160마리·Legendary 자연 추첨은 직접 관찰하지 못했습니다. 실기기 성능·Gesture 사용감·승률은 미확정입니다.
+
+- 이전 Milestone12: `npm.cmd run check` 23개 파일/83 tests, TypeScript/build 통과. XP/prerequisite, 효과, Encounter, Run 종료, Safe Area 핵심 동작의 RED→GREEN 확인.
+- 이전 Milestone12 390×844 브라우저 Run 관찰:273초 FINAL PRESSURE에서119/120마리, Lv14, Wall HP11,726. 이후 화면이 새 Run으로 넘어가 CLEAR 결과창 자체는 읽지 못했습니다. 별도 무입력 Run은0:54에 FAILED 결과 표시, RETRY 후5:00/Lv1/HP12,000/Burst0% 초기화 확인. 콘솔 오류/경고 없음.
 - 300초 CLEAR 경계·종료 상태 고정은 핵심 테스트로 확인했습니다. 위 관찰은 빌드별 승률·Magic 의존도·재미 검증이나120마리 실기기 성능 측정 완료를 의미하지 않습니다.
 - Milestone9 당시59 tests, Milestone10 당시68 tests, Milestone11 당시76 tests 및 TypeScript/build 통과 기록이 있습니다. 각각 당시 구현 기준이며 현재 테스트 수가 아닙니다.
 - Milestone11 당시390×844/768×1024에서 초기 군세·HUD·수동 Burst/MISS/복귀를 관찰했습니다. 당시 강화 후 전장이 빠르게 비는 문제가 이번 재조정의 출발점입니다.
-- 브라우저 도구의 자유곡선/동시 다중 터치 제한으로 실제 ○/Z·두 손가락 인식률은 기기 검증 대상입니다. Vite 번들 크기 경고는 기존 제한이며120마리 실기기 성능 측정은 아직 없습니다.
+- 브라우저 도구의 자유곡선/동시 다중 터치 제한으로 실제 ○/Z·두 손가락 인식률은 기기 검증 대상입니다. Vite 번들 크기 경고는 기존 제한이며 현재 cap160마리의 실기기 성능 측정은 아직 없습니다.
 
 ## 실행
 

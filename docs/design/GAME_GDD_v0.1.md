@@ -1,14 +1,14 @@
 # GAME GDD v0.1
 
-## Milestone 12 current prototype scope
+## Milestone 12 Combat Rebalance Pass current prototype scope
 
 The current playable prototype is a **five-minute simulation-time Run**, separate from the future production goal of approximately 15 minutes and resume support elsewhere in this document. Level/Module selection pauses do not consume Run time; Rhythm Burst slows Run time with the battlefield to 0.08x. At 300 seconds the run clears; Wall HP 0 fails. Prototype Wall HP is 12,000. Result/Retry shows time, kills, Level, Wall HP, Primary/Stim/Magic upgrades, Modules and Evolution; no persistent rewards are implemented.
 
-Named data-driven encounters begin with 45 Grunts, target early capacity 80 and late capacity 120, include four 15-second relief windows, and end with 45 seconds of maximum pressure. Spawns blocked by capacity are dropped rather than accumulated. Elite begins at 60 seconds, then every 40 seconds when capacity permits.
+Named data-driven encounters begin with 65 Grunts; caps rise from 90 through 110–135 to 150–160, with four 15-second relief windows and a final 45-second push at 16 spawns per 650ms. Grunt movement is 0.032 progress/s (20% slower); Runner/Shield remain 0.08/0.025. Spawns blocked by capacity are dropped rather than accumulated. Elite begins at 60 seconds, then every 40 seconds when capacity permits.
 
-The current upgrade pool has 21 types / 73 ranks, equipped-ability filtering, tag prerequisites and one build-related candidate slot. XP requirement is `8 + 6n + 2n²` where `n = current Level - 1`; 1,000–2,500 earned XP gives approximately 10–14 choices mathematically, not a verified playtest outcome. Advanced Primary/Magic effects unlock after six ranks in their tag. Crash stays at one second. Frost/Lightning cooldowns remain 20/14 seconds; their crowd control and burst damage should counter pressure without a mandatory hard counter.
+The current upgrade pool has 24 types / 76 ranks, equipped-ability filtering, tag prerequisites and one build-related candidate slot. COMMON/RARE/EPIC/LEGENDARY weights are 10/4/1/0.25, multiplied by per-card weight and tag investment bias (+0.08 per rank, capped at 1.6x). These are relative weights, not fixed appearance percentages. XP requirement is `8 + 6n + 2n²` where `n = current Level - 1`; 1,000–2,500 earned XP gives approximately 10–14 choices mathematically, not a verified playtest outcome. Advanced Primary/Magic effects unlock after six ranks in their tag. Crash stays at one second. Frost Nova now applies global movement-only slow at 0.5x for 7s, including enemies spawned during the effect; cooldown is 30s. Wall attack timing and other simulation clocks are unchanged. Frost upgrades improve slow strength/duration instead of radius/freeze. Chain Lightning deals 75 damage to up to 30 distinct targets within logical hop radius360, cooldown24s.
 
-Mobile Portrait / Full-Bleed and the lower-wall HUD remain required. `viewport-fit=cover` and `env(safe-area-inset-*)` inset the bounded playfield/HUD while the environment fills the viewport. Gameplay coordinates remain independent of device pixels. Real-device gesture reliability, safe-area fit, 120-enemy performance and combat balance still require user playtesting. Current tuning is documented in README and `src/game/data/`; later production features in the original design remain future scope.
+Mobile Portrait / Full-Bleed and the lower-wall HUD remain required. `viewport-fit=cover` and `env(safe-area-inset-*)` inset the bounded playfield/HUD while the environment fills the viewport. Gameplay coordinates remain independent of device pixels. Real-device gesture reliability, safe-area fit, 160-enemy performance and combat balance still require user playtesting. Three one-rank Legendary cards unlock at six invested ranks in their tag: Rapid Overdrive relays a kill to three nearby targets at 100% damage once per round; Siege Lance keeps 100% pierce damage and adds a final-pierce radius140 shockwave; Ricochet Cascade forks from the final bounce to three unhit targets at 80% damage. Burst charges 0.02 per hit, 0.08 per kill and an extra6 per Elite. Normal credit uses an allowance capped at3, refilled by gameplay time at0.45/s; Elite credit bypasses it. Refill is not passive gauge, excess credit is discarded, and READY waits for manual activation. Even unlimited combat plus seven Elite kills yields at most180 charge in300s: a conservative one-use ceiling, with zero-use risk for low combat throughput. Current tuning is documented in README and `src/game/data/`; later production features in the original design remain future scope.
 
 
 > Status: **Pre-production / Prototype planning**
@@ -156,7 +156,7 @@ Marine Gauss Rifle prototype:
 
 ## 7. Magic System
 
-Milestone 11 prototype direction: Primary provides sustained, always-available firepower. Magic is a long-cooldown tactical ability saved for dangerous hordes: Frost Nova uses a 20s cooldown with wide-area freeze; Chain Lightning uses a 14s cooldown with a long, multi-target chain. All numeric values remain prototype tuning.
+Current prototype direction: Primary provides sustained, always-available firepower. Magic is a long-cooldown tactical ability: Frost Nova uses a 30s cooldown with 7s global movement-only slow; Chain Lightning uses a 24s cooldown with 75 damage, 30 targets and logical hop radius360. All numeric values remain prototype tuning.
 
 ### Active Slots
 - Start with **1 Magic slot**.
@@ -567,7 +567,7 @@ Failure should still grant partial rewards based on progress.
 
 ## 24. Horde Fantasy & Performance
 
-Milestone 11: early combat means many weak enemies, not an empty battlefield. Start with about 30 Grunts, aim for 40–50 active enemies in the first 30 seconds, gradually introduce Runner/Shield mixes, and start Elites at 60 seconds. The current prototype cap rises to 80; this is tuning, not a proven mobile performance limit.
+Current prototype: start with 65 Grunts, gradually introduce Runner/Shield mixes, and start Elites at 60 seconds, then every40 seconds. Caps rise from90 through110–135 to150–160; actual active count depends on kills. This is tuning, not a proven mobile performance limit.
 
 This is an official Core Requirement.
 

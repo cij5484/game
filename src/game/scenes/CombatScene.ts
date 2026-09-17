@@ -196,7 +196,7 @@ export class CombatScene extends Phaser.Scene {
       this.enemies.push({
         state,
         attackElapsedMs: 0,
-        visual: this.view.createEnemy(state),
+        visual: this.view.createEnemy(state, this.magic.frostRemainingMs > 0),
       });
     }
   }
@@ -270,6 +270,7 @@ export class CombatScene extends Phaser.Scene {
     this.view.renderMagic(
       this.magic.remaining("frost-nova"),
       this.magic.remaining("chain-lightning"),
+      this.magic.frostRemainingMs,
     );
   }
 
@@ -316,6 +317,7 @@ export class CombatScene extends Phaser.Scene {
               marineConfig.baseStats.damageMultiplier,
             this.modules.levels,
             [...this.evolutions],
+            this.magic.frostRemainingMs > 0,
           );
           this.view.showPrimary(
             [...result.hitIds, ...result.splashIds].map(
@@ -363,7 +365,12 @@ export class CombatScene extends Phaser.Scene {
           eliteKills++;
         }
         entry.visual.destroy();
-      } else this.view.renderEnemy(entry.visual, entry.state);
+      } else
+        this.view.renderEnemy(
+          entry.visual,
+          entry.state,
+          this.magic.frostRemainingMs > 0,
+        );
     }
     this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
     this.kills += kills;
@@ -433,10 +440,18 @@ export class CombatScene extends Phaser.Scene {
         remaining,
         this.director.timeToSpawnMs,
         runBalance.durationMs - this.run.elapsedMs,
+        this.magic.frostRemainingMs > 0
+          ? this.magic.frostRemainingMs
+          : Infinity,
       );
       for (const entry of this.enemies) {
         const config = enemyConfigs[entry.state.kind];
-        const movement = advanceEnemy(entry.state, step, config);
+        const movement = advanceEnemy(
+          entry.state,
+          step,
+          config,
+          this.magic.movementMultiplier,
+        );
         entry.state = movement.enemy;
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
@@ -445,11 +460,16 @@ export class CombatScene extends Phaser.Scene {
         );
         entry.attackElapsedMs = attack.elapsedMs;
         this.run = applyWallDamage(this.run, attack.damage);
-        this.view.renderEnemy(entry.visual, entry.state);
+        this.view.renderEnemy(
+          entry.visual,
+          entry.state,
+          this.magic.frostRemainingMs > step,
+        );
         if (this.run.status !== "running") break;
       }
       this.director.advance(step);
       this.magic.advance(step);
+      this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {

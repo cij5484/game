@@ -12,7 +12,7 @@ interface HordeStage {
 
 // Prototype five-minute encounters: caps control density, intervals control replacement pressure.
 export const hordeBalance = {
-  initialBatchSize: 45,
+  initialBatchSize: 65,
   initialEnemyWeights: { grunt: 1, runner: 0, shield: 0 } satisfies Record<
     EnemyKind,
     number
@@ -32,7 +32,7 @@ export const hordeBalance = {
       phase: "pressure",
       spawnIntervalMs: 1500,
       batchSize: 6,
-      maxActiveEnemies: 80,
+      maxActiveEnemies: 90,
       enemyWeights: { grunt: 95, runner: 5, shield: 0 },
     },
     {
@@ -41,7 +41,7 @@ export const hordeBalance = {
       phase: "relief",
       spawnIntervalMs: 2200,
       batchSize: 3,
-      maxActiveEnemies: 80,
+      maxActiveEnemies: 90,
       enemyWeights: { grunt: 90, runner: 10, shield: 0 },
     },
     {
@@ -50,7 +50,7 @@ export const hordeBalance = {
       phase: "pressure",
       spawnIntervalMs: 1400,
       batchSize: 7,
-      maxActiveEnemies: 90,
+      maxActiveEnemies: 100,
       enemyWeights: { grunt: 65, runner: 30, shield: 5 },
     },
     {
@@ -59,7 +59,7 @@ export const hordeBalance = {
       phase: "pressure",
       spawnIntervalMs: 1200,
       batchSize: 8,
-      maxActiveEnemies: 95,
+      maxActiveEnemies: 110,
       enemyWeights: { grunt: 60, runner: 20, shield: 20 },
     },
     {
@@ -68,7 +68,7 @@ export const hordeBalance = {
       phase: "relief",
       spawnIntervalMs: 2200,
       batchSize: 3,
-      maxActiveEnemies: 95,
+      maxActiveEnemies: 110,
       enemyWeights: { grunt: 85, runner: 10, shield: 5 },
     },
     {
@@ -77,7 +77,7 @@ export const hordeBalance = {
       phase: "pressure",
       spawnIntervalMs: 1200,
       batchSize: 9,
-      maxActiveEnemies: 100,
+      maxActiveEnemies: 120,
       enemyWeights: { grunt: 50, runner: 15, shield: 35 },
     },
     {
@@ -86,7 +86,7 @@ export const hordeBalance = {
       phase: "pressure",
       spawnIntervalMs: 1100,
       batchSize: 10,
-      maxActiveEnemies: 110,
+      maxActiveEnemies: 130,
       enemyWeights: { grunt: 50, runner: 30, shield: 20 },
     },
     {
@@ -95,16 +95,16 @@ export const hordeBalance = {
       phase: "relief",
       spawnIntervalMs: 2200,
       batchSize: 4,
-      maxActiveEnemies: 110,
+      maxActiveEnemies: 130,
       enemyWeights: { grunt: 80, runner: 15, shield: 5 },
     },
     {
       atMs: 180000,
       name: "BREAK THE LINE",
       phase: "pressure",
-      spawnIntervalMs: 1000,
-      batchSize: 10,
-      maxActiveEnemies: 115,
+      spawnIntervalMs: 900,
+      batchSize: 12,
+      maxActiveEnemies: 135,
       enemyWeights: { grunt: 45, runner: 30, shield: 25 },
     },
     {
@@ -113,25 +113,25 @@ export const hordeBalance = {
       phase: "relief",
       spawnIntervalMs: 2000,
       batchSize: 4,
-      maxActiveEnemies: 115,
+      maxActiveEnemies: 135,
       enemyWeights: { grunt: 75, runner: 15, shield: 10 },
     },
     {
       atMs: 225000,
       name: "SIEGE",
       phase: "pressure",
-      spawnIntervalMs: 1000,
-      batchSize: 11,
-      maxActiveEnemies: 120,
+      spawnIntervalMs: 800,
+      batchSize: 14,
+      maxActiveEnemies: 150,
       enemyWeights: { grunt: 45, runner: 25, shield: 30 },
     },
     {
       atMs: 255000,
       name: "FINAL PRESSURE",
       phase: "pressure",
-      spawnIntervalMs: 900,
-      batchSize: 12,
-      maxActiveEnemies: 120,
+      spawnIntervalMs: 650,
+      batchSize: 16,
+      maxActiveEnemies: 160,
       enemyWeights: { grunt: 40, runner: 30, shield: 30 },
     },
   ] satisfies HordeStage[],

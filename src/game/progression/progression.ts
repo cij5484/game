@@ -1,10 +1,28 @@
-import { progressionBalance, upgrades } from "../data/upgrades";
+import { progressionBalance, rarityWeights, upgrades } from "../data/upgrades";
 import type {
   UpgradeAbility,
   UpgradeDefinition,
   UpgradeId,
   UpgradeRanks,
 } from "../data/upgrades";
+
+function tagRanks(tag: UpgradeDefinition["tag"], ranks: UpgradeRanks): number {
+  return Object.values(upgrades).reduce(
+    (sum, card) => sum + (card.tag === tag ? (ranks[card.id] ?? 0) : 0),
+    0,
+  );
+}
+
+export function effectiveUpgradeWeight(
+  card: UpgradeDefinition,
+  ranks: UpgradeRanks,
+): number {
+  const bias = Math.min(
+    progressionBalance.maxBuildBias,
+    1 + progressionBalance.buildBiasPerRank * tagRanks(card.tag, ranks),
+  );
+  return card.weight * rarityWeights[card.rarity] * bias;
+}
 
 export class Progression {
   level = 1;
@@ -60,10 +78,14 @@ export class Progression {
           : [];
       const candidates = invested.length > 0 ? invested : pool;
       let roll =
-        this.random() * candidates.reduce((sum, card) => sum + card.weight, 0);
+        this.random() *
+        candidates.reduce(
+          (sum, card) => sum + effectiveUpgradeWeight(card, this.ranks),
+          0,
+        );
       let selected = candidates[candidates.length - 1]!;
       for (const card of candidates) {
-        roll -= card.weight;
+        roll -= effectiveUpgradeWeight(card, this.ranks);
         if (roll < 0) {
           selected = card;
           break;
@@ -87,10 +109,7 @@ export class Progression {
   }
 
   private tagRanks(tag: UpgradeDefinition["tag"]): number {
-    return Object.values(upgrades).reduce(
-      (sum, card) => sum + (card.tag === tag ? (this.ranks[card.id] ?? 0) : 0),
-      0,
-    );
+    return tagRanks(tag, this.ranks);
   }
 
   private eligible(): UpgradeDefinition[] {

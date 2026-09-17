@@ -14,6 +14,8 @@ function distance(a: EnemyState, b: EnemyState): number {
 
 export class Magic {
   private ranks: UpgradeRanks = {};
+  private frostMs = 0;
+  private frostSpeed = 1;
   private cooldowns: Record<MagicId, number> = {
     "frost-nova": 0,
     "chain-lightning": 0,
@@ -24,6 +26,7 @@ export class Magic {
   }
 
   advance(deltaMs: number): void {
+    this.frostMs = Math.max(0, this.frostMs - Math.max(0, deltaMs));
     for (const id of Object.keys(this.cooldowns) as MagicId[]) {
       this.cooldowns[id] = Math.max(
         0,
@@ -36,6 +39,14 @@ export class Magic {
     return this.cooldowns[id];
   }
 
+  get frostRemainingMs(): number {
+    return this.frostMs;
+  }
+
+  get movementMultiplier(): number {
+    return this.frostMs > 0 ? this.frostSpeed : 1;
+  }
+
   cast(
     id: MagicId,
     enemies: readonly EnemyState[],
@@ -45,11 +56,14 @@ export class Magic {
     const bonus = (upgrade: keyof UpgradeRanks) =>
       (this.ranks[upgrade] ?? 0) * upgrades[upgrade].amount;
     const config =
-      base.effect === "freeze"
+      base.effect === "global-slow"
         ? {
             ...base,
-            radiusPx: base.radiusPx + bonus("frost-radius"),
-            freezeDurationMs: base.freezeDurationMs + bonus("frost-duration"),
+            durationMs: base.durationMs + bonus("frost-duration"),
+            moveSpeedMultiplier: Math.max(
+              magicBehaviorBalance.minimumFrostMoveSpeedMultiplier,
+              base.moveSpeedMultiplier - bonus("frost-strength"),
+            ),
           }
         : {
             ...base,
@@ -61,12 +75,10 @@ export class Magic {
     const start = selectAutoTarget(enemies);
     const hits: EnemyState[] = [];
     const forkIds: number[] = [];
-    if (start && config.effect === "freeze") {
-      hits.push(
-        ...enemies.filter(
-          (enemy) => enemy.hp > 0 && distance(start, enemy) <= config.radiusPx,
-        ),
-      );
+    if (config.effect === "global-slow") {
+      this.frostMs = config.durationMs;
+      this.frostSpeed = config.moveSpeedMultiplier;
+      hits.push(...enemies.filter((enemy) => enemy.hp > 0));
     } else if (start && config.effect === "chain-damage") {
       hits.push(start);
       // ponytail: linear scan per hop suits the capped horde; spatial index only if counts grow.
@@ -110,11 +122,10 @@ export class Magic {
       hitIds,
       enemies: enemies.map((enemy) => {
         if (!hitIds.includes(enemy.id)) return enemy;
-        return config.effect === "freeze"
+        return config.effect === "global-slow"
           ? {
               ...enemy,
               hp: Math.max(0, enemy.hp - bonus("frost-shatter")),
-              frozenMs: Math.max(enemy.frozenMs, config.freezeDurationMs),
             }
           : {
               ...enemy,

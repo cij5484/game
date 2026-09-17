@@ -4,19 +4,22 @@ import type { MagicConfig } from "../model/types";
 export const magicConfigs = {
   "frost-nova": {
     id: "frost-nova",
-    effect: "freeze",
-    cooldownMs: 20000,
-    radiusPx: 550,
-    freezeDurationMs: 3500,
+    effect: "global-slow",
+    cooldownMs: 30000,
+    durationMs: 7000,
+    moveSpeedMultiplier: 0.5,
   },
   "chain-lightning": {
     id: "chain-lightning",
     effect: "chain-damage",
-    cooldownMs: 14000,
-    damagePerTarget: 50,
-    maxTargets: 12,
-    chainRadiusPx: 300,
+    cooldownMs: 24000,
+    damagePerTarget: 75,
+    maxTargets: 30,
+    chainRadiusPx: 360,
   },
 } as const satisfies Record<MagicConfig["id"], MagicConfig>;
 
-export const magicBehaviorBalance = { forkDamageFactor: 0.6 } as const;
+export const magicBehaviorBalance = {
+  forkDamageFactor: 0.6,
+  minimumFrostMoveSpeedMultiplier: 0.25,
+} as const;

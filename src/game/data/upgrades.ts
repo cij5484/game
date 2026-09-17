@@ -13,19 +13,30 @@ export type UpgradeId =
   | "stim-duration"
   | "stim-speed"
   | "stim-recovery"
-  | "frost-radius"
+  | "frost-strength"
   | "frost-duration"
   | "frost-shatter"
   | "chain-targets"
   | "chain-damage"
   | "chain-radius"
-  | "storm-fork";
+  | "storm-fork"
+  | "rapid-overdrive"
+  | "siege-lance"
+  | "ricochet-cascade";
 export type UpgradeRanks = Partial<Record<UpgradeId, number>>;
 export type UpgradeAbility =
   "gauss-rifle" | "stimpack" | "frost-nova" | "chain-lightning";
 export type UpgradeTag =
   "rapid" | "penetration" | "ricochet" | "stim" | "frost" | "lightning";
+export type UpgradeRarity = "COMMON" | "RARE" | "EPIC" | "LEGENDARY";
+export const rarityWeights: Record<UpgradeRarity, number> = {
+  COMMON: 10,
+  RARE: 4,
+  EPIC: 1,
+  LEGENDARY: 0.25,
+};
 export interface UpgradeDefinition {
+  rarity: UpgradeRarity;
   id: UpgradeId;
   tag: UpgradeTag;
   ability: UpgradeAbility;
@@ -42,10 +53,13 @@ export const progressionBalance = {
   xpPerLevel: 6,
   xpQuadratic: 2,
   choiceCount: 3,
+  buildBiasPerRank: 0.08,
+  maxBuildBias: 1.6,
 } as const;
 export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   "extended-burst": {
     id: "extended-burst",
+    rarity: "COMMON",
     tag: "rapid",
     ability: "gauss-rifle",
     title: "확장 점사",
@@ -56,6 +70,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "faster-cycle": {
     id: "faster-cycle",
+    rarity: "COMMON",
     tag: "rapid",
     ability: "gauss-rifle",
     title: "빠른 재장전",
@@ -66,6 +81,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "round-interval": {
     id: "round-interval",
+    rarity: "RARE",
     tag: "rapid",
     ability: "gauss-rifle",
     title: "고속 급탄",
@@ -76,6 +92,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   penetration: {
     id: "penetration",
+    rarity: "COMMON",
     tag: "penetration",
     ability: "gauss-rifle",
     title: "관통탄",
@@ -86,6 +103,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "pierce-retention": {
     id: "pierce-retention",
+    rarity: "RARE",
     tag: "penetration",
     ability: "gauss-rifle",
     title: "관통 에너지",
@@ -97,6 +115,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   ricochet: {
     id: "ricochet",
+    rarity: "COMMON",
     tag: "ricochet",
     ability: "gauss-rifle",
     title: "도탄",
@@ -107,6 +126,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "bounce-radius": {
     id: "bounce-radius",
+    rarity: "RARE",
     tag: "ricochet",
     ability: "gauss-rifle",
     title: "확장 도탄",
@@ -118,6 +138,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "bounce-retention": {
     id: "bounce-retention",
+    rarity: "RARE",
     tag: "ricochet",
     ability: "gauss-rifle",
     title: "잔류 전하",
@@ -129,6 +150,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "rapid-relay": {
     id: "rapid-relay",
+    rarity: "EPIC",
     tag: "rapid",
     ability: "gauss-rifle",
     title: "연쇄 급사",
@@ -140,6 +162,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "armor-piercing": {
     id: "armor-piercing",
+    rarity: "EPIC",
     tag: "penetration",
     ability: "gauss-rifle",
     title: "장갑 균열",
@@ -151,10 +174,11 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "frozen-ricochet": {
     id: "frozen-ricochet",
+    rarity: "EPIC",
     tag: "ricochet",
     ability: "gauss-rifle",
     title: "빙결 도체",
-    description: "첫 대상이 동결되어 있으면 도탄 +2회",
+    description: "전역 서리 활성 중 도탄 +2회",
     maxRank: 1,
     weight: 1,
     amount: 2,
@@ -162,6 +186,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "stim-duration": {
     id: "stim-duration",
+    rarity: "COMMON",
     tag: "stim",
     ability: "stimpack",
     title: "연장 투약",
@@ -172,6 +197,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "stim-speed": {
     id: "stim-speed",
+    rarity: "RARE",
     tag: "stim",
     ability: "stimpack",
     title: "고농도 자극제",
@@ -182,6 +208,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "stim-recovery": {
     id: "stim-recovery",
+    rarity: "COMMON",
     tag: "stim",
     ability: "stimpack",
     title: "회복 훈련",
@@ -190,32 +217,35 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
     weight: 1,
     amount: 200,
   },
-  "frost-radius": {
-    id: "frost-radius",
+  "frost-strength": {
+    id: "frost-strength",
+    rarity: "COMMON",
     tag: "frost",
     ability: "frost-nova",
-    title: "넓은 서리",
-    description: "Frost Nova 범위 +60",
+    title: "혹한 강화",
+    description: "전역 서리의 이동속도 감소 +4%p",
     maxRank: 5,
     weight: 1,
-    amount: 60,
+    amount: 0.04,
   },
   "frost-duration": {
     id: "frost-duration",
+    rarity: "COMMON",
     tag: "frost",
     ability: "frost-nova",
     title: "깊은 동결",
-    description: "동결 지속시간 +0.4초",
+    description: "전역 서리 지속시간 +0.6초",
     maxRank: 5,
     weight: 1,
-    amount: 400,
+    amount: 600,
   },
   "frost-shatter": {
     id: "frost-shatter",
+    rarity: "EPIC",
     tag: "frost",
     ability: "frost-nova",
     title: "서리 파쇄",
-    description: "Frost Nova가 범위 안 적에게 즉시 피해 30",
+    description: "Frost Nova가 현재 전장의 적에게 즉시 피해 30",
     maxRank: 1,
     weight: 1,
     amount: 30,
@@ -223,6 +253,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "chain-targets": {
     id: "chain-targets",
+    rarity: "COMMON",
     tag: "lightning",
     ability: "chain-lightning",
     title: "연쇄 확장",
@@ -233,6 +264,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "chain-damage": {
     id: "chain-damage",
+    rarity: "RARE",
     tag: "lightning",
     ability: "chain-lightning",
     title: "고전압",
@@ -243,6 +275,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "chain-radius": {
     id: "chain-radius",
+    rarity: "COMMON",
     tag: "lightning",
     ability: "chain-lightning",
     title: "전도장",
@@ -253,6 +286,7 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
   },
   "storm-fork": {
     id: "storm-fork",
+    rarity: "EPIC",
     tag: "lightning",
     ability: "chain-lightning",
     title: "분기 폭풍",
@@ -261,5 +295,41 @@ export const upgrades: Record<UpgradeId, UpgradeDefinition> = {
     weight: 1,
     amount: 3,
     requires: { tag: "lightning", ranks: 6 },
+  },
+  "rapid-overdrive": {
+    id: "rapid-overdrive",
+    rarity: "LEGENDARY",
+    tag: "rapid",
+    ability: "gauss-rifle",
+    title: "폭주 연쇄",
+    description: "탄환 처치 시 주변 3명에게 100% 추가 피해 (탄환당 1회)",
+    maxRank: 1,
+    weight: 1,
+    amount: 3,
+    requires: { tag: "rapid", ranks: 6 },
+  },
+  "siege-lance": {
+    id: "siege-lance",
+    rarity: "LEGENDARY",
+    tag: "penetration",
+    ability: "gauss-rifle",
+    title: "공성 관통포",
+    description: "관통 피해 100% 유지 · 마지막 관통에서 반경 140 충격파",
+    maxRank: 1,
+    weight: 1,
+    amount: 1,
+    requires: { tag: "penetration", ranks: 6 },
+  },
+  "ricochet-cascade": {
+    id: "ricochet-cascade",
+    rarity: "LEGENDARY",
+    tag: "ricochet",
+    ability: "gauss-rifle",
+    title: "연쇄 폭풍탄",
+    description: "마지막 도탄에서 미적중 적 3명에게 80% 피해 분기",
+    maxRank: 1,
+    weight: 1,
+    amount: 3,
+    requires: { tag: "ricochet", ranks: 6 },
   },
 };

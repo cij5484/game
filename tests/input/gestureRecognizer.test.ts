@@ -139,8 +139,7 @@ it("routes completed single-finger drawings to magic effects and denies cooldown
     const enemy = createPrototypeEnemy("shield", "center", 0);
     const cast = magic.cast(id, [enemy])!;
     expect(cast.hitIds).toEqual([enemy.id]);
-    if (id === "frost-nova")
-      expect(cast.enemies[0]!.frozenMs).toBeGreaterThan(0);
+    if (id === "frost-nova") expect(magic.frostRemainingMs).toBeGreaterThan(0);
     else expect(cast.enemies[0]!.hp).toBeLessThan(enemy.hp);
     expect(magic.cast(id, cast.enemies)).toBeNull();
   }

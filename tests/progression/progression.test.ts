@@ -1,8 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { Progression } from "../../src/game/progression/progression";
+import {
+  effectiveUpgradeWeight,
+  Progression,
+} from "../../src/game/progression/progression";
 import { upgrades } from "../../src/game/data/upgrades";
 
 describe("run progression", () => {
+  it("weights rarity and bounded build investment while keeping legendary cards reachable", () => {
+    const common = upgrades["extended-burst"];
+    expect(effectiveUpgradeWeight(common, {})).toBe(10);
+    expect(effectiveUpgradeWeight({ ...common, rarity: "RARE" }, {})).toBe(4);
+    expect(effectiveUpgradeWeight({ ...common, rarity: "EPIC" }, {})).toBe(1);
+    expect(effectiveUpgradeWeight({ ...common, rarity: "LEGENDARY" }, {})).toBe(
+      0.25,
+    );
+    expect(effectiveUpgradeWeight(common, { "extended-burst": 1 })).toBeCloseTo(
+      10.8,
+    );
+    expect(
+      effectiveUpgradeWeight(common, {
+        "extended-burst": 5,
+        "faster-cycle": 5,
+      }),
+    ).toBe(16);
+    expect(effectiveUpgradeWeight({ ...common, weight: 2 }, {})).toBe(20);
+    const p = new Progression(() => 0.999999, ["gauss-rifle"]);
+    p.ranks["extended-burst"] = 5;
+    p.gainXp(8);
+    expect(p.offer().some((card) => card.rarity === "LEGENDARY")).toBe(false);
+    p.choose(p.offer()[0]!.id);
+    p.ranks["faster-cycle"] = 1;
+    p.gainXp(p.threshold);
+    expect(p.offer().some((card) => card.id === "rapid-overdrive")).toBe(true);
+    expect(new Set(p.offer().map((card) => card.id)).size).toBe(3);
+  });
   it("preserves overflow and resolves queued choices one at a time", () => {
     const p = new Progression(() => 0);
     p.gainXp(27);

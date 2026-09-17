@@ -17,7 +17,6 @@ export function createPrototypeEnemy(
     lane,
     offset01,
     hp: enemyConfigs[kind].hp * (elite ? eliteBalance.hpMultiplier : 1),
-    frozenMs: 0,
     progress01: 0,
     phase: "moving",
   };

@@ -82,6 +82,29 @@ canvas {
 .level-up button:focus-visible {
   outline: 3px solid #9ef3c4;
 }
+.level-up button[data-rarity="RARE"] {
+  border-color: #82b9ff;
+}
+.level-up button[data-rarity="EPIC"] {
+  border-color: #cda0ff;
+}
+.level-up button[data-rarity="LEGENDARY"] {
+  border: 2px solid #ffd477;
+}
+.level-up small {
+  display: block;
+  margin-bottom: 6px;
+  color: #c6d8dc;
+}
+.level-up [data-rarity="RARE"] small {
+  color: #82b9ff;
+}
+.level-up [data-rarity="EPIC"] small {
+  color: #cda0ff;
+}
+.level-up [data-rarity="LEGENDARY"] small {
+  color: #ffd477;
+}
 .level-up strong,
 .level-up span {
   display: block;

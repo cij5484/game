@@ -4,7 +4,7 @@ import type { EnemyConfig, EnemyKind } from "../model/types";
 export const enemyConfigs = {
   grunt: {
     hp: 30,
-    progressPerSecond: 0.04,
+    progressPerSecond: 0.032,
     wallAttackDamage: 5,
     wallAttackIntervalMs: 1000,
     primaryDamageMultiplier: 1,
