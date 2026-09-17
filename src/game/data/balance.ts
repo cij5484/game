@@ -3,10 +3,9 @@ import type { MarineConfig, StimpackConfig } from "../model/types";
 // Keep weapon tuning in one place while preserving the planned balance imports.
 export { gaussRifleBalance } from "./weapons";
 
-// Prototype tuning values for the enemy-pressure-only milestone.
+// Prototype observation tuning: allow several minutes of horde buildup.
 export const enemyPressureBalance = {
-  wallMaxHp: 500,
-  spawnIntervalMs: 10000,
+  wallMaxHp: 50000,
 } as const;
 
 export const marineConfig = {

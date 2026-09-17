@@ -6,14 +6,14 @@ import { perspectiveScale } from "./perspective";
 import { battlefieldLayout } from "./layout";
 
 // Visual layout only, in logical reference units.
-const field = { left: 36, width: 648, farY: 250, wallY: 1030, enemySize: 56 };
+const field = { left: 36, width: 648, farY: 105, wallY: 1180, enemySize: 56 };
 // View/input tuning only; never used for movement, targeting priority or damage.
 const combatVisual = {
   touchPadding: 10,
   minimumTouchSize: 44,
   flashMs: 75,
   marineX: 360,
-  marineY: 1060,
+  marineY: 1210,
 };
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
@@ -29,12 +29,18 @@ export class EnemyPressureView {
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private readonly failure: Phaser.GameObjects.Container;
   private readonly scene: Phaser.Scene;
+  private readonly debug: Phaser.GameObjects.Container;
+  private readonly directorText: Phaser.GameObjects.Text;
+  private readonly debugStim: Phaser.GameObjects.Text;
+  private debugVisible = false;
+  private readonly enemyLabels = new Set<Phaser.GameObjects.Text>();
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     const environment = scene.add.graphics();
     this.world = scene.add.container();
     this.hud = scene.add.container().setDepth(1);
+    this.debug = scene.add.container().setDepth(2).setVisible(false);
     const text = (x: number, y: number, value: string, size = 24) =>
       scene.add
         .text(x, y, value, {
@@ -44,19 +50,23 @@ export class EnemyPressureView {
         })
         .setOrigin(0.5);
 
-    this.hud.add(text(360, 40, "MARINE · GAUSS RIFLE", 28));
-    this.hpText = text(360, 86, "", 28);
+    this.debug.add(text(360, 160, "MARINE · GAUSS RIFLE", 24));
+    this.hpText = text(360, 28, "", 22);
     this.hpFill = scene.add
-      .rectangle(120, 120, 480, 12, 0x77d7a0)
+      .rectangle(60, 52, 600, 8, 0x77d7a0)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.hpText,
-      scene.add.rectangle(360, 120, 480, 12, 0x34443d),
+      scene.add.rectangle(360, 52, 600, 8, 0x34443d),
       this.hpFill,
     ]);
 
-    this.stimText = text(360, 170, "NORMAL · ×1.00", 28);
+    this.stimText = text(360, 80, "", 22).setVisible(false);
     this.hud.add(this.stimText);
+    this.debugStim = text(360, 196, "", 22);
+    this.directorText = text(360, 250, "", 20);
+    this.directorText.setBackgroundColor("#13222edd");
+    this.debug.add([this.debugStim, this.directorText]);
 
     for (const [lane, title] of [
       ["left", "좌"],
@@ -64,7 +74,7 @@ export class EnemyPressureView {
       ["right", "우"],
     ] as const) {
       const x = field.left + laneCenterX(lane, field.width);
-      this.world.add(
+      this.debug.add(
         scene.add.rectangle(
           x,
           (field.farY + field.wallY) / 2,
@@ -74,7 +84,7 @@ export class EnemyPressureView {
           0.35,
         ),
       );
-      this.world.add(
+      this.debug.add(
         scene.add.rectangle(
           x,
           (field.farY + field.wallY) / 2,
@@ -84,12 +94,12 @@ export class EnemyPressureView {
           0.3,
         ),
       );
-      this.world.add(text(x, 214, `${title} LANE`, 23));
+      this.debug.add(text(x, 325, `${title} LANE`, 23));
     }
-    this.world.add(
+    this.debug.add(
       scene.add.rectangle(360, field.farY, field.width, 2, 0x90a4ae),
     );
-    this.world.add(text(360, field.farY + 28, "FAR", 20));
+    this.debug.add(text(360, field.farY + 28, "FAR", 20));
     this.world.add(
       scene.add.rectangle(360, field.wallY + 26, field.width, 30, 0x647887),
     );
@@ -102,16 +112,20 @@ export class EnemyPressureView {
         0x77d7a0,
       ),
     );
-    this.hud.add(text(360, 1115, "NEAR / WALL", 26));
-    this.hud.add(text(360, 1155, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 24));
-    this.hud.add(text(360, 1195, "두 손가락 탭: STIMPACK", 24));
-    this.hud.add(text(360, 1237, "빨간 테두리: 성벽 공격 · 재시작: 새로고침", 21));
+    this.debug.add(text(360, 1060, "NEAR / WALL", 24));
+    this.debug.add(
+      text(360, 1095, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 22),
+    );
+    this.debug.add(text(360, 1130, "두 손가락 탭: STIMPACK", 22));
+    this.debug.add(
+      text(360, 1165, "빨간 테두리: 성벽 공격 · 재시작: 새로고침", 20),
+    );
 
     this.failure = scene.add
       .container(360, 630, [
-        scene.add.rectangle(0, 0, 660, 170, 0x10151c, 0.96),
-        text(0, -22, "RUN FAILED", 52),
-        text(0, 38, "성벽 파괴 · 시뮬레이션 정지", 24),
+        scene.add.rectangle(0, 0, 500, 110, 0x10151c, 0.9),
+        text(0, -16, "RUN FAILED", 36),
+        text(0, 26, "성벽 파괴 · 새로고침으로 재시작", 20),
       ])
       .setVisible(false);
     this.hud.add(this.failure);
@@ -129,14 +143,34 @@ export class EnemyPressureView {
       environment.fillStyle(0x243e49, 0.7).fillRect(0, 0, width, horizon);
       environment.lineStyle(1, 0x789689, 0.2);
       for (const fraction of [0, 1 / 3, 2 / 3, 1]) {
-        const nearX = layout.x + (field.left + field.width * fraction) * layout.scale;
-        environment.lineBetween(width / 2 + (nearX - width / 2) * 0.35, 0, nearX, wall);
+        const nearX =
+          layout.x + (field.left + field.width * fraction) * layout.scale;
+        environment.lineBetween(
+          width / 2 + (nearX - width / 2) * 0.35,
+          0,
+          nearX,
+          wall,
+        );
       }
       environment.fillStyle(0x233a36).fillRect(0, wall, width, height - wall);
       this.world.setPosition(layout.x, layout.y).setScale(layout.scale);
-      this.hud.setPosition(layout.x, layout.y).setScale(layout.scale);
+      this.hud.setPosition(layout.x, 0).setScale(layout.scale);
+      this.debug.setPosition(layout.x, layout.y).setScale(layout.scale);
     };
     resize();
+    if (import.meta.env.DEV) {
+      const toggle = (event: KeyboardEvent) => {
+        if (event.code !== "KeyD" || event.repeat) return;
+        this.debugVisible = !this.debugVisible;
+        this.debug.setVisible(this.debugVisible);
+        for (const label of this.enemyLabels)
+          label.setVisible(this.debugVisible);
+      };
+      window.addEventListener("keydown", toggle);
+      scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+        window.removeEventListener("keydown", toggle),
+      );
+    }
     scene.scale.on(Phaser.Scale.Events.RESIZE, resize);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       scene.scale.off(Phaser.Scale.Events.RESIZE, resize),
@@ -164,6 +198,9 @@ export class EnemyPressureView {
       })
       .setOrigin(0.5);
     const visual = this.scene.add.container(0, 0, [shape, label]);
+    label.setVisible(this.debugVisible);
+    this.enemyLabels.add(label);
+    visual.once("destroy", () => this.enemyLabels.delete(label));
     this.world.add(visual);
     this.renderEnemy(visual, enemy);
     return visual;
@@ -174,7 +211,7 @@ export class EnemyPressureView {
     const y = field.farY + (field.wallY - field.farY) * enemy.progress01;
     visual.setPosition(x, y).setScale(perspectiveScale(enemy.progress01));
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
-      `${enemy.kind[0]!.toUpperCase()} ${enemy.hp}`,
+      `${enemy.kind[0]!.toUpperCase()} ${enemy.hp} · ${enemy.progress01.toFixed(2)}`,
     );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle).setStrokeStyle(
       enemy.phase === "attacking" ? 4 : 0,
@@ -233,15 +270,26 @@ export class EnemyPressureView {
 
   renderStimpack(phase: string, multiplier: number): void {
     const tint: Record<string, string> = {
-      normal: "#ffffff", boost: "#77ffb0", crash: "#ff796f", recovery: "#ffda82",
+      normal: "#ffffff",
+      boost: "#77ffb0",
+      crash: "#ff796f",
+      recovery: "#ffda82",
     };
     this.stimText.setText(`${phase.toUpperCase()} · ×${multiplier.toFixed(2)}`);
+    this.stimText.setVisible(phase !== "normal");
+    this.debugStim.setText(
+      `STIM ${phase.toUpperCase()} ×${multiplier.toFixed(2)}`,
+    );
     this.stimText.setColor(tint[phase.toLowerCase()] ?? "#ffffff");
   }
 
   renderWall(hp: number, maxHp: number): void {
     this.hpText.setText(`WALL HP ${hp} / ${maxHp}`);
-    this.hpFill.setDisplaySize(480 * (hp / maxHp), 12);
+    this.hpFill.setDisplaySize(600 * (hp / maxHp), 8);
     this.failure.setVisible(hp <= 0);
+  }
+
+  renderDirector(status: string): void {
+    this.directorText.setText(status);
   }
 }
