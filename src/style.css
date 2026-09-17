@@ -18,3 +18,49 @@ canvas {
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+.level-up {
+  box-sizing: border-box;
+  width: min(90vw, 480px);
+  max-height: 90dvh;
+  padding: 20px;
+  color: #ecf5f7;
+  background: #1c3039;
+  border: 1px solid #8aa3a8;
+  border-radius: 12px;
+  font-family: sans-serif;
+}
+.level-up::backdrop {
+  background: #071218b8;
+}
+.level-up h2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.level-up p {
+  font-size: 14px;
+  color: #c6d8dc;
+}
+.level-up button {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 16px;
+  text-align: left;
+  color: inherit;
+  background: #304b56;
+  border: 1px solid #698d99;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.level-up button:focus-visible {
+  outline: 3px solid #9ef3c4;
+}
+.level-up strong,
+.level-up span {
+  display: block;
+}
+.level-up span {
+  margin-top: 8px;
+  line-height: 1.5;
+}
