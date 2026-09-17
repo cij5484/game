@@ -3,6 +3,23 @@ import { GaussRifle } from "../../src/game/combat/gaussRifle";
 import { gaussRifleBalance } from "../../src/game/data/weapons";
 
 describe("Gauss Rifle cadence", () => {
+  it("can defer a round exactly at a primary-lockout boundary without losing it", () => {
+    const weapon = new GaussRifle(gaussRifleBalance);
+    const shots: number[] = [];
+    weapon.request({ manualTargetId: null });
+    weapon.advance(
+      110,
+      (_, offset) => {
+        shots.push(offset);
+      },
+      false,
+    );
+    expect(shots).toEqual([0]);
+    weapon.advance(0, (_, offset) => {
+      shots.push(offset);
+    });
+    expect(shots).toEqual([0, 0]);
+  });
   it("keeps the same fire rate under spam and reserves only one next command", () => {
     const shoot = (spam: boolean) => {
       const weapon = new GaussRifle(gaussRifleBalance);

@@ -1,6 +1,6 @@
-export const battlefieldReference = { width: 1280, height: 720 } as const;
+export const battlefieldReference = { width: 720, height: 1280 } as const;
 
-/** Presentation only: fit a bounded battlefield, never lengthen enemy travel. */
+/** Presentation only: bounded portrait playfield; extra space is environment. */
 export function battlefieldLayout(width: number, height: number) {
   const scale = Math.min(
     width / battlefieldReference.width,
@@ -9,6 +9,6 @@ export function battlefieldLayout(width: number, height: number) {
   return {
     scale,
     x: (width - battlefieldReference.width * scale) / 2,
-    y: (height - battlefieldReference.height * scale) / 2,
+    y: height - battlefieldReference.height * scale,
   };
 }

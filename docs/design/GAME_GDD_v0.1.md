@@ -50,6 +50,12 @@ The core fantasy is:
 
 ## 3. Battlefield & Camera
 
+- **Mobile Portrait** is the official orientation.
+- **Full-Bleed Presentation** fills the viewport with battlefield/environment, without default black letterboxing.
+- Supporting 9:16, 9:19.5, 9:20 and portrait tablet ratios is a global requirement. Additional space shows environment/far battlefield; it must not change movement timing, attack ranges or combat balance.
+- Gameplay logical coordinates remain separate from visual scale and physical pixels. HUD and battlefield remain separate roots for future safe-area handling.
+- Empty-space tap means a battlefield tap outside enemy touch hitboxes.
+
 - Player and wall are at the **bottom**.
 - Enemies spawn from the **far top** and move downward.
 - Battlefield is divided into **3 Soft Lanes**.

@@ -4,8 +4,11 @@ import {
   enemyPressureBalance,
   marineConfig,
   gaussRifleBalance,
+  stimpackBalance,
 } from "../data/balance";
 import { GaussRifle } from "../combat/gaussRifle";
+import { Stimpack } from "../combat/stimpack";
+import { bindTapInput } from "../input/tapInput";
 import { resolveAttackTarget } from "../combat/targeting";
 import { applyPrimaryDamage } from "../combat/damage";
 import { enemyConfigs } from "../data/enemies";
@@ -27,6 +30,7 @@ export class CombatScene extends Phaser.Scene {
   private wave = 0;
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
+  private stimpack = new Stimpack(stimpackBalance);
 
   create(): void {
     this.run = createRunState(enemyPressureBalance.wallMaxHp);
@@ -35,19 +39,23 @@ export class CombatScene extends Phaser.Scene {
     this.wave = 0;
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
+    this.stimpack = new Stimpack(stimpackBalance);
     this.view = new EnemyPressureView(this);
     this.spawnWave();
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
-    const tap = (pointer: Phaser.Input.Pointer) => {
+    const unbindInput = bindTapInput(this.game.canvas, (kind, x, y) => {
       if (this.run.status === "failed") return;
-      this.rifle.request({
-        manualTargetId: this.view.pickEnemy(pointer.x, pointer.y, this.enemies),
-      });
+      if (kind === "secondary") this.stimpack.activate();
+      else if (this.stimpack.canAttack)
+        this.rifle.request({
+          manualTargetId: this.view.pickEnemy(x, y, this.enemies),
+        });
       this.update(0, 0);
-    };
-    this.input.on("pointerup", tap);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      this.input.off("pointerup", tap),
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput);
+    this.view.renderStimpack(
+      this.stimpack.phase,
+      this.stimpack.attackSpeedMultiplier,
     );
   }
 
@@ -74,31 +82,55 @@ export class CombatScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     if (this.run.status === "failed") return;
+    let remaining = Math.max(0, deltaMs);
+    do {
+      const step = Math.min(remaining, this.stimpack.timeToBoundaryMs);
+      if (this.stimpack.canAttack) this.advanceCombat(step);
+      else this.advanceWorld(step);
+      this.stimpack.advance(step);
+      remaining -= step;
+    } while (remaining > 0 && this.run.status === "running");
+    this.view.renderStimpack(
+      this.stimpack.phase,
+      this.stimpack.attackSpeedMultiplier,
+    );
+    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+  }
+
+  private advanceCombat(deltaMs: number): void {
     let elapsed = 0;
-    this.rifle.advance(Math.max(0, deltaMs), (command, offsetMs) => {
-      this.advanceWorld(offsetMs - elapsed);
-      elapsed = offsetMs;
-      if (this.run.status === "failed") return false;
-      const target = resolveAttackTarget(
-        command.manualTargetId,
-        this.enemies.map((entry) => entry.state),
-      );
-      if (target) {
-        const entry = this.enemies.find(
-          (entry) => entry.state.id === target.id,
-        )!;
-        this.view.showShot(entry.visual);
-        entry.state = applyPrimaryDamage(
-          target,
-          gaussRifleBalance.damagePerRound *
-            marineConfig.baseStats.damageMultiplier,
+    this.rifle.advance(
+      this.stimpack.weaponTimeFor(deltaMs),
+      (command, weaponOffsetMs) => {
+        const offsetMs = this.stimpack.realTimeFor(weaponOffsetMs);
+        this.advanceWorld(offsetMs - elapsed);
+        elapsed = offsetMs;
+        if (this.run.status === "failed") return false;
+        const target = resolveAttackTarget(
+          command.manualTargetId,
+          this.enemies.map((entry) => entry.state),
         );
-        if (entry.state.hp <= 0) {
-          entry.visual.destroy();
-          this.enemies = this.enemies.filter((enemy) => enemy !== entry);
-        } else this.view.renderEnemy(entry.visual, entry.state);
-      }
-    });
+        if (target) {
+          const entry = this.enemies.find(
+            (entry) => entry.state.id === target.id,
+          )!;
+          this.view.showShot(entry.visual);
+          entry.state = applyPrimaryDamage(
+            target,
+            gaussRifleBalance.damagePerRound *
+              marineConfig.baseStats.damageMultiplier,
+          );
+          if (entry.state.hp <= 0) {
+            entry.visual.destroy();
+            this.enemies = this.enemies.filter((enemy) => enemy !== entry);
+          } else this.view.renderEnemy(entry.visual, entry.state);
+        }
+      },
+      !(
+        this.stimpack.phase === "boost" &&
+        deltaMs === this.stimpack.timeToBoundaryMs
+      ),
+    );
     if (this.run.status === "running")
       this.advanceWorld(Math.max(0, deltaMs) - elapsed);
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
