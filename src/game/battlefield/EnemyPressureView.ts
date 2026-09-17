@@ -9,14 +9,14 @@ import { modules, type ModuleLevels } from "../data/modules";
 import { evolutionRecipes } from "../data/evolutions";
 
 // Visual layout only, in logical reference units.
-const field = { left: 36, width: 648, farY: 105, wallY: 1180, enemySize: 56 };
+const field = { left: 36, width: 648, farY: 105, wallY: 1160, enemySize: 56 };
 // View/input tuning only; never used for movement, targeting priority or damage.
 const combatVisual = {
   touchPadding: 10,
   minimumTouchSize: 44,
   flashMs: 75,
   marineX: 360,
-  marineY: 1170,
+  marineY: 1145,
 };
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
@@ -65,30 +65,30 @@ export class EnemyPressureView {
         .setOrigin(0.5);
 
     this.debug.add(text(360, 160, "MARINE · GAUSS RIFLE", 24));
-    this.hpText = text(190, 1227, "", 19);
+    this.hpText = text(135, 1215, "", 18);
     this.hpFill = scene.add
-      .rectangle(36, 1245, 312, 8, 0x77d7a0)
+      .rectangle(24, 1232, 210, 7, 0x77d7a0)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.hpText,
-      scene.add.rectangle(192, 1245, 312, 8, 0x34443d),
+      scene.add.rectangle(129, 1232, 210, 7, 0x34443d),
       this.hpFill,
     ]);
-    this.xpText = text(530, 1227, "", 19);
+    this.xpText = text(365, 1215, "", 18);
     this.xpFill = scene.add
-      .rectangle(372, 1245, 312, 8, 0x9dc7ff)
+      .rectangle(250, 1232, 220, 7, 0x9dc7ff)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.xpText,
-      scene.add.rectangle(528, 1245, 312, 8, 0x263c50),
+      scene.add.rectangle(360, 1232, 220, 7, 0x263c50),
       this.xpFill,
     ]);
 
-    this.moduleText = text(360, 1205, "", 19);
+    this.moduleText = text(250, 1189, "", 18);
     this.hud.add(this.moduleText);
-    this.stimText = text(360, 1130, "", 20).setVisible(false);
+    this.stimText = text(360, 1105, "", 20).setVisible(false);
     this.hud.add(this.stimText);
-    this.magicText = text(360, 1266, "", 19);
+    this.magicText = text(250, 1258, "", 18);
     this.hud.add(this.magicText);
     this.gesturePath = scene.add.graphics().setDepth(3).setVisible(false);
     this.gestureText = text(360, 290, "", 18);
@@ -136,7 +136,7 @@ export class EnemyPressureView {
     const farLabel = text(360, field.farY + 28, "FAR", 20);
     this.debug.add([farGuide, farLabel]);
     const masonry = scene.add.graphics();
-    masonry.fillStyle(0x5c727e).fillRect(0, field.wallY + 14, 720, 86);
+    masonry.fillStyle(0x5c727e).fillRect(0, field.wallY + 14, 720, 106);
     masonry.fillStyle(0x93a7af).fillRect(0, field.wallY + 14, 720, 8);
     masonry.lineStyle(2, 0x344953, 0.8);
     for (let row = 0; row < 3; row++) {
@@ -372,13 +372,13 @@ export class EnemyPressureView {
 
   renderWall(hp: number, maxHp: number): void {
     this.hpText.setText(`HP ${hp} / ${maxHp}`);
-    this.hpFill.setDisplaySize(312 * (hp / maxHp), 8);
+    this.hpFill.setDisplaySize(210 * (hp / maxHp), 7);
     this.failure.setVisible(hp <= 0);
   }
 
   renderProgression(level: number, xp: number, threshold: number): void {
     this.xpText.setText(`Lv.${level} · XP ${xp}/${threshold}`);
-    this.xpFill.setDisplaySize(312 * Math.min(1, xp / threshold), 8);
+    this.xpFill.setDisplaySize(220 * Math.min(1, xp / threshold), 7);
   }
 
   showPrimary(
@@ -457,7 +457,7 @@ export class EnemyPressureView {
     const remaining = (ms: number) =>
       ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
     this.magicText.setText(
-      `○ Frost Nova ${remaining(frostMs)}   ·   Z Chain Lightning ${remaining(chainMs)}`,
+      `○ FROST ${remaining(frostMs)}  ·  Z CHAIN ${remaining(chainMs)}`,
     );
   }
 
@@ -483,6 +483,34 @@ export class EnemyPressureView {
       }
     }
     this.scene.time.delayedCall(300, () => effect.destroy());
+  }
+
+  showBarrage(targets: readonly Phaser.GameObjects.Container[]): void {
+    // Snapshot positions before damage removes the sprites.
+    const points = targets.map((target) => ({ x: target.x, y: target.y }));
+    const effect = this.scene.add.graphics();
+    this.world.add(effect);
+    let pulse = 0;
+    const draw = () => {
+      effect.clear().lineStyle(4, 0xffe7a0, 0.85);
+      for (const [index, point] of points.entries()) {
+        if (index % 3 !== pulse % 3) continue;
+        effect.lineBetween(
+          combatVisual.marineX,
+          combatVisual.marineY,
+          point.x,
+          point.y,
+        );
+        effect.strokeCircle(point.x, point.y, 20 + pulse * 3);
+      }
+      effect
+        .fillStyle(0xffffff)
+        .fillCircle(combatVisual.marineX, combatVisual.marineY, 16);
+      pulse++;
+    };
+    draw();
+    this.scene.time.addEvent({ delay: 80, repeat: 5, callback: draw });
+    this.scene.time.delayedCall(600, () => effect.destroy());
   }
 
   showGesture(

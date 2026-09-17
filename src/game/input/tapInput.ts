@@ -30,10 +30,13 @@ export class TapInput {
       const last = this.path[this.path.length - 1]!;
       if (
         Math.hypot(x - last.x, y - last.y) >=
-          drawingInputBalance.sampleDistancePx &&
-        this.path.length < drawingInputBalance.maxPoints
-      )
+        drawingInputBalance.sampleDistancePx
+      ) {
+        // Keep the entire drawing at bounded storage instead of clipping its end.
+        if (this.path.length >= drawingInputBalance.maxPoints)
+          this.path = this.path.filter((_, index) => index % 2 === 0);
         this.path.push({ x, y });
+      }
     }
     if (
       start &&
@@ -46,8 +49,6 @@ export class TapInput {
     if (!this.fingers.has(id)) return null;
     this.move(id, x, y);
     this.fingers.delete(id);
-    // Discard an overlong drawing instead of recognizing only its clipped prefix.
-    if (this.path.length >= drawingInputBalance.maxPoints) return null;
     if (
       !this.fingers.size &&
       this.count === 1 &&

@@ -145,6 +145,8 @@ Marine Gauss Rifle prototype:
 
 ## 7. Magic System
 
+Milestone 11 prototype direction: Primary provides sustained, always-available firepower. Magic is a long-cooldown tactical ability saved for dangerous hordes: Frost Nova uses a 20s cooldown with wide-area freeze; Chain Lightning uses a 14s cooldown with a long, multi-target chain. All numeric values remain prototype tuning.
+
 ### Active Slots
 - Start with **1 Magic slot**.
 - Unlock permanently:
@@ -288,9 +290,11 @@ Not simply raw tap count.
 - Accuracy affects Ultimate strength.
 - Complete failure should still provide a reduced effect rather than wasting the entire gauge.
 
+Milestone 11 prototype: manual activation starts 3 real-time seconds with 5 timing taps while battlefield time runs at 0.08 scale. PERFECT/GOOD/MISS determine a guaranteed Marine Suppressive Barrage: 24–60 targets and 60–140 damage. Gauge comes from confirmed hits/kills/Elite kills, never tap count. The compact button/gauge stays on the lower wall.
+
 ### Build Interaction
 Burst has a character-specific base form.
-Current Run build can transform its final behavior/visuals.
+Future Run builds can transform its final behavior/visuals; build-specific Burst changes are not implemented in Milestone 11.
 
 ---
 
@@ -551,6 +555,8 @@ Failure should still grant partial rewards based on progress.
 ---
 
 ## 24. Horde Fantasy & Performance
+
+Milestone 11: early combat means many weak enemies, not an empty battlefield. Start with about 30 Grunts, aim for 40–50 active enemies in the first 30 seconds, gradually introduce Runner/Shield mixes, and start Elites at 60 seconds. The current prototype cap rises to 80; this is tuning, not a proven mobile performance limit.
 
 This is an official Core Requirement.
 

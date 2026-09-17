@@ -7,8 +7,17 @@ export interface Point {
 export interface GestureResult {
   kind: "circle" | "z" | "unknown";
   confidence: number;
+  circleScore: number;
+  zScore: number;
+  reason: string;
+  metrics?: {
+    closure: number;
+    revolutions: number;
+    radialError: number;
+    consistency: number;
+    samples: number;
+  };
 }
-
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Equal path-distance samples make recognition independent of pointer event rate.
@@ -21,14 +30,30 @@ function resample(points: readonly Point[]): Point[] {
   return Array.from({ length: tuning.sampleCount }, (_, i) => {
     const along = (total * i) / (tuning.sampleCount - 1);
     while (segment < points.length - 1 && lengths[segment]! < along) segment++;
-    const a = points[segment - 1]!;
-    const b = points[segment]!;
+    const a = points[segment - 1]!,
+      b = points[segment]!;
     const span = lengths[segment]! - lengths[segment - 1]!;
     const fraction = span > 0 ? (along - lengths[segment - 1]!) / span : 0;
     return { x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction };
   });
 }
-
+function bounds(points: readonly Point[]) {
+  const minX = Math.min(...points.map((p) => p.x)),
+    minY = Math.min(...points.map((p) => p.y));
+  return {
+    minX,
+    minY,
+    width: Math.max(...points.map((p) => p.x)) - minX,
+    height: Math.max(...points.map((p) => p.y)) - minY,
+  };
+}
+function normalize(points: readonly Point[]): Point[] {
+  const { minX, minY, width, height } = bounds(points);
+  return points.map((p) => ({
+    x: (p.x - minX) / Math.max(width, Number.EPSILON),
+    y: (p.y - minY) / Math.max(height, Number.EPSILON),
+  }));
+}
 const zTemplate = resample([
   { x: 0, y: 0 },
   { x: 1, y: 0 },
@@ -37,32 +62,54 @@ const zTemplate = resample([
 ]);
 
 export function recognizeGesture(points: readonly Point[]): GestureResult {
-  const unknown: GestureResult = { kind: "unknown", confidence: 0 };
+  const unknown: GestureResult = {
+    kind: "unknown",
+    confidence: 0,
+    circleScore: 0,
+    zScore: 0,
+    reason: "insufficient path",
+  };
   if (
     points.length < 3 ||
     points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))
   )
     return unknown;
-  const minX = Math.min(...points.map((p) => p.x));
-  const minY = Math.min(...points.map((p) => p.y));
-  const width = Math.max(...points.map((p) => p.x)) - minX;
-  const height = Math.max(...points.map((p) => p.y)) - minY;
+  const { width, height } = bounds(points);
   if (
     Math.min(width, height) < tuning.minDimensionPx ||
     Math.min(width, height) / Math.max(width, height) < tuning.minAspectRatio
   )
-    return unknown;
-  const normalized = points.map((p) => ({
-    x: (p.x - minX) / width,
-    y: (p.y - minY) / height,
+    return { ...unknown, reason: "too small or too narrow" };
+
+  // Undo ellipse tilt before axis normalization. Otherwise tilted ovals become
+  // diagonal slashes in a square bounding box, inflating the radial error.
+  const even = resample(points);
+  const mean = {
+    x: even.reduce((s, p) => s + p.x, 0) / even.length,
+    y: even.reduce((s, p) => s + p.y, 0) / even.length,
+  };
+  let xx = 0,
+    yy = 0,
+    xy = 0;
+  for (const p of even) {
+    const x = p.x - mean.x,
+      y = p.y - mean.y;
+    xx += x * x;
+    yy += y * y;
+    xy += x * y;
+  }
+  const tilt = Math.atan2(2 * xy, xx - yy) / 2;
+  const rotated = even.map((p) => ({
+    x: (p.x - mean.x) * Math.cos(tilt) + (p.y - mean.y) * Math.sin(tilt),
+    y: -(p.x - mean.x) * Math.sin(tilt) + (p.y - mean.y) * Math.cos(tilt),
   }));
-  const samples = resample(normalized);
-  let winding = 0;
-  let totalTurn = 0;
-  let length = 0;
+  const samples = resample(normalize(rotated));
+  let winding = 0,
+    totalTurn = 0,
+    length = 0;
   for (let i = 1; i < samples.length; i++) {
-    const a = samples[i - 1]!;
-    const b = samples[i]!;
+    const a = samples[i - 1]!,
+      b = samples[i]!;
     const angle =
       Math.atan2(b.y - 0.5, b.x - 0.5) - Math.atan2(a.y - 0.5, a.x - 0.5);
     const turn = Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -73,30 +120,64 @@ export function recognizeGesture(points: readonly Point[]): GestureResult {
   const revolutions = Math.abs(winding) / (Math.PI * 2);
   const radialError =
     samples.reduce(
-      (sum, p) => sum + Math.abs(Math.hypot(p.x - 0.5, p.y - 0.5) - 0.5),
+      (s, p) => s + Math.abs(Math.hypot(p.x - 0.5, p.y - 0.5) - 0.5),
       0,
     ) / samples.length;
-  if (
-    distance(samples[0]!, samples.at(-1)!) <= tuning.circleMaxClosure &&
-    radialError <= tuning.circleMaxRadialError &&
-    revolutions >= tuning.circleMinWinding &&
-    revolutions <= tuning.circleMaxWinding &&
-    Math.abs(winding) / totalTurn >= tuning.circleMinDirectionConsistency
-  ) {
+  const closure =
+    distance(samples[0]!, samples.at(-1)!) / Math.max(length, Number.EPSILON);
+  const consistency = totalTurn > 0 ? Math.abs(winding) / totalTurn : 0;
+  const reasons = [
+    closure > tuning.circleMaxClosureRatio && "open ends",
+    radialError > tuning.circleMaxRadialError && "irregular radius",
+    (revolutions < tuning.circleMinWinding ||
+      revolutions > tuning.circleMaxWinding) &&
+      "rotation",
+    consistency < tuning.circleMinDirectionConsistency && "backtracking",
+  ].filter(Boolean);
+  const circleScore = Math.max(
+    0,
+    Math.min(
+      1,
+      1 - radialError,
+      1 - closure,
+      consistency,
+      revolutions,
+      2 - revolutions,
+    ),
+  );
+  // Z stays in screen coordinates; rotating it would accept unrelated diagonals.
+  const zSamples = resample(normalize(points));
+  const zError =
+    zSamples.reduce((s, p, i) => s + distance(p, zTemplate[i]!), 0) /
+    zSamples.length;
+  const zLength = zSamples
+    .slice(1)
+    .reduce((s, p, i) => s + distance(zSamples[i]!, p), 0);
+  const zScore = Math.max(0, 1 - zError / tuning.zMaxTemplateError);
+  const result = {
+    ...unknown,
+    circleScore,
+    zScore,
+    metrics: {
+      closure,
+      revolutions,
+      radialError,
+      consistency,
+      samples: points.length,
+    },
+  };
+  if (!reasons.length)
     return {
+      ...result,
       kind: "circle",
-      confidence: 1 - radialError / tuning.circleMaxRadialError,
+      confidence: circleScore,
+      reason: "circle accepted",
     };
-  }
-  const error =
-    samples.reduce((sum, p, i) => sum + distance(p, zTemplate[i]!), 0) /
-    samples.length;
   if (
-    error <= tuning.zMaxTemplateError &&
-    length >= tuning.zMinLength &&
-    length <= tuning.zMaxLength
-  ) {
-    return { kind: "z", confidence: 1 - error / tuning.zMaxTemplateError };
-  }
-  return unknown;
+    zError <= tuning.zMaxTemplateError &&
+    zLength >= tuning.zMinLength &&
+    zLength <= tuning.zMaxLength
+  )
+    return { ...result, kind: "z", confidence: zScore, reason: "z accepted" };
+  return { ...result, reason: reasons.join(", ") || "no template match" };
 }
