@@ -2,6 +2,7 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 
 export interface EnemyState {
   id: number;
+  hp: number;
   kind: EnemyKind;
   lane: LaneId;
   offset01: number;
@@ -14,7 +15,7 @@ export function advanceEnemy(
   deltaMs: number,
   config: EnemyConfig,
 ): { enemy: EnemyState; wallTimeMs: number } {
-  if (deltaMs <= 0) return { enemy, wallTimeMs: 0 };
+  if (deltaMs <= 0 || enemy.hp <= 0) return { enemy, wallTimeMs: 0 };
   if (enemy.progress01 >= 1) {
     return {
       enemy: { ...enemy, progress01: 1, phase: "attacking" },

@@ -1,6 +1,13 @@
 import Phaser from "phaser";
 import { EnemyPressureView } from "../battlefield/EnemyPressureView";
-import { enemyPressureBalance } from "../data/balance";
+import {
+  enemyPressureBalance,
+  marineConfig,
+  gaussRifleBalance,
+} from "../data/balance";
+import { GaussRifle } from "../combat/gaussRifle";
+import { resolveAttackTarget } from "../combat/targeting";
+import { applyPrimaryDamage } from "../combat/damage";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
@@ -18,15 +25,30 @@ export class CombatScene extends Phaser.Scene {
   }[] = [];
   private spawnElapsedMs = 0;
   private wave = 0;
+  private nextEnemyId = 0;
+  private rifle = new GaussRifle(gaussRifleBalance);
 
   create(): void {
     this.run = createRunState(enemyPressureBalance.wallMaxHp);
     this.enemies = [];
     this.spawnElapsedMs = 0;
     this.wave = 0;
+    this.nextEnemyId = 0;
+    this.rifle = new GaussRifle(gaussRifleBalance);
     this.view = new EnemyPressureView(this);
     this.spawnWave();
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    const tap = (pointer: Phaser.Input.Pointer) => {
+      if (this.run.status === "failed") return;
+      this.rifle.request({
+        manualTargetId: this.view.pickEnemy(pointer.x, pointer.y, this.enemies),
+      });
+      this.update(0, 0);
+    };
+    this.input.on("pointerup", tap);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.input.off("pointerup", tap),
+    );
   }
 
   private spawnWave(): void {
@@ -38,7 +60,7 @@ export class CombatScene extends Phaser.Scene {
       const state = createPrototypeEnemy(
         kind,
         lane,
-        this.enemies.length,
+        this.nextEnemyId++,
         0.25 + (this.wave % 5) * 0.125,
       );
       this.enemies.push({
@@ -52,6 +74,37 @@ export class CombatScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     if (this.run.status === "failed") return;
+    let elapsed = 0;
+    this.rifle.advance(Math.max(0, deltaMs), (command, offsetMs) => {
+      this.advanceWorld(offsetMs - elapsed);
+      elapsed = offsetMs;
+      if (this.run.status === "failed") return false;
+      const target = resolveAttackTarget(
+        command.manualTargetId,
+        this.enemies.map((entry) => entry.state),
+      );
+      if (target) {
+        const entry = this.enemies.find(
+          (entry) => entry.state.id === target.id,
+        )!;
+        this.view.showShot(entry.visual);
+        entry.state = applyPrimaryDamage(
+          target,
+          gaussRifleBalance.damagePerRound *
+            marineConfig.baseStats.damageMultiplier,
+        );
+        if (entry.state.hp <= 0) {
+          entry.visual.destroy();
+          this.enemies = this.enemies.filter((enemy) => enemy !== entry);
+        } else this.view.renderEnemy(entry.visual, entry.state);
+      }
+    });
+    if (this.run.status === "running")
+      this.advanceWorld(Math.max(0, deltaMs) - elapsed);
+    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+  }
+
+  private advanceWorld(deltaMs: number): void {
     // New enemies receive only time after their spawn boundary.
     let remaining = Math.max(0, deltaMs);
     while (remaining > 0 && this.run.status === "running") {
