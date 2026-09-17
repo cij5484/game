@@ -16,6 +16,8 @@ import { resolveAttackTarget } from "../combat/targeting";
 import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
 import { Progression } from "../progression/progression";
 import { LevelUpView } from "../ui/LevelUpView";
+import { Modules } from "../progression/modules";
+import { eligibleEvolutions } from "../progression/evolution";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
@@ -38,8 +40,13 @@ export class CombatScene extends Phaser.Scene {
   private magic = new Magic();
   private progression = new Progression();
   private choices!: LevelUpView;
+  private modules = new Modules();
+  private evolutions = new Set<string>();
+  private evolutionNotice = "";
   private get choosing(): boolean {
-    return this.progression.pendingChoices > 0;
+    return (
+      this.progression.pendingChoices > 0 || this.modules.pendingRewards > 0
+    );
   }
 
   create(): void {
@@ -51,6 +58,9 @@ export class CombatScene extends Phaser.Scene {
     this.stimpack = new Stimpack(stimpackBalance);
     this.magic = new Magic();
     this.progression = new Progression();
+    this.modules = new Modules();
+    this.evolutions = new Set();
+    this.evolutionNotice = "";
     this.choices = new LevelUpView();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       this.choices.destroy(),
@@ -110,6 +120,7 @@ export class CombatScene extends Phaser.Scene {
           spawn.lane,
           this.nextEnemyId++,
           spawn.offset01,
+          spawn.elite,
         ),
         progress01: spawn.progress01,
       };
@@ -171,14 +182,18 @@ export class CombatScene extends Phaser.Scene {
             this.progression.ranks,
             gaussRifleBalance.damagePerRound *
               marineConfig.baseStats.damageMultiplier,
+            this.modules.levels,
+            [...this.evolutions],
           );
           this.view.showPrimary(
-            result.hitIds.map(
+            [...result.hitIds, ...result.splashIds].map(
               (id) =>
                 this.enemies.find((entry) => entry.state.id === id)!.visual,
             ),
             result.ricochetIds,
-            result.hitIds,
+            [...result.hitIds, ...result.splashIds],
+            this.evolutions.size > 0,
+            result.splashIds,
           );
           this.applyEnemyStates(result.enemies);
           if (this.choosing) return false;
@@ -202,6 +217,7 @@ export class CombatScene extends Phaser.Scene {
       entry.state = states.find((enemy) => enemy.id === entry.state.id)!;
       if (entry.state.hp <= 0) {
         xp += enemyConfigs[entry.state.kind].xpOnKill;
+        if (entry.state.elite) this.modules.reward();
         entry.visual.destroy();
       } else this.view.renderEnemy(entry.visual, entry.state);
     }
@@ -217,27 +233,48 @@ export class CombatScene extends Phaser.Scene {
       this.progression.xp,
       this.progression.threshold,
     );
+    this.view.renderModules(this.modules.levels);
   }
 
   private showChoices(): void {
+    const moduleOffer = this.modules.offer();
+    if (moduleOffer.length) {
+      this.time.paused = true;
+      this.choices.showModules(moduleOffer, this.modules.levels, (id) => {
+        if (this.modules.choose(id)) this.applyBuildChoice();
+      });
+      return;
+    }
     const offered = this.progression.offer();
     if (!offered.length) {
       this.time.paused = false;
       this.choices.hide();
+      if (this.evolutionNotice) {
+        this.view.showEvolution(this.evolutionNotice);
+        this.evolutionNotice = "";
+      }
       return;
     }
     this.time.paused = true;
     this.choices.show(this.progression.level, offered, (id) => {
       if (!this.progression.choose(id)) return;
-      this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
-      this.magic.setUpgrades(this.progression.ranks);
-      if (this.choosing) this.showChoices();
-      else {
-        this.choices.hide();
-        this.time.paused = false;
-      }
-      this.renderProgression();
+      this.applyBuildChoice();
     });
+  }
+
+  private applyBuildChoice(): void {
+    for (const recipe of eligibleEvolutions(
+      this.progression.ranks,
+      this.modules.levels,
+      this.evolutions,
+    )) {
+      this.evolutions.add(recipe.id);
+      this.evolutionNotice = recipe.title;
+    }
+    this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
+    this.magic.setUpgrades(this.progression.ranks);
+    this.renderProgression();
+    this.showChoices();
   }
 
   private advanceWorld(deltaMs: number): void {

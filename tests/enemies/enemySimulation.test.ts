@@ -4,6 +4,14 @@ import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
 describe("enemy simulation", () => {
+  it("creates a marked elite with extra HP but the same logical movement", () => {
+    const elite = createPrototypeEnemy("grunt", "center", 1, 0.5, true);
+    expect(elite.elite).toBe(true);
+    expect(elite.hp).toBe(120);
+    expect(advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01).toBe(
+      0.04,
+    );
+  });
   it("freezes movement and wall attack time, then resumes only after thaw", () => {
     const enemy = {
       ...createPrototypeEnemy("grunt", "left", 1),

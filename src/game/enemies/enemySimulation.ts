@@ -2,6 +2,7 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 
 export interface EnemyState {
   id: number;
+  elite?: boolean;
   hp: number;
   frozenMs: number;
   kind: EnemyKind;

@@ -13,10 +13,29 @@ describe("horde spawn director", () => {
     ).toBe(true);
     expect(director.spawn(12)).toEqual([]);
     director.advance(director.timeToSpawnMs);
-    expect(director.spawn(23)).toHaveLength(1);
+    expect(director.spawn(22)).toHaveLength(1);
     director.advance(director.timeToSpawnMs);
     expect(director.spawn(24)).toEqual([]);
     expect(director.timeToSpawnMs).toBe(3000);
+    expect(director.spawn(0)).toEqual([]);
+  });
+
+  it("reserves room for timed elites and retries a blocked elite without a backlog", () => {
+    const director = new SpawnDirector(() => 0.5);
+    director.spawn(0);
+    director.advance(15000);
+    const first = director.spawn(23);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({
+      kind: "grunt",
+      elite: true,
+      progress01: 0,
+    });
+    director.advance(25000);
+    expect(director.spawn(24)).toEqual([]);
+    expect(director.timeToSpawnMs).toBeGreaterThan(0);
+    director.advance(director.timeToSpawnMs);
+    expect(director.spawn(23).filter((enemy) => enemy.elite)).toHaveLength(1);
     expect(director.spawn(0)).toEqual([]);
   });
 

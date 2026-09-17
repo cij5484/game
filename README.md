@@ -1,6 +1,6 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재는 **Milestone 9: XP / Level Up / Build Growth**까지 구현했습니다. 세로 전장에서 적의 성벽 공격, Marine의 탭 기반 3점사와 두 손가락 탭 Stimpack을 플레이할 수 있습니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재는 **Milestone 10: Elite / Module / First Evolution**까지 구현했습니다. 세로 전장에서 적의 성벽 공격, Marine의 탭 기반 3점사와 두 손가락 탭 Stimpack을 플레이할 수 있습니다.
 
 ## 현재 화면 확인
 
@@ -46,6 +46,18 @@
 - Frost 범위 +60 / 동결 +500ms(각 rank3), Lightning 대상 +1 / 피해 +10(각 rank3). Cooldown은 유지합니다.
 - XP/Level은 성벽의 HP 옆에 작게 표시합니다. 공식 수치는 data/upgrades.ts와 data/primaryAttack.ts의 prototype tuning입니다.
 - Milestone 9 검증: 전체59 tests와 TypeScript/build 통과. 브라우저에서 XP 증가, 3장 선택창, 선택 후 재개와 주황색 도탄 연결선을 확인했습니다. Rapid/관통/마법 강화별 수치·피해·cooldown 보존은 핵심 테스트로 검증했으며 모든 강화 조합의 실제 기기 플레이 평가는 아직 하지 않았습니다.
+
+## Elite / Module / Evolution
+
+- Elite는 Grunt 기반 HP120(기본 ×4), 금색 외곽선·◆ ELITE 표시·크기 ×1.15입니다. 15초부터 25초 간격으로 생성합니다. 일반 적 정원 한 칸을 예약하며 전체 active 상한은 유지합니다. 가득 찼으면 생성 기회를 보류하고 몰아서 생성하지 않습니다.
+- Elite 처치 시 전투를 멈추고 PEN / STORM 중 하나를 선택합니다. 일반 레벨업도 동시에 발생하면 Module 선택부터 처리합니다. 같은 Module 재선택은 Lv1→2→3 MAX, MAX는 후보 제외, 모두 MAX이면 빈 보상창 없이 진행합니다.
+- 한 Run 최대3종입니다. 슬롯이 차면 새 종류를 후보에서 제외하고 보유한 비MAX Module만 성장시킵니다. 현재2종이므로 교체 UI 없이 후보 제한으로 처리합니다.
+- PEN: Lv1 관통 +1명 → Lv2 관통 +2명·폭 +16 → Lv3 마지막 관통 적 주변 반경90에 기본공격의50% 충격파. 직접 맞은 적에는 중복 피해를 주지 않습니다.
+- STORM: Lv1 추가 도탄1회·반경 +40 → Lv2 반경 +80 → Lv3 추가 도탄2회. 기존 Ricochet 강화의 도탄1회와 합산하며 같은 탄환은 같은 적을 반복 타격하지 않습니다.
+- Hyper Gauss recipe: 일반 PENETRATION 강화 rank2 이상 + PEN Module Lv3. 조건과 효과는 data/evolutions.ts에 분리되어 있으며, 충족 후 한 번만 진화합니다.
+- 진화 시 추가 관통 +4명, 관통 폭 ×2, 굵은 청록 tracer와 중앙 EVOLUTION / HYPER GAUSS 알림을 표시합니다. 기본3점사와 cadence/buffer 규칙은 유지합니다.
+- 보유 Module은 하단 성벽에 짧게 표시합니다. 새 상단 패널은 없습니다. 모든 수치는 prototype tuning이며, 기존 Wall HP50,000은 관찰용입니다.
+- 핵심 Module/recipe/무기 효과/Elite 테스트를 포함한 전체68 tests와 TypeScript/build 통과. 390×844 브라우저에서 금색 Elite, PEN Lv1→2→3·STORM Lv3 HUD와 진화 후 굵은 청록 tracer를 확인했고 콘솔 오류/경고는 없었습니다. 중앙 진화 알림 순간은 직접 캡처하지 못했습니다. 실제 휴대폰의 보상 빈도·진화 만족감·터치/성능 평가는 사용자 검증 대상입니다.
 
 ## 실행
 

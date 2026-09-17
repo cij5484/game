@@ -5,6 +5,8 @@ import { laneCenterX, laneX } from "./lanes";
 import { perspectiveScale } from "./perspective";
 import { battlefieldLayout } from "./layout";
 import { attackSlotPosition } from "./crowdSpacing";
+import { modules, type ModuleLevels } from "../data/modules";
+import { evolutionRecipes } from "../data/evolutions";
 
 // Visual layout only, in logical reference units.
 const field = { left: 36, width: 648, farY: 105, wallY: 1180, enemySize: 56 };
@@ -14,7 +16,7 @@ const combatVisual = {
   minimumTouchSize: 44,
   flashMs: 75,
   marineX: 360,
-  marineY: 1198,
+  marineY: 1170,
 };
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
@@ -30,6 +32,7 @@ export class EnemyPressureView {
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private readonly xpText: Phaser.GameObjects.Text;
   private readonly xpFill: Phaser.GameObjects.Rectangle;
+  private readonly moduleText: Phaser.GameObjects.Text;
   private readonly failure: Phaser.GameObjects.Container;
   private readonly scene: Phaser.Scene;
   private readonly debug: Phaser.GameObjects.Container;
@@ -81,7 +84,9 @@ export class EnemyPressureView {
       this.xpFill,
     ]);
 
-    this.stimText = text(360, 1150, "", 20).setVisible(false);
+    this.moduleText = text(360, 1205, "", 19);
+    this.hud.add(this.moduleText);
+    this.stimText = text(360, 1130, "", 20).setVisible(false);
     this.hud.add(this.stimText);
     this.magicText = text(360, 1266, "", 19);
     this.hud.add(this.magicText);
@@ -238,6 +243,17 @@ export class EnemyPressureView {
       })
       .setOrigin(0.5);
     const visual = this.scene.add.container(0, 0, [shape, label]);
+    if (enemy.elite) {
+      visual.add(
+        this.scene.add
+          .text(0, -60, "◆ ELITE", {
+            fontFamily: "sans-serif",
+            fontSize: "24px",
+            color: "#ffe18b",
+          })
+          .setOrigin(0.5),
+      );
+    }
     label.setVisible(this.debugVisible);
     this.enemyLabels.add(label);
     visual.once("destroy", () => {
@@ -270,13 +286,24 @@ export class EnemyPressureView {
       x = field.left + laneCenterX(enemy.lane, field.width) + offset.x;
       y = field.wallY + offset.y;
     }
-    visual.setPosition(x, y).setScale(perspectiveScale(enemy.progress01));
+    visual
+      .setPosition(x, y)
+      .setScale(perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1));
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
       `${enemy.kind[0]!.toUpperCase()} ${enemy.hp} · ${enemy.progress01.toFixed(2)}`,
     );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
-      .setFillStyle(enemy.frozenMs > 0 ? 0xb2f7ff : colors[enemy.kind])
-      .setStrokeStyle(enemy.phase === "attacking" ? 4 : 0, 0xff665f);
+      .setFillStyle(
+        enemy.frozenMs > 0
+          ? 0xb2f7ff
+          : enemy.elite
+            ? 0xe8bd50
+            : colors[enemy.kind],
+      )
+      .setStrokeStyle(
+        enemy.elite ? 5 : enemy.phase === "attacking" ? 4 : 0,
+        enemy.elite ? 0xffedb5 : 0xff665f,
+      );
   }
 
   pickEnemy(
@@ -358,24 +385,68 @@ export class EnemyPressureView {
     targets: readonly Phaser.GameObjects.Container[],
     ricochetIds: readonly number[],
     hitIds: readonly number[],
+    evolved = false,
+    splashIds: readonly number[] = [],
   ): void {
     if (!targets.length) return;
     this.showShot(targets[0]!);
-    if (targets.length < 2) return;
+    if (targets.length < 2 && !evolved) return;
     const effect = this.scene.add.graphics();
     this.world.add(effect);
+    const evolution = evolutionRecipes[0]!;
+    if (evolved) {
+      effect.lineStyle(
+        evolution.effects.tracerWidth,
+        evolution.effects.tracerColor,
+        0.9,
+      );
+      effect.lineBetween(
+        combatVisual.marineX,
+        combatVisual.marineY,
+        targets[0]!.x,
+        targets[0]!.y,
+      );
+    }
     let previous = targets[0]!;
     for (let index = 1; index < targets.length; index++) {
       const target = targets[index]!;
       effect.lineStyle(
-        3,
+        evolved ? evolution.effects.tracerWidth : 3,
         ricochetIds.includes(hitIds[index]!) ? 0xffab6b : 0x85eaff,
       );
       effect.lineBetween(previous.x, previous.y, target.x, target.y);
       effect.strokeCircle(target.x, target.y, 12);
+      if (splashIds.includes(hitIds[index]!))
+        effect.strokeCircle(target.x, target.y, 28);
       previous = target;
     }
     this.scene.time.delayedCall(120, () => effect.destroy());
+  }
+
+  renderModules(levels: ModuleLevels): void {
+    this.moduleText.setText(
+      Object.entries(levels)
+        .map(
+          ([id, level]) =>
+            `${modules[id as keyof typeof modules].shortLabel} Lv${level}`,
+        )
+        .join("  ·  "),
+    );
+  }
+
+  showEvolution(title: string): void {
+    const notice = this.scene.add
+      .text(360, 580, `EVOLUTION\n${title}`, {
+        fontFamily: "sans-serif",
+        fontSize: "38px",
+        color: "#b9ffff",
+        align: "center",
+        backgroundColor: "#162b36dd",
+        padding: { x: 20, y: 14 },
+      })
+      .setOrigin(0.5);
+    this.hud.add(notice);
+    this.scene.time.delayedCall(2200, () => notice.destroy());
   }
 
   renderDirector(status: string): void {

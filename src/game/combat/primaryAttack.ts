@@ -2,6 +2,9 @@ import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
 import { primaryAttackBalance } from "../data/primaryAttack";
 import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import { gaussRifleBalance } from "../data/weapons";
+import { evolutionRecipes } from "../data/evolutions";
+import type { ModuleLevels } from "../data/modules";
+import { moduleEffects } from "../progression/modules";
 import type { EnemyState } from "../enemies/enemySimulation";
 import type { GaussRifleConfig } from "../model/types";
 import { applyPrimaryDamage } from "./damage";
@@ -23,9 +26,21 @@ export function primaryAttack(
   enemies: readonly EnemyState[],
   ranks: UpgradeRanks,
   baseDamage: number,
-): { enemies: EnemyState[]; hitIds: number[]; ricochetIds: number[] } {
+  moduleLevels: ModuleLevels = {},
+  evolutionIds: readonly string[] = [],
+): {
+  enemies: EnemyState[];
+  hitIds: number[];
+  ricochetIds: number[];
+  splashIds: number[];
+} {
+  const modules = moduleEffects(moduleLevels);
+  const evolutions = evolutionRecipes.filter((recipe) =>
+    evolutionIds.includes(recipe.id),
+  );
   const hits: EnemyState[] = target.hp > 0 ? [target] : [];
   const ricochetIds: number[] = [];
+  const splashIds: number[] = [];
   if (hits.length) {
     const origin = {
       x: combatGeometry.width / 2,
@@ -35,7 +50,19 @@ export function primaryAttack(
     const length = Math.hypot(aim.x - origin.x, aim.y - origin.y);
     const dx = (aim.x - origin.x) / length;
     const dy = (aim.y - origin.y) / length;
-    const penetration = (ranks.penetration ?? 0) * upgrades.penetration.amount;
+    const penetration =
+      (ranks.penetration ?? 0) * upgrades.penetration.amount +
+      modules.penetrationBonus +
+      evolutions.reduce(
+        (sum, recipe) => sum + recipe.effects.penetrationBonus,
+        0,
+      );
+    const halfWidth =
+      (primaryAttackBalance.penetrationHalfWidth + modules.widthBonus) *
+      evolutions.reduce(
+        (scale, recipe) => scale * recipe.effects.penetrationWidthMultiplier,
+        1,
+      );
     const candidates = enemies.flatMap((enemy) => {
       if (enemy.hp <= 0 || enemy.id === target.id) return [];
       const point = combatPosition(enemy);
@@ -43,8 +70,7 @@ export function primaryAttack(
       const y = point.y - origin.y;
       const projection = x * dx + y * dy;
       const gap = Math.abs(x * dy - y * dx);
-      return projection >= length - 1e-6 &&
-        gap <= primaryAttackBalance.penetrationHalfWidth
+      return projection >= length - 1e-6 && gap <= halfWidth
         ? [{ enemy, projection }]
         : [];
     });
@@ -53,10 +79,13 @@ export function primaryAttack(
     );
     hits.push(...candidates.slice(0, penetration).map(({ enemy }) => enemy));
 
-    if ((ranks.ricochet ?? 0) > 0) {
+    const lastPierced = hits.length > 1 ? hits[hits.length - 1] : undefined;
+    const bounces = ((ranks.ricochet ?? 0) > 0 ? 1 : 0) + modules.extraRicochet;
+    for (let bounce = 0; bounce < bounces; bounce++) {
       const last = combatPosition(hits[hits.length - 1]!);
       let nearest: EnemyState | undefined;
-      let nearestDistance: number = primaryAttackBalance.ricochetRadius;
+      let nearestDistance: number =
+        primaryAttackBalance.ricochetRadius + modules.ricochetRadiusBonus;
       for (const enemy of enemies) {
         if (enemy.hp <= 0 || hits.some((hit) => hit.id === enemy.id)) continue;
         const point = combatPosition(enemy);
@@ -74,13 +103,34 @@ export function primaryAttack(
         ricochetIds.push(nearest.id);
       }
     }
+    if (lastPierced && modules.aftershockRadius > 0) {
+      const center = combatPosition(lastPierced);
+      for (const enemy of enemies) {
+        if (enemy.hp <= 0 || hits.some((hit) => hit.id === enemy.id)) continue;
+        const point = combatPosition(enemy);
+        if (
+          Math.hypot(point.x - center.x, point.y - center.y) <=
+          modules.aftershockRadius
+        ) {
+          splashIds.push(enemy.id);
+        }
+      }
+    }
   }
   const hitIds = hits.map((enemy) => enemy.id);
   return {
     hitIds,
     ricochetIds,
+    splashIds,
     enemies: enemies.map((enemy) =>
-      hitIds.includes(enemy.id) ? applyPrimaryDamage(enemy, baseDamage) : enemy,
+      hitIds.includes(enemy.id)
+        ? applyPrimaryDamage(enemy, baseDamage)
+        : splashIds.includes(enemy.id)
+          ? applyPrimaryDamage(
+              enemy,
+              baseDamage * modules.aftershockDamageFactor,
+            )
+          : enemy,
     ),
   };
 }
