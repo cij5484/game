@@ -1,6 +1,15 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재 범위는 **Task 1: 저장소 기반과 테스트·빌드 구성**입니다. 화면에는 문구와 사각형만 표시하며 전투 기능은 아직 없습니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. 현재는 **Milestone 4: Enemy Pressure + Responsive Battlefield**까지 구현했습니다. 적이 이동해 공용 성벽을 공격하며, 플레이어 공격은 아직 없습니다.
+
+## 현재 화면 확인
+
+- 시작 시 Grunt / Runner / Shield가 등장하고, 10초마다 세 종류가 추가됩니다.
+- Runner → Grunt → Shield 순으로 성벽에 도착합니다. 가까워질수록 표시 크기가 커집니다.
+- G/R/S는 적 종류, 빨간 테두리는 성벽 공격 상태입니다. 도착 후 공격 간격이 지나야 피해를 줍니다.
+- 공용 Wall HP는 임시 튜닝값 500입니다. 0이면 이동·공격·생성이 멈추고 RUN FAILED를 표시합니다. 새로고침하면 다시 시작합니다.
+- Phaser RESIZE로 전체 viewport를 사용하고, 1280×720 기준 전장을 균일 배율로 맞춥니다. 긴 화면에서는 좌우 여백을 두어 이동 거리가 달라지지 않습니다. HUD와 전장 표시 계층은 분리했습니다.
+- 16:9(1280×720), 19.5:9(1560×720), 20:9(1600×720), 태블릿 4:3(1024×768)에서 브라우저 확인을 완료했습니다. 실제 기기 조작성과 Safe Area UI는 아직 검증·구현하지 않았습니다.
 
 ## 실행
 
@@ -50,4 +59,4 @@ npm.cmd run check
 - [프로토타입 기술 사양](docs/design/PROTOTYPE_TECHNICAL_SPEC_v0.1.md)
 - [구현 계획](docs/superpowers/plans/2026-09-17-core-combat-prototype-implementation-plan.md)
 
-다음 작업은 **Task 2: Core Types + Data-Driven Balance**입니다. Task 1 승인 후 시작합니다.
+다음 Milestone은 사용자 검토·승인 후 별도로 진행합니다.
