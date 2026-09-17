@@ -4,5 +4,6 @@ import { runBalance } from "./run";
 export const enemyScalingBalance = {
   durationMs: runBalance.durationMs,
   maxHpMultiplier: 1.1,
+  initialSpeedMultiplier: 0.65,
   maxSpeedMultiplier: 1.02,
 } as const;

@@ -5,9 +5,9 @@ import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
 describe("spawn-time enemy growth", () => {
   it.each([
-    [-1000, 30, 0.032],
-    [0, 30, 0.032],
-    [150000, 31.5, 0.03232],
+    [-1000, 30, 0.0208],
+    [0, 30, 0.0208],
+    [150000, 31.5, 0.02672],
     [300000, 33, 0.03264],
     [600000, 33, 0.03264],
   ])("gently scales a grunt spawned at %i ms", (elapsedMs, hp, speed) => {

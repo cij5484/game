@@ -453,7 +453,7 @@ Current implementation: gauge100, credit0.02 per confirmed hit/0.08 per kill/+6 
 
 ## 20. Horde Stress Test
 
-Current normal-run tuning: initial18 Grunts at progress.08–.30. Thirteen encounter starts0/30/38/60/90/98/135/165/173/210/218/255/285seconds. Caps36/40/48/60/72/85/105/115/130/140/150/170/180. Interval(ms)/batch:1800/3,2000/3,1700/4,1600/5,1800/5,1500/7,1350/9,1550/8,1200/12,1400/10,1050/16,850/20,800/24. Relief windows last8seconds; retain one Elite slot and discard blocked-spawn backlog. Elite first60s/then40s. Spawn-time linear growth ends at HP×1.10/speed×1.02 at300s; factory stores maxHp and speedMultiplier. Frost multiplies the stored speed and does not reset growth. Base Grunt/Runner/Shield progress/s .032/.08/.025. Mobile180-enemy performance remains unmeasured.
+Current normal-run tuning: initial48 Grunts at progress.08–.30. Thirteen encounter starts0/30/38/60/90/98/135/165/173/210/218/255/285seconds. Caps72/78/84/90/96/105/115/125/135/145/155/170/180. Interval(ms)/batch:1800/6,2000/5,1700/6,1600/7,1800/5,1500/7,1350/9,1550/8,1200/12,1400/10,1050/16,850/20,800/24. Relief windows last8seconds; retain one Elite slot and discard blocked-spawn backlog. Elite first60s/then40s. Spawn-time linear growth ends at HP×1.10/speed×0.65→1.02 over300s; factory stores maxHp and speedMultiplier. Frost multiplies the stored speed and does not reset growth. Base Grunt/Runner/Shield progress/s .032/.08/.025. Mobile180-enemy performance remains unmeasured.
 
 This is a separate prototype test mode or debug mode.
 
@@ -793,6 +793,6 @@ Current implementation follows GDD v0.2; user playtest determines fun, readabili
 
 ### 추가 플레이테스트 조정
 
-초기 18마리로 시작하고 스폰 상한은 36→180마리로 점진 증가합니다. 체력은 5분간 최대 +10%, 속도는 +2%만 선형 증가합니다. 일시정지의 `다시 시작하기`는 현재 런을 초기화합니다. ○ 제스처는 열린 끝점 비율 0.14→0.22, 반지름 오차 0.14→0.18로 완화했으며 크기·회전량·방향 일관성과 Z 기준은 유지합니다. 기존 Gesture 테스트에 약 82%만 그린 원을 추가했습니다. 실제 기기 인식률과 밸런스는 재평가 대상입니다.
+초기 48마리로 시작하고 스폰 상한은 72→180마리로 점진 증가합니다. 체력은 5분간 최대 +10%, 속도는 기본값의 65%에서 102%까지 선형 증가합니다. 일시정지의 `다시 시작하기`는 현재 런을 초기화합니다. ○ 제스처는 열린 끝점 비율 0.14→0.22, 반지름 오차 0.14→0.18로 완화했으며 크기·회전량·방향 일관성과 Z 기준은 유지합니다. 기존 Gesture 테스트에 약 82%만 그린 원을 추가했습니다. 실제 기기 인식률과 밸런스는 재평가 대상입니다.
 
 추가 조정 검증: `npm.cmd run check` 29개 파일 / 144개 테스트 및 TypeScript·빌드 통과. 브라우저에서 일시정지 → 다시 시작하기 후 5:00 / 1레벨 / 성벽 12000 초기화를 확인했습니다. 기존 번들 크기 경고는 유지됩니다.

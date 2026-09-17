@@ -18,7 +18,10 @@ export function createPrototypeEnemy(
   );
   const hpMultiplier = 1 + growth * (enemyScalingBalance.maxHpMultiplier - 1);
   const speedMultiplier =
-    1 + growth * (enemyScalingBalance.maxSpeedMultiplier - 1);
+    enemyScalingBalance.initialSpeedMultiplier +
+    growth *
+      (enemyScalingBalance.maxSpeedMultiplier -
+        enemyScalingBalance.initialSpeedMultiplier);
   const hp =
     enemyConfigs[kind].hp *
     hpMultiplier *
@@ -26,7 +29,7 @@ export function createPrototypeEnemy(
   return {
     id,
     ...(elite ? { elite: true } : {}),
-    ...(speedMultiplier > 1 ? { speedMultiplier } : {}),
+    ...(speedMultiplier !== 1 ? { speedMultiplier } : {}),
     kind,
     lane,
     offset01,
