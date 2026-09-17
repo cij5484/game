@@ -7,6 +7,14 @@ import { battlefieldLayout } from "./layout";
 
 // Visual layout only, in logical reference units.
 const field = { left: 80, width: 1120, farY: 160, wallY: 550, enemySize: 48 };
+// View/input tuning only; never used for movement, targeting priority or damage.
+const combatVisual = {
+  touchPadding: 10,
+  minimumTouchSize: 44,
+  flashMs: 75,
+  marineX: 640,
+  marineY: 578,
+};
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
   runner: 0xffc66d,
@@ -34,7 +42,7 @@ export class EnemyPressureView {
         })
         .setOrigin(0.5);
 
-    this.hud.add(text(640, 32, "ENEMY PRESSURE · 공용 성벽 방어"));
+    this.hud.add(text(640, 32, "MARINE · GAUSS RIFLE"));
     this.hpText = text(640, 69, "");
     this.hpFill = scene.add
       .rectangle(400, 102, 480, 12, 0x77d7a0)
@@ -80,6 +88,15 @@ export class EnemyPressureView {
     this.world.add(
       scene.add.rectangle(640, field.wallY + 26, field.width, 30, 0x647887),
     );
+    this.world.add(
+      scene.add.rectangle(
+        combatVisual.marineX,
+        combatVisual.marineY,
+        42,
+        34,
+        0x77d7a0,
+      ),
+    );
     this.hud.add(text(640, 615, "NEAR / WALL · 도착 후 주기적으로 공격", 22));
     this.hud.add(
       text(
@@ -90,7 +107,12 @@ export class EnemyPressureView {
       ),
     );
     this.hud.add(
-      text(640, 692, "플레이어 공격 없음 · 다시 시작: 새로고침", 18),
+      text(
+        640,
+        692,
+        "빈 공간 탭: 자동 3점사 · 적 탭: 해당 적 우선 · 다시 시작: 새로고침",
+        18,
+      ),
     );
 
     this.failure = scene.add
@@ -115,7 +137,7 @@ export class EnemyPressureView {
     // Separate HUD root leaves room for future safe-area/camera handling.
     scene.game.canvas.setAttribute(
       "aria-label",
-      "적 이동과 공용 성벽 HP를 표시하는 전장",
+      "빈 공간 탭으로 자동 3점사, 적 탭으로 해당 적 우선 공격하는 전장",
     );
   }
 
@@ -144,10 +166,62 @@ export class EnemyPressureView {
     const x = field.left + laneX(enemy.lane, field.width, enemy.offset01);
     const y = field.farY + (field.wallY - field.farY) * enemy.progress01;
     visual.setPosition(x, y).setScale(perspectiveScale(enemy.progress01));
+    (visual.getAt(1) as Phaser.GameObjects.Text).setText(
+      `${enemy.kind[0]!.toUpperCase()} ${enemy.hp}`,
+    );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle).setStrokeStyle(
       enemy.phase === "attacking" ? 4 : 0,
       0xff665f,
     );
+  }
+
+  pickEnemy(
+    x: number,
+    y: number,
+    enemies: readonly {
+      state: EnemyState;
+      visual: Phaser.GameObjects.Container;
+    }[],
+  ): number | null {
+    let closest: number | null = null;
+    let distance = Infinity;
+    for (const { state, visual } of enemies) {
+      if (state.hp <= 0) continue;
+      const dx = x - (this.world.x + visual.x * this.world.scaleX);
+      const dy = y - (this.world.y + visual.y * this.world.scaleY);
+      const radius = Math.max(
+        combatVisual.minimumTouchSize / 2,
+        (field.enemySize * visual.scaleX * this.world.scaleX) / 2 +
+          combatVisual.touchPadding,
+      );
+      const squared = dx * dx + dy * dy;
+      if (
+        Math.abs(dx) <= radius &&
+        Math.abs(dy) <= radius &&
+        squared < distance
+      ) {
+        closest = state.id;
+        distance = squared;
+      }
+    }
+    return closest;
+  }
+
+  showShot(target: Phaser.GameObjects.Container): void {
+    const effect = this.scene.add.graphics();
+    effect.lineStyle(2, 0xffe69a, 0.9);
+    effect.lineBetween(
+      combatVisual.marineX,
+      combatVisual.marineY,
+      target.x,
+      target.y,
+    );
+    effect
+      .fillStyle(0xfff4bc)
+      .fillCircle(combatVisual.marineX, combatVisual.marineY, 9);
+    effect.fillCircle(target.x, target.y, 6);
+    this.world.add(effect);
+    this.scene.time.delayedCall(combatVisual.flashMs, () => effect.destroy());
   }
 
   renderWall(hp: number, maxHp: number): void {

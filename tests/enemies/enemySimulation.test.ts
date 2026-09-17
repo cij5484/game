@@ -10,6 +10,7 @@ describe("enemy simulation", () => {
       const enemy = createPrototypeEnemy(kind, "left", 7);
       expect(enemy).toEqual({
         id: 7,
+        hp: enemyConfigs[kind].hp,
         kind,
         lane: "left",
         offset01: 0.5,
