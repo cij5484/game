@@ -1,4 +1,5 @@
 import { hordeBalance } from "../data/horde";
+import { eliteBalance } from "../data/elite";
 import type { EnemyKind, LaneId } from "../model/types";
 
 export interface SpawnSpec {
@@ -6,6 +7,7 @@ export interface SpawnSpec {
   lane: LaneId;
   offset01: number;
   progress01: number;
+  elite?: boolean;
 }
 
 function weightedChoice<T extends string>(
@@ -24,6 +26,8 @@ function weightedChoice<T extends string>(
 export class SpawnDirector {
   private elapsed = 0;
   private nextSpawnAtMs = 0;
+  private nextEliteAtMs: number = eliteBalance.firstSpawnMs;
+  private elitePending = false;
   private initial = true;
   private readonly random: () => number;
 
@@ -35,7 +39,13 @@ export class SpawnDirector {
     return this.elapsed;
   }
   get timeToSpawnMs() {
-    return Math.max(0, this.nextSpawnAtMs - this.elapsed);
+    return Math.max(
+      0,
+      Math.min(
+        this.nextSpawnAtMs,
+        this.elitePending ? Infinity : this.nextEliteAtMs,
+      ) - this.elapsed,
+    );
   }
 
   get settings() {
@@ -71,26 +81,46 @@ export class SpawnDirector {
   spawn(activeCount: number): SpawnSpec[] {
     if (this.timeToSpawnMs > 0) return [];
     const settings = this.settings;
+    const spawns: SpawnSpec[] = [];
+    if (this.elapsed >= this.nextEliteAtMs) {
+      this.elitePending = activeCount >= settings.maxActiveEnemies;
+      if (!this.elitePending) {
+        spawns.push({
+          kind: eliteBalance.kind,
+          lane: weightedChoice(hordeBalance.laneWeights, this.random()),
+          offset01: 0.5,
+          progress01: 0,
+          elite: true,
+        });
+        this.nextEliteAtMs = this.elapsed + eliteBalance.spawnIntervalMs;
+      }
+    }
+    if (this.elapsed < this.nextSpawnAtMs) return spawns;
     const initial = this.initial;
     const count = Math.max(
       0,
       Math.min(
         initial ? hordeBalance.initialBatchSize : settings.batchSize,
-        settings.maxActiveEnemies - activeCount,
+        // Keep one place available for the next elite, even during a full horde.
+        settings.maxActiveEnemies - 1 - activeCount - spawns.length,
       ),
     );
     this.initial = false;
     // A full battlefield consumes this spawn opportunity; no catch-up backlog.
     this.nextSpawnAtMs = this.elapsed + settings.spawnIntervalMs;
-    return Array.from({ length: count }, () => ({
-      kind: weightedChoice(hordeBalance.enemyWeights, this.random()),
-      lane: weightedChoice(hordeBalance.laneWeights, this.random()),
-      offset01:
-        hordeBalance.lateralMin01 +
-        this.random() * (hordeBalance.lateralMax01 - hordeBalance.lateralMin01),
-      progress01: initial
-        ? this.random() * hordeBalance.initialMaxProgress01
-        : 0,
-    }));
+    return [
+      ...spawns,
+      ...Array.from({ length: count }, () => ({
+        kind: weightedChoice(hordeBalance.enemyWeights, this.random()),
+        lane: weightedChoice(hordeBalance.laneWeights, this.random()),
+        offset01:
+          hordeBalance.lateralMin01 +
+          this.random() *
+            (hordeBalance.lateralMax01 - hordeBalance.lateralMin01),
+        progress01: initial
+          ? this.random() * hordeBalance.initialMaxProgress01
+          : 0,
+      })),
+    ];
   }
 }
