@@ -73,7 +73,7 @@ export class PauseView {
     this.details.replaceChildren();
     for (const entry of entries) {
       const title = document.createElement("dt");
-      title.textContent = `${entry.symbol} ${entry.title}${entry.level ? ` 쨌 ${entry.level}` : ""}`;
+      title.textContent = `${entry.symbol} ${entry.title}${entry.level ? ` · ${entry.level}` : ""}`;
       const detail = document.createElement("dd");
       detail.textContent = entry.detail;
       this.details.append(title, detail);

@@ -9,11 +9,16 @@ export class GaussRifle {
   private current: AttackCommand | null = null;
   private buffered: AttackCommand | null = null;
   private roundsRemaining = 0;
+  private firstRound = false;
   private untilEventMs = 0;
   private state: "idle" | "firing" | "recovery" = "idle";
 
   constructor(config: GaussRifleConfig) {
     this.config = config;
+  }
+
+  get timeToEventMs(): number {
+    return this.state === "idle" ? Infinity : this.untilEventMs;
   }
 
   get phase() {
@@ -36,7 +41,11 @@ export class GaussRifle {
   /** Round offsets let the caller advance gameplay to each hitscan instant. */
   advance(
     deltaMs: number,
-    onRound: (command: AttackCommand, offsetMs: number) => void | boolean,
+    onRound: (
+      command: AttackCommand,
+      offsetMs: number,
+      firstInBurst: boolean,
+    ) => void | boolean,
     includeEndpoint = true,
   ): void {
     let remainingMs = Math.max(0, deltaMs);
@@ -60,6 +69,8 @@ export class GaussRifle {
         this.start(next);
       } else {
         const command = this.current!;
+        const firstInBurst = this.firstRound;
+        this.firstRound = false;
         this.roundsRemaining -= 1;
         this.state = this.roundsRemaining > 0 ? "firing" : "recovery";
         this.untilEventMs =
@@ -67,7 +78,7 @@ export class GaussRifle {
             ? this.config.roundIntervalMs
             : this.config.burstRecoveryMs;
         // Returning false lets a terminal run failure stop this frame immediately.
-        if (onRound(command, offsetMs) === false) return;
+        if (onRound(command, offsetMs, firstInBurst) === false) return;
       }
     }
   }
@@ -75,6 +86,7 @@ export class GaussRifle {
   private start(command: AttackCommand): void {
     this.current = { ...command };
     this.roundsRemaining = this.config.roundsPerBurst;
+    this.firstRound = true;
     this.untilEventMs = 0;
     this.state = "firing";
   }

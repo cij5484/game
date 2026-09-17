@@ -15,3 +15,17 @@ it("aggregates ordinary ranks and distinguishes trait levels, relics and unlevel
   expect(items.every((e) => e.symbol && e.title && e.detail)).toBe(true);
   expect(buildSummary({}, {}, new Set())).toEqual([]);
 });
+
+it("shows synergy conditions and separates evolution from automatic combinations", () => {
+  const items = buildSummary(
+    { penetration: 4, explosive: 1 },
+    { "tesla-coil": 3 },
+    new Set(),
+    new Set(["hyper-gauss"]),
+  );
+  const synergy = items.find((e) => e.id === "deep-blast")!;
+  expect(synergy.group).toBe("synergy");
+  expect(synergy.detail).toContain("관통 Lv.1");
+  expect(synergy.detail).toContain("폭발탄 Lv.1");
+  expect(items.find((e) => e.id === "hyper-gauss")?.group).toBe("evolution");
+});

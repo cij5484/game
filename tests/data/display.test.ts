@@ -33,3 +33,22 @@ it("keeps English identifiers separate from Korean player labels", () => {
   expect(upgrades.explosive.rarity).toBe("RARE");
   expect(upgrades["frost-shatter"].rarity).toBe("EPIC");
 });
+
+import { choiceFaces } from "../../src/game/data/display";
+import { weaponTraitIds } from "../../src/game/data/traits";
+import { relics } from "../../src/game/data/relics";
+it("has five card faces for every current trait and relic and no removed faces", () => {
+  for (const id of [...weaponTraitIds, ...Object.keys(relics)]) {
+    expect(choiceFaces[id as keyof typeof choiceFaces].lines).toHaveLength(5);
+  }
+  for (const id of [
+    "critical",
+    "split",
+    "heavy",
+    "siege-amplifier",
+    "ice-heart",
+    "stim-circuit",
+    "lucky-coin",
+  ])
+    expect(id in choiceFaces).toBe(false);
+});

@@ -1,3 +1,6 @@
+import { activeSynergies } from "../progression/synergy";
+import { evolutionRecipes, type RecipeRequirements } from "../data/evolutions";
+import { magicLabels } from "../data/display";
 import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import {
   weaponTraitIds,
@@ -10,7 +13,7 @@ import { choiceFaces } from "../data/display";
 
 export interface BuildIcon {
   id: string;
-  group: "upgrade" | "trait" | "relic" | "core";
+  group: "upgrade" | "trait" | "relic" | "core" | "synergy" | "evolution";
   title: string;
   symbol: string;
   level?: number;
@@ -31,6 +34,7 @@ export function buildSummary(
   ranks: UpgradeRanks,
   levels: RelicLevels,
   ownedCores: ReadonlySet<CoreId>,
+  evolutions: ReadonlySet<string> = new Set(),
 ): BuildIcon[] {
   const result: BuildIcon[] = [];
   const grouped = new Map<keyof typeof groups, BuildIcon>();
@@ -96,5 +100,41 @@ export function buildSummary(
       symbol: cores[id].symbol,
       detail: cores[id].description,
     });
+  for (const recipe of activeSynergies(ranks))
+    result.push({
+      id: recipe.id,
+      group: "synergy",
+      title: recipe.title,
+      symbol: recipe.symbol,
+      detail: `조건: ${recipeCondition(recipe.requires)}\n${recipe.description}`,
+    });
+  for (const recipe of evolutionRecipes.filter((r) => evolutions.has(r.id)))
+    result.push({
+      id: recipe.id,
+      group: "evolution",
+      title: recipe.title,
+      symbol: "⇶",
+      detail: `조건: ${recipeCondition(recipe.requires)}\n추가 관통 +${recipe.effects.penetrationBonus} · 관통 폭 ×${recipe.effects.penetrationWidthMultiplier}`,
+    });
   return result;
+}
+
+export function recipeCondition(requires: RecipeRequirements): string {
+  return [
+    ...Object.entries(requires.traits ?? {}).map(
+      ([id, rank]) =>
+        `${weaponTraits[id as WeaponTraitId]?.title ?? id} Lv.${rank}`,
+    ),
+    ...Object.entries(requires.relics ?? {}).map(
+      ([id, rank]) =>
+        `${relics[id as keyof typeof relics]?.title ?? id} Lv.${rank}`,
+    ),
+    ...Object.entries(requires.upgrades ?? {}).map(
+      ([id, rank]) =>
+        `${upgrades[id as keyof typeof upgrades]?.title ?? id} ${rank}단계`,
+    ),
+    ...Object.keys(requires.magic ?? {}).map(
+      (id) => `${magicLabels[id as keyof typeof magicLabels] ?? id} 장착`,
+    ),
+  ].join(" + ");
 }

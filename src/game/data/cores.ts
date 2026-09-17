@@ -34,7 +34,7 @@ export const cores = {
     id: "resonance",
     title: "공명 코어",
     symbol: "∞",
-    description: "활성 시너지의 폭발·추가 도탄·탄막 강화",
+    description: "활성 시너지의 피해·추가 대상·냉각 효과 ×1.5 강화",
     weight: 1,
   },
 } as const;

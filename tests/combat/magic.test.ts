@@ -183,3 +183,40 @@ it("advanced frost pulses all living enemies and storm forks hit distinct target
   expect(new Set(result.hitIds).size).toBe(33);
   expect(result.enemies.filter((enemy) => enemy.hp === 55)).toHaveLength(3);
 });
+
+it("thermal shock requires fire plus equipped frost and caps 300-enemy transactions", () => {
+  const pack = Array.from({ length: 300 }, (_, id) => ({
+    ...createPrototypeEnemy("grunt", "center", id),
+    hp: 1000,
+    burn: {
+      remainingMs: 2000,
+      dps: 10,
+      depth: 0,
+      spreadTargets: 0,
+      spreadRadius: 0,
+      maxDepth: 0,
+    },
+  }));
+  const plain = new Magic();
+  expect(plain.cast("frost-nova", pack)!.enemies[0]!.hp).toBe(1000);
+  const fire = new Magic();
+  fire.setUpgrades({ incendiary: 1 });
+  const result = fire.cast("frost-nova", pack)!;
+  expect(result.enemies.filter((e) => e.hp < 1000)).toHaveLength(24);
+  expect(result.enemies[0]!.hp).toBeCloseTo(988);
+  expect(result.enemies[0]!.burn?.remainingMs).toBe(2000);
+  expect(fire.cast("frost-nova", pack)).toBeNull();
+  const resonance = new Magic();
+  resonance.setUpgrades({ incendiary: 1 });
+  resonance.setSynergyMultiplier(1.35);
+  expect(resonance.cast("frost-nova", pack)!.enemies[0]!.hp).toBeCloseTo(983.8);
+});
+it("successful frost grants bounded heat cooling and a timed damage window", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ overheat: 1 });
+  expect(magic.cast("frost-nova", [])!.heatCooling).toBe(45);
+  expect(magic.primaryDamageMultiplier).toBe(1.25);
+  magic.advance(2000);
+  expect(magic.primaryDamageMultiplier).toBe(1);
+  expect(magic.cast("frost-nova", [])).toBeNull();
+});

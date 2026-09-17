@@ -94,33 +94,6 @@ it("explosive impact and its capped secondary explosions affect nearby enemies",
   expect(high.enemies[2]!.hp).toBeLessThan(low.enemies[2]!.hp);
 });
 
-it("critical RNG produces crit damage, level 3 shock and level 5 echo only on critical hits", () => {
-  const enemies = pack();
-  const normal = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { critical: 5 },
-    10,
-    {},
-    [],
-    noCrit,
-  );
-  const boosted = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { critical: 5 },
-    10,
-    {},
-    [],
-    crit,
-  );
-  expect(normal.criticalIds).toHaveLength(0);
-  expect(boosted.criticalIds).toContain(1);
-  expect(boosted.enemies[0]!.hp).toBeLessThan(normal.enemies[0]!.hp);
-  expect(boosted.splashIds.length).toBeGreaterThan(0);
-  expect(boosted.ricochetIds.length).toBeGreaterThan(0);
-});
-
 it("three trait synergies change explosion sites, critical bounces and periodic root shots", () => {
   const enemies = pack();
   const plain = primaryAttack(
@@ -135,7 +108,7 @@ it("three trait synergies change explosion sites, critical bounces and periodic 
   const lethal = primaryAttack(
     enemies[0]!,
     enemies,
-    { ricochet: 1, critical: 1 },
+    { ricochet: 1, "crit-chance": 3 },
     10,
     {},
     [],
@@ -244,57 +217,6 @@ it("common damage and speed work without owning a trait and base crits need no t
   ).toBe(82.5);
 });
 
-it("split creates one bounded secondary generation and grows its target count", () => {
-  const enemies = pack();
-  const low = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { split: 1 },
-    10,
-    {},
-    [],
-    noCrit,
-  );
-  const high = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { split: 5 },
-    10,
-    {},
-    [],
-    noCrit,
-  );
-  expect(low.hitIds).toHaveLength(2);
-  expect(high.hitIds).toHaveLength(4);
-  expect(high.shotTargetIds).toEqual([1]);
-  expect(high.enemies[1]!.hp).toBeLessThan(low.enemies[1]!.hp);
-});
-
-it("heavy adds primary damage, physical pushback and high-level impact splash", () => {
-  const enemies = pack();
-  const low = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { heavy: 1 },
-    10,
-    {},
-    [],
-    noCrit,
-  );
-  const high = primaryAttack(
-    enemies[0]!,
-    enemies,
-    { heavy: 3 },
-    10,
-    {},
-    [],
-    noCrit,
-  );
-  expect(low.enemies[0]!.hp).toBeLessThan(90);
-  expect(low.enemies[0]!.progress01).toBeLessThan(enemies[0]!.progress01);
-  expect(high.splashIds.length).toBeGreaterThan(0);
-});
-
 it("execution finishes low-health primary targets but does not execute secondary splash", () => {
   const enemies = [
     { ...enemy(1, 0.9), hp: 8 },
@@ -320,7 +242,7 @@ it("execution finishes low-health primary targets but does not execute secondary
 
 it("relic damage and resonance amplify the existing bounded primary effects", () => {
   const enemies = pack();
-  const ranks = { ricochet: 1, critical: 1 };
+  const ranks = { ricochet: 1, "crit-chance": 3 };
   const standard = primaryAttack(enemies[0]!, enemies, ranks, 10, {}, [], crit);
   const resonant = primaryAttack(
     enemies[0]!,
@@ -342,4 +264,274 @@ it("execution uses the enemy spawn maximum HP after time and elite scaling", () 
     primaryAttack(scaled, [scaled], { execution: 2 }, 1, {}, [], noCrit)
       .enemies[0]!.hp,
   ).toBe(0);
+});
+
+it("incendiary adds persistent burn without immediate explosion", () => {
+  const enemies = pack();
+  const result = primaryAttack(enemies[0]!, enemies, { incendiary: 1 }, 10);
+  expect(result.enemies[0]!.burn?.dps).toBeGreaterThan(0);
+  expect(result.enemies[0]!.hp).toBe(90);
+  expect(result.splashIds).toEqual([]);
+});
+
+it("marking rewards consecutive selected targets and exposes shield weakness", () => {
+  let enemies = [enemy(1, 0.8), enemy(2, 0.7)];
+  for (let shotIndex = 1; shotIndex <= 4; shotIndex++)
+    enemies = primaryAttack(enemies[0]!, enemies, { marking: 3 }, 1, {}, [], {
+      ...noCrit,
+      shotIndex,
+    }).enemies;
+  expect(enemies[0]!.markStacks).toBeGreaterThan(1);
+  expect(enemies[1]!.markStacks ?? 0).toBe(0);
+  enemies = primaryAttack(enemies[1]!, enemies, { marking: 3 }, 1, {}, [], {
+    ...noCrit,
+    shotIndex: 5,
+  }).enemies;
+  enemies = primaryAttack(enemies[0]!, enemies, { marking: 3 }, 1, {}, [], {
+    ...noCrit,
+    shotIndex: 6,
+  }).enemies;
+  expect(enemies[0]!.markStacks).toBe(1);
+});
+
+it("suppression gates pushback with immunity and reduces elite control", () => {
+  let enemies = [enemy(1, 0.9), { ...enemy(2, 0.9), elite: true }];
+  for (let n = 0; n < 3; n++) {
+    for (let i = 0; i < 2; i++)
+      enemies = primaryAttack(
+        enemies[i]!,
+        enemies,
+        { suppression: 3 },
+        0,
+      ).enemies;
+  }
+  expect(enemies[0]!.suppressionMs).toBeGreaterThan(0);
+  expect(enemies[0]!.progress01).toBeLessThan(enemies[1]!.progress01);
+  const stopped = enemies[0]!.progress01;
+  for (let n = 0; n < 30; n++)
+    enemies = primaryAttack(
+      enemies[0]!,
+      enemies,
+      { suppression: 3 },
+      0,
+    ).enemies;
+  expect(enemies[0]!.progress01).toBe(stopped);
+});
+
+it("suppression waves cannot trigger further waves in a 300-enemy horde", () => {
+  let enemies = Array.from({ length: 300 }, (_, i) =>
+    enemy(i + 1, 0.9 - i * 0.001),
+  );
+  for (let i = 0; i < 3; i++)
+    enemies = primaryAttack(
+      enemies[0]!,
+      enemies,
+      { suppression: 5 },
+      0,
+    ).enemies;
+  expect(
+    enemies.filter((target) => (target.suppressionMs ?? 0) > 0).length,
+  ).toBeLessThanOrEqual(5);
+});
+
+it("flame penetration and flame bounce ignite a bounded end wave", () => {
+  const enemies = pack();
+  const pierced = primaryAttack(
+    enemies[0]!,
+    enemies,
+    { penetration: 1, incendiary: 1 },
+    10,
+  );
+  expect(pierced.burnIds.length).toBeGreaterThan(pierced.hitIds.length);
+  expect(pierced.enemies[1]!.burn!.dps).toBeGreaterThan(
+    pierced.enemies[0]!.burn!.dps,
+  );
+  const bounced = primaryAttack(
+    enemies[0]!,
+    enemies,
+    { ricochet: 1, incendiary: 1 },
+    10,
+  );
+  expect(bounced.burnIds.length).toBeGreaterThan(bounced.hitIds.length);
+});
+
+it("focused bombardment extends the center explosion beyond ordinary splash", () => {
+  const enemies = [enemy(1, 0.9), enemy(2, 0.82)];
+  const plain = primaryAttack(enemies[0]!, enemies, { explosive: 1 }, 10);
+  const focused = primaryAttack(
+    enemies[0]!,
+    enemies,
+    { explosive: 1, multishot: 1 },
+    10,
+  );
+  expect(plain.explosionIds).toEqual([1]);
+  expect(focused.explosionIds).toContain(1);
+  expect(focused.enemies[1]!.hp).toBeLessThan(plain.enemies[1]!.hp);
+});
+
+it("marked execution widens only the fully marked target threshold", () => {
+  const target = {
+    ...enemy(1, 0.9),
+    hp: 20,
+    maxHp: 100,
+    markStacks: 2,
+    markShotIndex: 1,
+  };
+  const result = primaryAttack(
+    target,
+    [target],
+    { marking: 1, execution: 1 },
+    1,
+    {},
+    [],
+    { ...noCrit, shotIndex: 2 },
+  );
+  expect(result.executionIds).toEqual([1]);
+  expect(result.enemies[0]!.hp).toBe(0);
+});
+
+it("execution explosion reaches neighbors without executing or recursively exploding them", () => {
+  const enemies = [{ ...enemy(1, 0.9), hp: 5, maxHp: 100 }, enemy(2, 0.825)];
+  const result = primaryAttack(
+    enemies[0]!,
+    enemies,
+    { execution: 1, explosive: 1 },
+    1,
+  );
+  expect(result.executionIds).toEqual([1]);
+  expect(result.enemies[1]!.hp).toBeLessThan(100);
+  expect(result.explosionIds).toEqual([1]);
+});
+
+it("suppression pierce forces an end wave before ordinary stacks reach threshold", () => {
+  const enemies = pack();
+  const result = primaryAttack(
+    enemies[0]!,
+    enemies,
+    { penetration: 1, suppression: 1 },
+    1,
+  );
+  expect(result.suppressionIds).toContain(2);
+  expect(result.suppressionIds.length).toBeGreaterThan(1);
+});
+
+it("high heat adds simultaneous barrage targets and level3 heat ignites direct hits", () => {
+  const enemies = pack();
+  const ranks = { overheat: 3, multishot: 1 };
+  const cool = primaryAttack(enemies[0]!, enemies, ranks, 10, {}, [], {
+    ...noCrit,
+    heatRatio: 0.2,
+  });
+  const hot = primaryAttack(enemies[0]!, enemies, ranks, 10, {}, [], {
+    ...noCrit,
+    heatRatio: 0.8,
+  });
+  expect(hot.shotTargetIds.length).toBe(cool.shotTargetIds.length + 2);
+  expect(hot.burnIds).toEqual(hot.hitIds);
+  expect(cool.burnIds).toEqual([]);
+});
+
+it("combined max-level effects have a per-round budget in a 300-enemy horde", () => {
+  const enemies = Array.from({ length: 300 }, (_, i) =>
+    enemy(i + 1, 0.95 - i * 0.0025, (i % 7) / 7),
+  );
+  const ranks = {
+    penetration: 5,
+    ricochet: 5,
+    multishot: 5,
+    explosive: 5,
+    incendiary: 5,
+    suppression: 5,
+    marking: 5,
+    execution: 5,
+    overheat: 5,
+    "attack-speed": 3,
+    "crit-chance": 5,
+  };
+  const result = primaryAttack(enemies[0]!, enemies, ranks, 10, {}, [], {
+    shotIndex: 4,
+    random: () => 0,
+    heatRatio: 0.9,
+    synergyMultiplier: 2,
+  });
+  expect(result.enemies.filter((e) => e.hp < 100).length).toBeLessThanOrEqual(
+    128,
+  );
+  expect(new Set(result.hitIds).size).toBe(result.hitIds.length);
+});
+
+it("resonance expands suppression-pierce's bounded end-wave target count", () => {
+  const enemies = pack();
+  const ranks = { penetration: 1, suppression: 1 };
+  const standard = primaryAttack(
+    enemies[0]!,
+    enemies,
+    ranks,
+    1,
+    {},
+    [],
+    noCrit,
+  );
+  const resonant = primaryAttack(enemies[0]!, enemies, ranks, 1, {}, [], {
+    ...noCrit,
+    synergyMultiplier: 2,
+  });
+  expect(resonant.suppressionIds.length).toBeGreaterThan(
+    standard.suppressionIds.length,
+  );
+  expect(resonant.suppressionIds.length).toBeLessThanOrEqual(9);
+});
+
+it("echo inherits existing mark damage without building or resetting manual focus", () => {
+  const target = { ...enemy(1, 0.8), markStacks: 2, markShotIndex: 4 };
+  const echo = primaryAttack(target, [target], { marking: 1 }, 10, {}, [], {
+    ...noCrit,
+    shotIndex: 4,
+    isEcho: true,
+  });
+  expect(echo.enemies[0]!.hp).toBeCloseTo(88.4);
+  expect(echo.enemies[0]!.markStacks).toBe(2);
+  expect(echo.enemies[0]!.markShotIndex).toBe(4);
+  expect(echo.markIds).toEqual([]);
+  const continued = primaryAttack(
+    echo.enemies[0]!,
+    echo.enemies,
+    { marking: 1 },
+    1,
+    {},
+    [],
+    { ...noCrit, shotIndex: 5 },
+  );
+  expect(continued.enemies[0]!.markStacks).toBe(3);
+  expect(continued.enemies[0]!.markShotIndex).toBe(5);
+  const fresh = enemy(2, 0.8);
+  expect(
+    primaryAttack(fresh, [fresh], { marking: 1 }, 1, {}, [], {
+      ...noCrit,
+      isEcho: true,
+    }).enemies[0]!.markStacks,
+  ).toBeUndefined();
+});
+
+it("echo uses MAX marks for shield bypass and marked execution", () => {
+  const shield = {
+    ...enemy(1, 0.8),
+    kind: "shield" as const,
+    markStacks: 4,
+    markShotIndex: 4,
+  };
+  const ranks = { marking: 3, execution: 1 };
+  const pierced = primaryAttack(shield, [shield], ranks, 10, {}, [], {
+    ...noCrit,
+    shotIndex: 4,
+    isEcho: true,
+  });
+  expect(pierced.enemies[0]!.hp).toBeCloseTo(89.64);
+  const wounded = { ...shield, maxHp: 100, hp: 20 };
+  const executed = primaryAttack(wounded, [wounded], ranks, 1, {}, [], {
+    ...noCrit,
+    shotIndex: 4,
+    isEcho: true,
+  });
+  expect(executed.executionIds).toEqual([1]);
 });

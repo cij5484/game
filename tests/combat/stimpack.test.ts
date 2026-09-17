@@ -76,3 +76,49 @@ it("upgrades stim without resetting its phase or allowing negative boundaries", 
   expect(stim.phase).toBe("normal");
   expect(stim.timeToBoundaryMs).toBe(Infinity);
 });
+
+it("caps adrenaline extension across all kill transactions and increases recovery without changing crash", () => {
+  const stim = new Stimpack(stimpackBalance);
+  expect(stim.extendBoost(500, 3000, 0.5)).toBe(0);
+  stim.activate();
+  for (let i = 0; i < 6; i++)
+    expect(stim.extendBoost(500, 3000, 0.5)).toBe(500);
+  expect(stim.extendBoost(1000, 3000, 0.5)).toBe(0);
+  stim.advance(8000);
+  expect(stim.phase).toBe("crash");
+  expect(stim.timeToBoundaryMs).toBe(1000);
+  stim.advance(1000);
+  expect(stim.phase).toBe("recovery");
+  expect(stim.timeToBoundaryMs).toBe(3500);
+  expect(stim.weaponTimeFor(3500)).toBe(1750);
+  expect(stim.realTimeFor(1750)).toBe(3500);
+  stim.advance(3500);
+  stim.activate();
+  expect(stim.timeToBoundaryMs).toBe(5000);
+});
+it("does not extend boost from invalid values or alter recovery when no extension was accepted", () => {
+  const stim = new Stimpack(stimpackBalance);
+  stim.activate();
+  expect(stim.extendBoost(Infinity, 3000, 0.5)).toBe(0);
+  expect(stim.extendBoost(-10, 3000, 0.5)).toBe(0);
+  stim.advance(6000);
+  expect(stim.timeToBoundaryMs).toBe(2000);
+});
+
+it("integrates and inverts the longer recovery consistently after partial recovery has elapsed", () => {
+  const stim = new Stimpack(stimpackBalance);
+  stim.activate();
+  stim.extendBoost(3000, 3000, 0.5);
+  stim.advance(9000);
+  const firstQuarter = stim.weaponTimeFor(875);
+  expect(firstQuarter).toBeCloseTo(109.375);
+  stim.advance(875);
+  expect(stim.attackSpeedMultiplier).toBe(0.25);
+  expect(stim.realTimeFor(328.125)).toBeCloseTo(875);
+  const secondQuarter = stim.weaponTimeFor(875);
+  expect(secondQuarter).toBeCloseTo(328.125);
+  stim.advance(875);
+  expect(firstQuarter + secondQuarter + stim.weaponTimeFor(1750)).toBeCloseTo(
+    1750,
+  );
+});

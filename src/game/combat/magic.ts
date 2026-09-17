@@ -1,3 +1,4 @@
+import { activeSynergies } from "../progression/synergy";
 import { combatPosition } from "../battlefield/combatGeometry";
 import { magicConfigs, magicBehaviorBalance } from "../data/magic";
 import { upgrades, type UpgradeRanks } from "../data/upgrades";
@@ -24,10 +25,11 @@ export class Magic {
     "frost-nova": magicConfigs["frost-nova"].cooldownMs,
     "chain-lightning": magicConfigs["chain-lightning"].cooldownMs,
   };
-  private relicFrostDurationMs = 0;
+  private coolingWindowMs = 0;
+  private synergyMultiplier = 1;
 
-  setRelicFrostDuration(bonusMs: number): void {
-    this.relicFrostDurationMs = bonusMs;
+  setSynergyMultiplier(value: number): void {
+    this.synergyMultiplier = Math.max(1, Math.min(2, value));
   }
 
   private bonus(id: keyof UpgradeRanks): number {
@@ -39,7 +41,10 @@ export class Magic {
   }
 
   get primaryDamageMultiplier(): number {
-    return this.frostMs > 0 ? 1 + this.bonus("frost-vulnerability") : 1;
+    return (
+      (this.frostMs > 0 ? 1 + this.bonus("frost-vulnerability") : 1) *
+      (this.coolingWindowMs > 0 ? 1 + 0.25 * this.synergyMultiplier : 1)
+    );
   }
 
   afterDeaths(enemies: readonly EnemyState[], killedIds: readonly number[]) {
@@ -76,6 +81,10 @@ export class Magic {
 
   advance(deltaMs: number): void {
     this.frostMs = Math.max(0, this.frostMs - Math.max(0, deltaMs));
+    this.coolingWindowMs = Math.max(
+      0,
+      this.coolingWindowMs - Math.max(0, deltaMs),
+    );
     for (const id of Object.keys(this.cooldowns) as MagicId[]) {
       this.cooldowns[id] = Math.max(
         0,
@@ -108,7 +117,13 @@ export class Magic {
   cast(
     id: MagicId,
     enemies: readonly EnemyState[],
-  ): { enemies: EnemyState[]; hitIds: number[]; strikeIds: number[] } | null {
+  ): {
+    enemies: EnemyState[];
+    hitIds: number[];
+    strikeIds: number[];
+    thermalShockIds: number[];
+    heatCooling: number;
+  } | null {
     if (this.cooldowns[id] > 0) return null;
     const base = magicConfigs[id];
     const bonus = (upgrade: keyof UpgradeRanks) =>
@@ -117,10 +132,7 @@ export class Magic {
       base.effect === "global-slow"
         ? {
             ...base,
-            durationMs:
-              base.durationMs +
-              bonus("frost-duration") +
-              this.relicFrostDurationMs,
+            durationMs: base.durationMs + bonus("frost-duration"),
             moveSpeedMultiplier: Math.max(
               magicBehaviorBalance.minimumFrostMoveSpeedMultiplier,
               base.moveSpeedMultiplier - bonus("frost-strength"),
@@ -134,6 +146,26 @@ export class Magic {
           };
     this.cooldowns[id] = config.cooldownMs;
     this.cooldownTotals[id] = this.cooldowns[id];
+    const synergies = activeSynergies(this.ranks);
+    const thermal =
+      id === "frost-nova"
+        ? synergies.find((s) => s.id === "thermal-shock")?.effects
+        : undefined;
+    const cooling =
+      id === "frost-nova"
+        ? synergies.find((s) => s.id === "cryo-cooling")?.effects
+        : undefined;
+    const thermalShockIds = thermal
+      ? enemies
+          .filter((e) => e.hp > 0 && e.burn && e.burn.remainingMs > 0)
+          .sort((a, b) => b.progress01 - a.progress01 || a.id - b.id)
+          .slice(0, thermal.thermalShockTargets)
+          .map((e) => e.id)
+      : [];
+    const heatCooling = (cooling?.coolingAmount ?? 0) * this.synergyMultiplier;
+    if (cooling)
+      this.coolingWindowMs =
+        (cooling.coolingWindowMs ?? 0) * this.synergyMultiplier;
     const start = selectAutoTarget(enemies);
     const hits: EnemyState[] = [];
     const forkIds: number[] = [];
@@ -208,12 +240,23 @@ export class Magic {
     return {
       hitIds,
       strikeIds,
+      thermalShockIds,
+      heatCooling,
       enemies: enemies.map((enemy) => {
         if (!hitIds.includes(enemy.id)) return enemy;
         return config.effect === "global-slow"
           ? {
               ...enemy,
-              hp: Math.max(0, enemy.hp - bonus("frost-shatter")),
+              hp: Math.max(
+                0,
+                enemy.hp -
+                  bonus("frost-shatter") -
+                  (thermalShockIds.includes(enemy.id)
+                    ? ((enemy.burn!.dps * enemy.burn!.remainingMs) / 1000) *
+                      (thermal?.thermalShockFactor ?? 0) *
+                      this.synergyMultiplier
+                    : 0),
+              ),
             }
           : {
               ...enemy,

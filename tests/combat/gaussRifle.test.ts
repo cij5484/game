@@ -80,3 +80,28 @@ describe("Gauss Rifle cadence", () => {
     expect(weapon.phase).toBe("idle");
   });
 });
+
+it("identifies original volley starts and preserves a paused in-flight burst", () => {
+  const rifle = new GaussRifle({
+    id: "gauss-rifle",
+    roundsPerBurst: 3,
+    roundIntervalMs: 40,
+    burstRecoveryMs: 100,
+    maxBufferedCommands: 1,
+    damagePerRound: 10,
+  });
+  const starts: boolean[] = [];
+  rifle.request({ manualTargetId: 1 });
+  rifle.request({ manualTargetId: 2 });
+  rifle.advance(0, (_command, _time, first) => {
+    starts.push(first);
+    return false;
+  });
+  rifle.advance(40, (_command, _time, first) => {
+    starts.push(first);
+  });
+  rifle.advance(300, (_command, _time, first) => {
+    starts.push(first);
+  });
+  expect(starts).toEqual([true, false, false, true, false, false]);
+});

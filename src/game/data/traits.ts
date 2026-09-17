@@ -3,14 +3,40 @@ export const weaponTraitIds = [
   "ricochet",
   "multishot",
   "explosive",
-  "critical",
-  "split",
-  "heavy",
   "execution",
+  "incendiary",
+  "marking",
+  "suppression",
+  "overheat",
 ] as const;
 export type WeaponTraitId = (typeof weaponTraitIds)[number];
 export type WeaponTraitLevels = Partial<Record<WeaponTraitId, number>>;
 export interface TraitEffects {
+  burnDpsFactor: number;
+  burnDurationMs: number;
+  burnSpreadTargets: number;
+  burnSpreadRadius: number;
+  burnMaxDepth: number;
+  markMaxStacks: number;
+  markDamagePerStack: number;
+  markShieldBypass: number;
+  markTransferStacks: number;
+  markTransferRadius: number;
+  markFinisherFactor: number;
+  suppressionThreshold: number;
+  suppressionDurationMs: number;
+  suppressionSlow: number;
+  suppressionPushback: number;
+  suppressionAttackDelayMs: number;
+  suppressionWaveTargets: number;
+  suppressionWaveRadius: number;
+  heatPerShot: number;
+  heatCapacity: number;
+  heatCoolingPerSecond: number;
+  heatDamageBonus: number;
+  heatLockMs: number;
+  heatPulseFactor: number;
+
   pierceCount: number;
   pierceDamageRetention: number;
   shieldBypass: number;
@@ -29,19 +55,9 @@ export interface TraitEffects {
   explosionChainTargets: number;
   explosionSecondaryRadius: number;
   explosionSecondaryDamageFactor: number;
-  splitTargets: number;
-  splitDamageFactor: number;
-  splitRadius: number;
-  heavyDamageMultiplier: number;
-  heavyPushback: number;
-  heavySplashRadius: number;
-  heavySplashFactor: number;
   executionThreshold: number;
   executionSplashRadius: number;
   executionSplashFactor: number;
-  criticalSplashRadius: number;
-  criticalSplashFactor: number;
-  criticalEchoDamageFactor: number;
 }
 export interface WeaponTraitDefinition {
   id: WeaponTraitId;
@@ -263,128 +279,6 @@ export const weaponTraits: Record<WeaponTraitId, WeaponTraitDefinition> = {
       },
     ],
   },
-  critical: {
-    id: "critical",
-    title: "치명타",
-    levels: [
-      {
-        rarity: "RARE",
-        description: "치명타 적중 시 반경 60에 기본 피해 40% 충격파",
-        effects: { criticalSplashRadius: 60, criticalSplashFactor: 0.4 },
-      },
-      {
-        rarity: "RARE",
-        description: "치명타 충격파 반경 80 · 기본 피해 65%",
-        effects: { criticalSplashRadius: 80, criticalSplashFactor: 0.65 },
-      },
-      {
-        rarity: "EPIC",
-        description:
-          "치명타 충격파 반경 95 · 피해 80% · 다른 적 1명에게 치명타 피해 35% 메아리",
-        effects: {
-          criticalSplashRadius: 95,
-          criticalSplashFactor: 0.8,
-          criticalEchoDamageFactor: 0.35,
-        },
-      },
-      {
-        rarity: "RARE",
-        description: "치명타 충격파 반경 115 · 피해 100% · 메아리 55%",
-        effects: {
-          criticalSplashRadius: 115,
-          criticalSplashFactor: 1,
-          criticalEchoDamageFactor: 0.55,
-        },
-      },
-      {
-        rarity: "EPIC",
-        description:
-          "치명타 충격파 반경 150 · 피해 150% · 다른 적 1명에게 치명타 피해 100% 메아리",
-        effects: {
-          criticalSplashRadius: 150,
-          criticalSplashFactor: 1.5,
-          criticalEchoDamageFactor: 1,
-        },
-      },
-    ],
-  },
-  split: {
-    id: "split",
-    title: "분열탄",
-    levels: [
-      {
-        rarity: "RARE",
-        description: "첫 적중에서 주변 1명에게 45% 분열탄 · 재분열 없음",
-        effects: { splitTargets: 1, splitDamageFactor: 0.45, splitRadius: 140 },
-      },
-      {
-        rarity: "RARE",
-        description: "주변 1명에게 70% 분열탄 · 탐색 반경 170",
-        effects: { splitTargets: 1, splitDamageFactor: 0.7, splitRadius: 170 },
-      },
-      {
-        rarity: "EPIC",
-        description: "첫 적중에서 주변 2명에게 75% 분열탄",
-        effects: { splitTargets: 2, splitDamageFactor: 0.75, splitRadius: 200 },
-      },
-      {
-        rarity: "RARE",
-        description: "주변 2명에게 100% 분열탄 · 탐색 반경 230",
-        effects: { splitTargets: 2, splitDamageFactor: 1, splitRadius: 230 },
-      },
-      {
-        rarity: "EPIC",
-        description: "첫 적중에서 주변 3명에게 120% 분열탄 · 반경 270",
-        effects: { splitTargets: 3, splitDamageFactor: 1.2, splitRadius: 270 },
-      },
-    ],
-  },
-  heavy: {
-    id: "heavy",
-    title: "중량탄",
-    levels: [
-      {
-        rarity: "RARE",
-        description: "직격 피해 +30% · 적을 전장 깊이 1%만큼 밀침",
-        effects: { heavyDamageMultiplier: 1.3, heavyPushback: 0.01 },
-      },
-      {
-        rarity: "RARE",
-        description: "직격 피해 +50% · 밀침 1.5%",
-        effects: { heavyDamageMultiplier: 1.5, heavyPushback: 0.015 },
-      },
-      {
-        rarity: "EPIC",
-        description: "직격 피해 +70% · 밀침 2% · 반경 80에 50% 충격파",
-        effects: {
-          heavyDamageMultiplier: 1.7,
-          heavyPushback: 0.02,
-          heavySplashRadius: 80,
-          heavySplashFactor: 0.5,
-        },
-      },
-      {
-        rarity: "RARE",
-        description: "직격 피해 +90% · 밀침 2.5% · 반경 100에 75% 충격파",
-        effects: {
-          heavyDamageMultiplier: 1.9,
-          heavyPushback: 0.025,
-          heavySplashRadius: 100,
-          heavySplashFactor: 0.75,
-        },
-      },
-      {
-        rarity: "EPIC",
-        description: "직격 피해 +120% · 밀침 4% · 반경 140에 120% 충격파",
-        effects: {
-          heavyDamageMultiplier: 2.2,
-          heavyPushback: 0.04,
-          heavySplashRadius: 140,
-          heavySplashFactor: 1.2,
-        },
-      },
-    ],
-  },
   execution: {
     id: "execution",
     title: "처형탄",
@@ -429,9 +323,312 @@ export const weaponTraits: Record<WeaponTraitId, WeaponTraitDefinition> = {
       },
     ],
   },
+  incendiary: {
+    id: "incendiary",
+    title: "소이탄",
+    levels: [
+      {
+        rarity: "RARE",
+        description: "초당 기본 피해 22% 화상 · 2초",
+        effects: {
+          burnDpsFactor: 0.22,
+          burnDurationMs: 2000,
+          burnSpreadTargets: 0,
+          burnSpreadRadius: 0,
+          burnMaxDepth: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description: "초당 기본 피해 30% 화상 · 2.6초",
+        effects: {
+          burnDpsFactor: 0.3,
+          burnDurationMs: 2600,
+          burnSpreadTargets: 0,
+          burnSpreadRadius: 0,
+          burnMaxDepth: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "초당 기본 피해 36% 화상 · 3초 · 사망 시 2명 전염 · 최대 1세대",
+        effects: {
+          burnDpsFactor: 0.36,
+          burnDurationMs: 3000,
+          burnSpreadTargets: 2,
+          burnSpreadRadius: 95,
+          burnMaxDepth: 1,
+        },
+      },
+      {
+        rarity: "RARE",
+        description:
+          "초당 기본 피해 44% 화상 · 3.4초 · 사망 시 3명 전염 · 최대 2세대",
+        effects: {
+          burnDpsFactor: 0.44,
+          burnDurationMs: 3400,
+          burnSpreadTargets: 3,
+          burnSpreadRadius: 125,
+          burnMaxDepth: 2,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "초당 기본 피해 55% 화상 · 4초 · 사망 시 4명 전염 · 최대 3세대",
+        effects: {
+          burnDpsFactor: 0.55,
+          burnDurationMs: 4000,
+          burnSpreadTargets: 4,
+          burnSpreadRadius: 150,
+          burnMaxDepth: 3,
+        },
+      },
+    ],
+  },
+  marking: {
+    id: "marking",
+    title: "표식탄",
+    levels: [
+      {
+        rarity: "RARE",
+        description: "같은 대상 연속 직격 시 표식 최대 3 · 중첩당 피해 +8%",
+        effects: {
+          markMaxStacks: 3,
+          markDamagePerStack: 0.08,
+          markShieldBypass: 0,
+          markTransferStacks: 0,
+          markTransferRadius: 160,
+          markFinisherFactor: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description: "같은 대상 연속 직격 시 표식 최대 4 · 중첩당 피해 +9%",
+        effects: {
+          markMaxStacks: 4,
+          markDamagePerStack: 0.09,
+          markShieldBypass: 0,
+          markTransferStacks: 0,
+          markTransferRadius: 160,
+          markFinisherFactor: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "같은 대상 연속 직격 시 표식 최대 4 · 중첩당 피해 +12% · MAX 표식 방패 약화",
+        effects: {
+          markMaxStacks: 4,
+          markDamagePerStack: 0.12,
+          markShieldBypass: 0.4,
+          markTransferStacks: 0,
+          markTransferRadius: 160,
+          markFinisherFactor: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description:
+          "같은 대상 연속 직격 시 표식 최대 5 · 중첩당 피해 +14% · MAX 표식 방패 약화 · 처치 시 표식 2개 이전",
+        effects: {
+          markMaxStacks: 5,
+          markDamagePerStack: 0.14,
+          markShieldBypass: 0.55,
+          markTransferStacks: 2,
+          markTransferRadius: 160,
+          markFinisherFactor: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "같은 대상 연속 직격 시 표식 최대 5 · 중첩당 피해 +17% · MAX 표식 방패 약화 · 처치 시 표식 2개 이전 · MAX 마무리 피해 +50%",
+        effects: {
+          markMaxStacks: 5,
+          markDamagePerStack: 0.17,
+          markShieldBypass: 0.8,
+          markTransferStacks: 2,
+          markTransferRadius: 160,
+          markFinisherFactor: 0.5,
+        },
+      },
+    ],
+  },
+  suppression: {
+    id: "suppression",
+    title: "제압탄",
+    levels: [
+      {
+        rarity: "RARE",
+        description: "3회 적중 시 600ms 국지 감속 · 재제압 면역 2.4초",
+        effects: {
+          suppressionThreshold: 3,
+          suppressionDurationMs: 600,
+          suppressionSlow: 0.25,
+          suppressionPushback: 0,
+          suppressionAttackDelayMs: 0,
+          suppressionWaveTargets: 0,
+          suppressionWaveRadius: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description: "3회 적중 시 700ms 국지 감속 · 재제압 면역 2.4초",
+        effects: {
+          suppressionThreshold: 3,
+          suppressionDurationMs: 700,
+          suppressionSlow: 0.3,
+          suppressionPushback: 0,
+          suppressionAttackDelayMs: 0,
+          suppressionWaveTargets: 0,
+          suppressionWaveRadius: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "3회 적중 시 800ms 국지 감속 · 짧은 밀침/성벽 공격 지연 · 재제압 면역 2.4초",
+        effects: {
+          suppressionThreshold: 3,
+          suppressionDurationMs: 800,
+          suppressionSlow: 0.35,
+          suppressionPushback: 0.012,
+          suppressionAttackDelayMs: 180,
+          suppressionWaveTargets: 0,
+          suppressionWaveRadius: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description:
+          "3회 적중 시 900ms 국지 감속 · 짧은 밀침/성벽 공격 지연 · 재제압 면역 2.4초",
+        effects: {
+          suppressionThreshold: 3,
+          suppressionDurationMs: 900,
+          suppressionSlow: 0.4,
+          suppressionPushback: 0.018,
+          suppressionAttackDelayMs: 240,
+          suppressionWaveTargets: 0,
+          suppressionWaveRadius: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "3회 적중 시 1000ms 국지 감속 · 짧은 밀침/성벽 공격 지연 · 뒤쪽 4명 제압 파동 · 재제압 면역 2.4초",
+        effects: {
+          suppressionThreshold: 3,
+          suppressionDurationMs: 1000,
+          suppressionSlow: 0.45,
+          suppressionPushback: 0.025,
+          suppressionAttackDelayMs: 300,
+          suppressionWaveTargets: 4,
+          suppressionWaveRadius: 130,
+        },
+      },
+    ],
+  },
+  overheat: {
+    id: "overheat",
+    title: "과열",
+    levels: [
+      {
+        rarity: "RARE",
+        description:
+          "지속 사격 Heat · 고열 피해 최대 +25% · 한계 초과 시 1.2초 사격 중단",
+        effects: {
+          heatPerShot: 11,
+          heatCapacity: 100,
+          heatCoolingPerSecond: 38,
+          heatDamageBonus: 0.25,
+          heatLockMs: 1200,
+          heatPulseFactor: 0,
+        },
+      },
+      {
+        rarity: "RARE",
+        description:
+          "지속 사격 Heat · 고열 피해 최대 +35% · 한계 초과 시 1.2초 사격 중단",
+        effects: {
+          heatPerShot: 11,
+          heatCapacity: 100,
+          heatCoolingPerSecond: 38,
+          heatDamageBonus: 0.35,
+          heatLockMs: 1200,
+          heatPulseFactor: 0,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "지속 사격 Heat · 고열 피해 최대 +45% · 고열 직격 화상 · 한계 초과 시 1.2초 사격 중단",
+        effects: {
+          heatPerShot: 11,
+          heatCapacity: 100,
+          heatCoolingPerSecond: 38,
+          heatDamageBonus: 0.45,
+          heatLockMs: 1200,
+          heatPulseFactor: 0.15,
+        },
+      },
+      {
+        rarity: "RARE",
+        description:
+          "지속 사격 Heat · 고열 피해 최대 +55% · 고열 직격 화상 · 한계 초과 시 1.1초 사격 중단",
+        effects: {
+          heatPerShot: 11,
+          heatCapacity: 120,
+          heatCoolingPerSecond: 52,
+          heatDamageBonus: 0.55,
+          heatLockMs: 1100,
+          heatPulseFactor: 0.15,
+        },
+      },
+      {
+        rarity: "EPIC",
+        description:
+          "지속 사격 Heat · 고열 피해 최대 +80% · 고열 직격 화상 · 한계 초과 시 1.5초 사격 중단",
+        effects: {
+          heatPerShot: 11,
+          heatCapacity: 120,
+          heatCoolingPerSecond: 52,
+          heatDamageBonus: 0.8,
+          heatLockMs: 1500,
+          heatPulseFactor: 0.15,
+        },
+      },
+    ],
+  },
 };
 export function getTraitEffects(levels: WeaponTraitLevels): TraitEffects {
   const effects: TraitEffects = {
+    burnDpsFactor: 0,
+    burnDurationMs: 0,
+    burnSpreadTargets: 0,
+    burnSpreadRadius: 0,
+    burnMaxDepth: 0,
+    markMaxStacks: 0,
+    markDamagePerStack: 0,
+    markShieldBypass: 0,
+    markTransferStacks: 0,
+    markTransferRadius: 0,
+    markFinisherFactor: 0,
+    suppressionThreshold: 0,
+    suppressionDurationMs: 0,
+    suppressionSlow: 0,
+    suppressionPushback: 0,
+    suppressionAttackDelayMs: 0,
+    suppressionWaveTargets: 0,
+    suppressionWaveRadius: 0,
+    heatPerShot: 0,
+    heatCapacity: 0,
+    heatCoolingPerSecond: 0,
+    heatDamageBonus: 0,
+    heatLockMs: 0,
+    heatPulseFactor: 0,
+
     pierceCount: 0,
     pierceDamageRetention: 0.55,
     shieldBypass: 0,
@@ -450,19 +647,9 @@ export function getTraitEffects(levels: WeaponTraitLevels): TraitEffects {
     explosionChainTargets: 0,
     explosionSecondaryRadius: 0,
     explosionSecondaryDamageFactor: 0,
-    splitTargets: 0,
-    splitDamageFactor: 0,
-    splitRadius: 0,
-    heavyDamageMultiplier: 1,
-    heavyPushback: 0,
-    heavySplashRadius: 0,
-    heavySplashFactor: 0,
     executionThreshold: 0,
     executionSplashRadius: 0,
     executionSplashFactor: 0,
-    criticalSplashRadius: 0,
-    criticalSplashFactor: 0,
-    criticalEchoDamageFactor: 0,
   };
   for (const id of weaponTraitIds) {
     const level = Math.min(

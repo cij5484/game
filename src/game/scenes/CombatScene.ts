@@ -5,7 +5,7 @@ import {
   gaussRifleBalance,
   stimpackBalance,
 } from "../data/balance";
-import { GaussRifle } from "../combat/gaussRifle";
+import { GaussRifle, type AttackCommand } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
 import { SpawnDirector } from "../waves/spawnDirector";
 import { Magic } from "../combat/magic";
@@ -15,13 +15,19 @@ import { resolveAttackTarget } from "../combat/targeting";
 import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
 import { Progression } from "../progression/progression";
 import { LevelUpView } from "../ui/LevelUpView";
-import { Relics, relicEffects } from "../progression/relics";
+import { Relics } from "../progression/relics";
 import { Cores } from "../progression/cores";
 import { coreEffects } from "../data/cores";
 import { BuildBar } from "../ui/BuildBar";
 import { buildSummary } from "../ui/buildSummary";
-import type { UpgradeRarity } from "../data/upgrades";
-import { RelicCombat } from "../combat/relicCombat";
+import { relicBalance } from "../data/relics";
+import {
+  WeaponHeat,
+  tickTraitStatuses,
+  propagateTraitDeaths,
+  traitCombatBalance,
+} from "../combat/traitCombat";
+import { RelicCombat, type EchoVolley } from "../combat/relicCombat";
 import { activeSynergies } from "../progression/synergy";
 import { display } from "../data/display";
 import { PauseView } from "../ui/PauseView";
@@ -31,7 +37,7 @@ import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { advanceWallAttack } from "../enemies/wallAttack";
-import { advanceRun, applyWallDamage, createRunState } from "../model/runState";
+import { advanceRun, createRunState } from "../model/runState";
 import { Burst } from "../combat/burst";
 import { suppressiveBarrage } from "../combat/barrage";
 import { burstBalance } from "../data/burst";
@@ -62,6 +68,8 @@ export class CombatScene extends Phaser.Scene {
   private cores = new Cores();
   private buildBar!: BuildBar;
   private shotIndex = 0;
+  private heat = new WeaponHeat();
+  private echoRounds: { dueMs: number; volley: EchoVolley }[] = [];
   private synergies = new Set<string>();
   private pauseUi!: PauseView;
   private manualPaused = false;
@@ -97,6 +105,8 @@ export class CombatScene extends Phaser.Scene {
     this.relicCombat = new RelicCombat();
     this.cores = new Cores();
     this.shotIndex = 0;
+    this.heat = new WeaponHeat();
+    this.echoRounds = [];
     this.synergies = new Set();
     this.manualPaused = false;
     this.evolutions = new Set();
@@ -202,6 +212,8 @@ export class CombatScene extends Phaser.Scene {
           );
           return;
         }
+        this.heat.cool(result.heatCooling);
+        this.showStatusImpacts("fire", result.thermalShockIds);
         this.view.showMagic(
           id,
           result.hitIds.map(
@@ -286,9 +298,9 @@ export class CombatScene extends Phaser.Scene {
         Math.max(0, deltaMs),
         burstBalance.rhythmMs - this.burst.elapsedMs,
       );
-      this.advanceWorld(step * burstBalance.timeScale);
-      this.stimpack.advance(step * burstBalance.timeScale);
-      const result = this.burst.advance(step);
+      const consumed = this.advanceWorld(step * burstBalance.timeScale);
+      this.stimpack.advance(consumed);
+      const result = this.burst.advance(consumed / burstBalance.timeScale);
       if (result && this.run.status === "running") {
         this.time.timeScale = 1;
         this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
@@ -301,7 +313,7 @@ export class CombatScene extends Phaser.Scene {
             (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
           ),
         );
-        this.applyEnemyStates(barrage.enemies, false);
+        this.applyEnemyStates(barrage.enemies, false, false, false);
       }
       if (this.run.wallHp <= 0) this.time.timeScale = 1;
       this.renderCombat();
@@ -309,9 +321,9 @@ export class CombatScene extends Phaser.Scene {
     }
     if (this.ultimateRemainingMs > 0) {
       const step = Math.min(Math.max(0, deltaMs), this.ultimateRemainingMs);
-      this.advanceWorld(step);
-      this.stimpack.advance(step);
-      this.ultimateRemainingMs -= step;
+      const consumed = this.advanceWorld(step);
+      this.stimpack.advance(consumed);
+      this.ultimateRemainingMs -= consumed;
       if (this.choosing && this.run.status === "running") this.showChoices();
       else if (this.ultimateRemainingMs === 0) this.flushNotices();
       this.renderCombat();
@@ -319,10 +331,16 @@ export class CombatScene extends Phaser.Scene {
     }
     let remaining = Math.max(0, deltaMs);
     do {
-      const step = Math.min(remaining, this.stimpack.timeToBoundaryMs);
+      const step = Math.min(
+        remaining,
+        this.stimpack.timeToBoundaryMs,
+        16,
+        this.heat.locked ? this.heat.remainingLockMs : Infinity,
+      );
       let consumed = step;
-      if (this.stimpack.canAttack) consumed = this.advanceCombat(step);
-      else this.advanceWorld(step);
+      if (this.stimpack.canAttack && !this.heat.locked)
+        consumed = this.advanceCombat(step);
+      else consumed = this.advanceWorld(step);
       this.stimpack.advance(consumed);
       remaining -= consumed;
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
@@ -330,6 +348,11 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private renderCombat(): void {
+    this.buildBar.renderHeat(
+      !!this.progression.ranks.overheat,
+      this.heat.ratio,
+      this.heat.locked,
+    );
     this.finishRun();
     this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
     this.renderBurst();
@@ -386,91 +409,134 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private advanceCombat(deltaMs: number): number {
-    let elapsed = 0;
-    this.rifle.advance(
-      this.stimpack.weaponTimeFor(deltaMs),
-      (command, weaponOffsetMs) => {
-        const offsetMs = this.stimpack.realTimeFor(weaponOffsetMs);
-        this.advanceWorld(offsetMs - elapsed);
-        elapsed = offsetMs;
-        if (this.run.status !== "running") return false;
-        this.shotIndex++;
-        const target = resolveAttackTarget(
-          command.manualTargetId,
-          this.enemies.map((entry) => entry.state),
-        );
-        if (target) {
-          const result = primaryAttack(
-            target,
-            this.enemies.map((entry) => entry.state),
-            this.progression.ranks,
-            gaussRifleBalance.damagePerRound *
-              marineConfig.baseStats.damageMultiplier *
-              this.magic.primaryDamageMultiplier,
-            this.relicCombat.primaryModifiersFor(
-              this.run.wallHp / runBalance.wallMaxHp,
-              this.stimpack.phase === "boost",
-            ),
-            [...this.evolutions],
-            {
-              shotIndex: this.shotIndex,
-              random: Math.random,
-              synergyMultiplier: coreEffects(this.cores.owned)
-                .synergyMultiplier,
-            },
+    const speed = this.relicCombat.primaryModifiersFor(
+      this.run.wallHp / runBalance.wallMaxHp,
+      this.stimpack.phase === "boost",
+    ).attackSpeedMultiplier;
+    const untilRound = this.stimpack.realTimeFor(
+      this.rifle.timeToEventMs / speed,
+    );
+    const step = Math.min(deltaMs, untilRound);
+    const consumed = this.advanceWorld(step);
+    // Advance clocks without crossing the firing endpoint. DoT/echo can open a choice here.
+    const weaponElapsed =
+      consumed === untilRound
+        ? this.rifle.timeToEventMs
+        : Math.min(
+            this.rifle.timeToEventMs,
+            this.stimpack.weaponTimeFor(consumed) * speed,
           );
-          this.view.showPrimary(
-            [...result.hitIds, ...result.splashIds].map(
-              (id) =>
-                this.enemies.find((entry) => entry.state.id === id)!.visual,
-            ),
-            result.ricochetIds,
-            [...result.hitIds, ...result.splashIds],
-            this.evolutions.size > 0,
-            result.splashIds,
-            result.shotTargetIds,
-            result.criticalIds,
-            result.explosionIds,
-          );
-          const relicResult = this.relicCombat.afterPrimary(
-            result.enemies,
-            result.hitIds,
-            result.criticalIds.length > 0,
-          );
-          if (relicResult.hitIds.length)
-            this.view.showMagic(
-              "chain-lightning",
-              relicResult.hitIds.map(
-                (id) =>
-                  this.enemies.find((entry) => entry.state.id === id)!.visual,
-              ),
-            );
-          this.magic.refundCooldowns(relicResult.cooldownRefunds);
-          this.applyEnemyStates(relicResult.enemies);
-          if (this.choosing) return false;
-        } else
-          this.relicCombat.afterPrimary(
-            this.enemies.map((entry) => entry.state),
-            [],
-            false,
-          );
-      },
+    this.rifle.advance(weaponElapsed, () => {}, false);
+    if (
+      !this.choosing &&
+      this.run.status === "running" &&
+      !this.heat.locked &&
       !(
         this.stimpack.phase === "boost" &&
-        deltaMs === this.stimpack.timeToBoundaryMs
-      ),
+        consumed === this.stimpack.timeToBoundaryMs
+      )
+    ) {
+      this.rifle.advance(0, (command, _offset, firstInBurst) =>
+        this.firePrimary(command, firstInBurst),
+      );
+    }
+    return consumed;
+  }
+
+  private firePrimary(
+    command: AttackCommand,
+    firstInBurst: boolean,
+  ): void | boolean {
+    this.shotIndex++;
+    const target = resolveAttackTarget(
+      command.manualTargetId,
+      this.enemies.map((entry) => entry.state),
     );
-    if (this.choosing || this.run.status !== "running") return elapsed;
-    if (this.run.status === "running")
-      this.advanceWorld(Math.max(0, deltaMs) - elapsed);
-    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
-    return deltaMs;
+    if (target) {
+      const heatRatio = this.heat.ratio;
+      const heatDamage = this.heat.damageMultiplier(this.progression.ranks);
+      this.heat.fire(
+        this.progression.ranks,
+        !!this.progression.ranks.multishot &&
+          heatRatio >= traitCombatBalance.highHeatRatio,
+      );
+      if (firstInBurst)
+        this.relicCombat.onVolley({
+          targetId: target.id,
+          ranks: this.progression.ranks,
+          baseDamage:
+            gaussRifleBalance.damagePerRound *
+            marineConfig.baseStats.damageMultiplier,
+          rounds: gaussRifleBalance.roundsPerBurst,
+        });
+      const result = primaryAttack(
+        target,
+        this.enemies.map((entry) => entry.state),
+        this.progression.ranks,
+        gaussRifleBalance.damagePerRound *
+          marineConfig.baseStats.damageMultiplier *
+          this.magic.primaryDamageMultiplier *
+          heatDamage,
+        this.relicCombat.primaryModifiersFor(
+          this.run.wallHp / runBalance.wallMaxHp,
+          this.stimpack.phase === "boost",
+        ),
+        [...this.evolutions],
+        {
+          heatRatio,
+          shotIndex: this.shotIndex,
+          random: Math.random,
+          synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
+        },
+      );
+      this.view.showPrimary(
+        [...result.hitIds, ...result.splashIds].map(
+          (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
+        ),
+        result.ricochetIds,
+        [...result.hitIds, ...result.splashIds],
+        this.evolutions.size > 0,
+        result.splashIds,
+        result.shotTargetIds,
+        result.criticalIds,
+        result.explosionIds,
+      );
+      this.showStatusImpacts("fire", result.burnIds);
+      this.showStatusImpacts("suppression", result.suppressionIds);
+      const relicResult = this.relicCombat.afterPrimary(
+        result.enemies,
+        result.hitIds,
+        result.criticalIds.length > 0,
+      );
+      if (relicResult.hitIds.length)
+        this.view.showMagic(
+          "chain-lightning",
+          relicResult.hitIds.map(
+            (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
+          ),
+        );
+      this.magic.refundCooldowns(relicResult.cooldownRefunds);
+      const frost = this.relicCombat.onPrimaryFrost(
+        relicResult.enemies,
+        result.hitIds,
+        this.magic.frostRemainingMs > 0,
+      );
+      this.showStatusImpacts("frost", frost.shatterIds);
+      this.applyEnemyStates(frost.enemies);
+      if (this.choosing || this.heat.locked) return false;
+    } else
+      this.relicCombat.afterPrimary(
+        this.enemies.map((entry) => entry.state),
+        [],
+        false,
+      );
   }
 
   private applyEnemyStates(
     states: readonly EnemyState[],
     chargeBurst = true,
     magicKill = false,
+    allowRelicEnergy = true,
   ): void {
     const frostBurst = this.magic.afterDeaths(
       states,
@@ -482,11 +548,16 @@ export class CombatScene extends Phaser.Scene {
         (id) => this.enemies.find((e) => e.state.id === id)!.visual,
       ),
     );
-    const byId = new Map(frostBurst.enemies.map((enemy) => [enemy.id, enemy]));
+    const propagated = propagateTraitDeaths(
+      frostBurst.enemies,
+      frostBurst.enemies.filter((e) => e.hp <= 0),
+      this.progression.ranks,
+    );
+    this.showStatusImpacts("fire", propagated.burnIds);
+    const byId = new Map(propagated.enemies.map((enemy) => [enemy.id, enemy]));
     let buildChanged = false;
     let xp = 0;
-    let magicXp = 0;
-    const frostHits = new Set(frostBurst.hitIds);
+    let nearWallKills = 0;
     let hits = 0;
     let kills = 0;
     let eliteKills = 0;
@@ -497,8 +568,8 @@ export class CombatScene extends Phaser.Scene {
       if (entry.state.hp <= 0) {
         kills++;
         xp += enemyConfigs[entry.state.kind].xpOnKill;
-        if (magicKill || frostHits.has(entry.state.id))
-          magicXp += enemyConfigs[entry.state.kind].xpOnKill;
+        if (entry.state.progress01 >= relicBalance.nearWallProgress)
+          nearWallKills++;
         if (entry.state.elite) {
           const core = this.cores.tryDrop(this.progression.traitLevels);
           if (core) {
@@ -525,7 +596,8 @@ export class CombatScene extends Phaser.Scene {
     const reward = this.relicCombat.onKills(kills, {
       frost: this.magic.frostRemainingMs > 0,
       boost: this.stimpack.phase === "boost",
-      magic: magicXp > 0,
+      magic: magicKill,
+      nearWallKills,
     });
     this.run = {
       ...this.run,
@@ -534,9 +606,15 @@ export class CombatScene extends Phaser.Scene {
         this.run.wallHp + reward.wallHealing,
       ),
     };
-    this.magic.refundCooldowns(reward.cooldownRefunds);
+    this.stimpack.extendBoost(
+      reward.boostExtensionMs,
+      reward.boostExtensionCapMs,
+      reward.recoveryCostRatio,
+    );
+    if (allowRelicEnergy)
+      this.burst.credit({ hits: reward.energy / burstBalance.charge.hits });
     if (buildChanged) this.refreshBuild();
-    this.progression.gainXp(xp + magicXp * (reward.xpMultiplier - 1));
+    this.progression.gainXp(xp);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
     this.renderProgression();
     if (this.choosing) this.showChoices();
@@ -608,25 +686,14 @@ export class CombatScene extends Phaser.Scene {
     for (const recipe of activeSynergies(this.progression.ranks)) {
       if (!this.synergies.has(recipe.id))
         this.notices.push(
-          `${display.synergy} · ${recipe.title}\n${recipe.description}`,
+          `${display.synergy} 활성화 · ${recipe.symbol} ${recipe.title}`,
         );
       this.synergies.add(recipe.id);
     }
     this.relicCombat.setLevels(this.relics.levels);
-    const relic = relicEffects(this.relics.levels);
     const core = coreEffects(this.cores.owned);
-    const modifiers = Object.fromEntries(
-      (["COMMON", "RARE", "EPIC", "LEGENDARY"] as UpgradeRarity[]).map(
-        (rarity) => [
-          rarity,
-          (core.rarityModifiers[rarity] ?? 1) *
-            (1 +
-              (rarity === "COMMON" ? 0 : (relic.rarityModifiers[rarity] ?? 0))),
-        ],
-      ),
-    );
-    this.progression.setRarityModifiers(modifiers);
-    this.magic.setRelicFrostDuration(relic.frostDurationBonusMs);
+    this.progression.setRarityModifiers(core.rarityModifiers);
+    this.magic.setSynergyMultiplier(core.synergyMultiplier);
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
     this.magic.setUpgrades(this.progression.ranks);
     this.stimpack.setUpgrades(this.progression.ranks);
@@ -634,17 +701,122 @@ export class CombatScene extends Phaser.Scene {
       this.progression.ranks,
       this.relics.levels,
       this.cores.owned,
+      this.evolutions,
     );
     this.buildBar.render(summary);
     this.pauseUi.setBuildDetails(summary);
   }
 
-  private advanceWorld(deltaMs: number): void {
+  private showStatusImpacts(
+    kind: "fire" | "frost" | "suppression" | "emergency",
+    ids: readonly number[],
+  ): void {
+    this.view.showImpacts(
+      kind,
+      ids.slice(0, 12).flatMap((id) => {
+        const entry = this.enemies.find((e) => e.state.id === id);
+        return entry ? [entry.visual] : [];
+      }),
+    );
+  }
+
+  private takeWallDamage(damage: number): void {
+    if (damage <= 0 || this.run.status !== "running") return;
+    const result = this.relicCombat.onWallDamage(
+      this.run.wallHp,
+      runBalance.wallMaxHp,
+      damage,
+    );
+    this.run = {
+      ...this.run,
+      wallHp: result.wallHp,
+      status: result.wallHp > 0 ? "running" : "failed",
+    };
+    if (!result.event) return;
+    this.magic.refundCooldowns(result.cooldownRefunds);
+    const pushed = this.enemies
+      .filter(
+        (e) =>
+          e.state.hp > 0 && e.state.progress01 >= relicBalance.nearWallProgress,
+      )
+      .sort((a, b) => b.state.progress01 - a.state.progress01)
+      .slice(0, 24);
+    for (const entry of pushed) {
+      entry.state = {
+        ...entry.state,
+        progress01: Math.max(
+          0,
+          entry.state.progress01 -
+            result.pushback * (entry.state.elite ? 0.5 : 1),
+        ),
+        phase: "moving",
+      };
+      entry.attackElapsedMs = 0;
+    }
+    this.showStatusImpacts(
+      "emergency",
+      pushed.map((e) => e.state.id),
+    );
+    this.view.showNotice(
+      result.event === "emergency"
+        ? "긴급 회수 장치 · 치명 피해 방어!"
+        : "최후의 보루 · 비상 방어 발동!",
+    );
+  }
+
+  private fireEchoes(): void {
+    // Each round is a single primary transaction. It cannot enter relic hooks or queue another echo.
+    const due = this.echoRounds
+      .filter((e) => e.dueMs <= this.run.elapsedMs)
+      .slice(0, 6);
+    for (const pending of due) {
+      this.echoRounds.splice(this.echoRounds.indexOf(pending), 1);
+      const candidates = this.enemies
+        .map((e) => e.state)
+        .filter((e) => e.id !== pending.volley.targetId);
+      const target = resolveAttackTarget(null, candidates);
+      if (!target) continue;
+      const result = primaryAttack(
+        target,
+        this.enemies.map((e) => e.state),
+        pending.volley.ranks,
+        pending.volley.baseDamage,
+        { damageMultiplier: pending.volley.damageMultiplier },
+        [],
+        {
+          isEcho: true,
+          shotIndex: this.shotIndex,
+          random: Math.random,
+          synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
+        },
+      );
+      this.view.showPrimary(
+        [...result.hitIds, ...result.splashIds].flatMap((id) => {
+          const enemy = this.enemies.find((e) => e.state.id === id);
+          return enemy ? [enemy.visual] : [];
+        }),
+        result.ricochetIds,
+        [...result.hitIds, ...result.splashIds],
+        false,
+        result.splashIds,
+        result.shotTargetIds,
+        result.criticalIds,
+        result.explosionIds,
+        true,
+      );
+      this.showStatusImpacts("fire", result.burnIds);
+      this.applyEnemyStates(result.enemies, false);
+      if (this.choosing || this.run.status !== "running") break;
+    }
+  }
+
+  private advanceWorld(deltaMs: number): number {
     // New enemies receive only time after their spawn boundary.
     let remaining = Math.max(0, deltaMs);
     while (remaining > 0 && this.run.status === "running") {
       const step = Math.min(
         remaining,
+        16,
         this.director.timeToSpawnMs,
         runBalance.durationMs - this.run.elapsedMs,
         this.magic.frostRemainingMs > 0
@@ -660,13 +832,18 @@ export class CombatScene extends Phaser.Scene {
           this.magic.movementMultiplier,
         );
         entry.state = movement.enemy;
+        const delay = Math.min(
+          movement.wallTimeMs,
+          entry.state.suppressionAttackDelayMs ?? 0,
+        );
+        if (delay > 0) entry.state.suppressionAttackDelayMs! -= delay;
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
-          movement.wallTimeMs,
+          movement.wallTimeMs - delay,
           config,
         );
         entry.attackElapsedMs = attack.elapsedMs;
-        this.run = applyWallDamage(this.run, attack.damage);
+        this.takeWallDamage(attack.damage);
         this.view.renderEnemy(
           entry.visual,
           entry.state,
@@ -674,15 +851,37 @@ export class CombatScene extends Phaser.Scene {
         );
         if (this.run.status !== "running") break;
       }
+      this.heat.tick(step, this.progression.ranks);
+      const echoes = this.relicCombat.advance(step);
+      for (const volley of echoes) {
+        for (let i = 0; i < volley.rounds && this.echoRounds.length < 24; i++)
+          this.echoRounds.push({
+            dueMs: this.run.elapsedMs + step + i * 40,
+            volley,
+          });
+      }
+      const statuses = tickTraitStatuses(
+        this.enemies.map((e) => e.state),
+        step,
+      );
+      if (statuses.hitIds.length)
+        this.applyEnemyStates(statuses.enemies, false);
+      else
+        this.enemies.forEach((entry, i) => {
+          entry.state = statuses.enemies[i]!;
+        });
       this.director.advance(step);
       this.magic.advance(step);
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
+      if (this.run.status === "running" && !this.choosing) this.fireEchoes();
+      if (this.choosing) break;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
         this.spawnBatch();
       }
     }
     this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
+    return Math.max(0, deltaMs) - remaining;
   }
 }

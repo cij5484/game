@@ -2,6 +2,21 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 
 export interface EnemyState {
   id: number;
+  burn?: {
+    remainingMs: number;
+    dps: number;
+    depth: number;
+    spreadTargets: number;
+    spreadRadius: number;
+    maxDepth: number;
+  };
+  markStacks?: number;
+  markShotIndex?: number;
+  suppressionStacks?: number;
+  suppressionMs?: number;
+  suppressionSlow?: number;
+  suppressionImmunityMs?: number;
+  suppressionAttackDelayMs?: number;
   elite?: boolean;
   /** Fixed at spawn; temporary movement effects multiply this value. */
   speedMultiplier?: number;
@@ -30,7 +45,10 @@ export function advanceEnemy(
   const progressPerSecond =
     config.progressPerSecond *
     (enemy.speedMultiplier ?? 1) *
-    movementMultiplier;
+    movementMultiplier *
+    ((enemy.suppressionMs ?? 0) > 0
+      ? 1 - Math.min(0.6, enemy.suppressionSlow ?? 0)
+      : 1);
   if (progressPerSecond <= 0) return { enemy, wallTimeMs: 0 };
 
   const arrivalMs = ((1 - enemy.progress01) / progressPerSecond) * 1000;

@@ -20,7 +20,7 @@ export const evolutionRecipes: readonly EvolutionRecipe[] = [
   {
     id: "hyper-gauss",
     title: "초관통 가우스 (Hyper Gauss)",
-    requires: { traits: { penetration: 4 }, relics: { "siege-amplifier": 3 } },
+    requires: { traits: { penetration: 4 }, relics: { "tesla-coil": 3 } },
     effects: {
       penetrationBonus: 3,
       penetrationWidthMultiplier: 1.6,
