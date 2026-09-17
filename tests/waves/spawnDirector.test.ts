@@ -36,11 +36,11 @@ describe("five-minute encounter director", () => {
     expect(director.settings).toMatchObject({
       phase: "relief",
       name: "BREATHING ROOM",
-      batchSize: 3,
+      batchSize: 10,
     });
     expect(director.spawn(120)).toEqual([]);
     director.advance(director.timeToSpawnMs);
-    expect(director.spawn(0)).toHaveLength(3);
+    expect(director.spawn(0)).toHaveLength(10);
     expect(director.spawn(0)).toEqual([]);
   });
 
@@ -77,8 +77,8 @@ describe("five-minute encounter director", () => {
       name: "FINAL PRESSURE",
       phase: "pressure",
       maxActiveEnemies: 160,
-      batchSize: 16,
-      spawnIntervalMs: 650,
+      batchSize: 30,
+      spawnIntervalMs: 500,
     });
     expect(
       hordeBalance.stages.every((stage) => stage.atMs < runBalance.durationMs),

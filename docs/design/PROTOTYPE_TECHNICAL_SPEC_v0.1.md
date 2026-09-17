@@ -1,19 +1,17 @@
 # Prototype Technical Spec v0.1
 
-## Milestone 12 Combat Rebalance Pass current prototype scope
+## Current implementation — Weapon Trait / Relic overhaul
 
-The current playable prototype is a **five-minute simulation-time Run**, separate from the future production goal of approximately 15 minutes and resume support elsewhere in this document. Level/Module selection pauses do not consume Run time; Rhythm Burst slows Run time with the battlefield to 0.08x. At 300 seconds the run clears; Wall HP 0 fails. Prototype Wall HP is 12,000. Result/Retry shows time, kills, Level, Wall HP, Primary/Stim/Magic upgrades, Modules and Evolution; no persistent rewards are implemented.
+Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md); GDD v0.1 is a preserved historical document. Current Run remains five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Magic/Burst tuning is unchanged. Initial65 and caps90→160 remain, while sustained spawn intervals/batches increase substantially as listed below.
 
-Named data-driven encounters begin with 65 Grunts; caps rise from 90 through 110–135 to 150–160, with four 15-second relief windows and a final 45-second push at 16 spawns per 650ms. Grunt movement is 0.032 progress/s (20% slower); Runner/Shield remain 0.08/0.025. Spawns blocked by capacity are dropped rather than accumulated. Elite begins at 60 seconds, then every 40 seconds when capacity permits.
+Six Weapon Traits (rapid/penetration/ricochet/multishot/explosive/critical), each Lv1–5. Default type limit2. Elite-death special drop 전술 확장 코어 has prototype chance3%, raises the run-only limit to3 once, and consumes no Relic slot. Filter inactive traits at capacity, MAX cards, unmet prerequisites and unequipped abilities before weighted sampling. Level-up (up to3) and Relic (1–2) choices use centered, horizontally arranged square cards. Show a symbol, Korean name, short effect, rarity and current→next level; retain the full description in aria/title. Symbols can later be replaced by images. COMMON/RARE/EPIC/LEGENDARY weights10/4/1/0.25; tag bias+8% per invested rank capped1.6. Existing invested-tag candidate slot remains. Trait rows replace prior levels with cumulative effects; see data/traits.ts and the six complete level tables in GDDv0.2.
 
-The current upgrade pool has 24 types / 76 ranks, equipped-ability filtering, tag prerequisites and one build-related candidate slot. COMMON/RARE/EPIC/LEGENDARY weights are 10/4/1/0.25, multiplied by per-card weight and tag investment bias (+0.08 per rank, capped at 1.6x). These are relative weights, not fixed appearance percentages. XP requirement is `8 + 6n + 2n²` where `n = current Level - 1`; 1,000–2,500 earned XP gives approximately 10–14 choices mathematically, not a verified playtest outcome. Advanced Primary/Magic effects unlock after six ranks in their tag. Crash stays at one second. Frost Nova now applies global movement-only slow at 0.5x for 7s, including enemies spawned during the effect; cooldown is 30s. Wall attack timing and other simulation clocks are unchanged. Frost upgrades improve slow strength/duration instead of radius/freeze. Chain Lightning deals 75 damage to up to 30 distinct targets within logical hop radius360, cooldown24s.
+Player text is Korean-first, internal IDs remain English. Content definitions hold names/descriptions; common display text is data, not scattered Scene literals. No i18n framework. Two redesigned Relics grow Lv1–5, three-type capacity; old PEN/STORM effects are removed. Recipes accept traits/relics/magic requirements. Hyper Gauss now requires penetration4 + siege-core3.
 
-Mobile Portrait / Full-Bleed and the lower-wall HUD remain required. `viewport-fit=cover` and `env(safe-area-inset-*)` inset the bounded playfield/HUD while the environment fills the viewport. Gameplay coordinates remain independent of device pixels. Real-device gesture reliability, safe-area fit, 160-enemy performance and combat balance still require user playtesting. Three one-rank Legendary cards unlock at six invested ranks in their tag: Rapid Overdrive relays a kill to three nearby targets at 100% damage once per round; Siege Lance keeps 100% pierce damage and adds a final-pierce radius140 shockwave; Ricochet Cascade forks from the final bounce to three unhit targets at 80% damage. Burst charges 0.02 per hit, 0.08 per kill and an extra6 per Elite. Normal credit uses an allowance capped at3, refilled by gameplay time at0.45/s; Elite credit bypasses it. Refill is not passive gauge, excess credit is discarded, and READY waits for manual activation. Even unlimited combat plus seven Elite kills yields at most180 charge in300s: a conservative one-use ceiling, with zero-use risk for low combat throughput. Current tuning is documented in README and `src/game/data/`; later production features in the original design remain future scope.
-
-
+Desktop left+right mouse chord (120ms join/300ms release) supplements unchanged two-finger Stimpack. Circle recognizer structure/thresholds are unchanged. A small top-right Pause icon with a Korean accessible name stops gameplay/rhythm/effect clocks until Resume; no buffered input leakage. Portrait/Full-Bleed and separated logical/pixel coordinates remain mandatory.
 
 > Project phase: Pre-production → Graybox Prototype  
-> Source of truth for implementation details: this file + `GAME_GDD_v0.1.md`  
+> Source of truth for implementation details: this file + `GAME_GDD_v0.2.md`
 > Implementation environment: Codex app  
 > Prototype stack: Phaser + TypeScript + Vite  
 > Goal: validate combat fun and mobile viability before final art/audio or backend work.
@@ -66,11 +64,13 @@ These remain in the GDD but are outside Prototype v0.1.
 ## 3. Runtime Target
 
 Primary target:
+
 - Mobile browser, **Portrait orientation**
 - Android Chrome first
 - iPhone Safari test early, not at the end
 
 Secondary target:
+
 - Desktop Chrome for development/debugging
 
 Prototype must remain usable with touch input.
@@ -81,7 +81,7 @@ Prototype must remain usable with touch input.
 
 Single combat scene.
 
-HUD anchor: keep the top available for distant battlefield. Integrate Wall HP into the lower wall, with compact non-interactive magic cooldown indicators and temporary Secondary Ability feedback. Preserve separate battlefield/HUD roots for future safe-area handling; do not reserve blank panels for unimplemented systems.
+HUD anchor: keep the top available for distant battlefield except the small top-right Pause icon. Trait ownership is shown in choice summaries/results, not added to the crowded wall HUD. Integrate Wall HP into the lower wall, with compact non-interactive magic cooldown indicators and temporary Secondary Ability feedback. Preserve separate battlefield/HUD roots for future safe-area handling; do not reserve blank panels for unimplemented systems.
 
 Milestone 8 presentation: map visual spawn depth to the top of the viewport while keeping progress-based simulation and logical spell distances invariant. Arrived enemies occupy stable per-lane visual attack slots (four columns, multiple rows), released on removal. Picking uses rendered positions; slots never change wall damage or gameplay coordinates.
 
@@ -90,13 +90,16 @@ Milestone 8 presentation: map visual spawn depth to the top of the viewport whil
 ### Screen regions
 
 Top:
+
 - Far spawn area
 
 Middle:
+
 - Enemy battlefield
 - Left / Center / Right Soft Lanes
 
 Bottom:
+
 - Wall
 - Marine
 - Minimal HUD
@@ -104,6 +107,7 @@ Bottom:
 ### Fake perspective
 
 Enemies:
+
 - Spawn smaller at far top
 - Visually scale up as they approach the wall
 
@@ -120,17 +124,20 @@ Three logical lanes:
 - `right`
 
 Enemies own:
+
 - lane id
 - longitudinal progress toward wall
 - small lateral offset inside lane
 
 Rules:
+
 - Enemies may vary slightly inside the lane.
 - No complex pathfinding.
 - No rigid tile movement.
 - No enemy-to-enemy physical collision required for Prototype v0.1 unless later proven necessary.
 
 Goal:
+
 - Give PvZ-like readability without rail-like movement.
 
 ---
@@ -138,6 +145,7 @@ Goal:
 ## 6. Character Model
 
 Prototype character:
+
 - Marine
 
 Character data should be defined through general character data, not hardcoded throughout combat systems.
@@ -157,20 +165,24 @@ Prototype only needs one character but architecture should allow additional char
 ## 7. Primary Attack — Gauss Rifle
 
 Behavior:
+
 - One valid tap command requests one 3-round burst.
 - Actual fire cadence is controlled by weapon data, not tap speed.
 - Player cannot increase DPS by tapping faster.
 
 Input buffer:
+
 - Maximum 1 queued primary attack command.
 - Additional taps while one command is buffered are ignored.
 
 Target behavior:
+
 - Empty-space tap → Smart Auto Target
 - Enemy tap → next attack targets that enemy
 - No persistent lock
 
 Implementation should separate:
+
 - input command
 - target resolution
 - weapon firing
@@ -207,13 +219,15 @@ Prototype phases:
 3. Recovery
 
 Current fixed post-effect design:
+
 - Crash: 1 second primary attack unavailable
 - Recovery: 2 seconds gradual attack-speed recovery
 
 Boost duration and multiplier remain balance data.
 
 Secondary activation input:
-- Two-finger tap
+
+- Two-finger tap; desktop left+right mouse chord also activates (120ms join/300ms release).
 
 If two-finger input proves unreliable on target mobile browsers, treat that as a design finding and compare alternatives rather than forcing it.
 
@@ -224,10 +238,12 @@ If two-finger input proves unreliable on target mobile browsers, treat that as a
 Prototype implements 2 spell gestures only.
 
 Recommended initial gestures:
+
 - Circle-like gesture
 - Z-like gesture
 
 Gesture system requirements:
+
 - Distinguish tap vs gesture using movement distance and input duration.
 - Do not require pixel-perfect drawing.
 - Recognizer should tolerate rough finger input.
@@ -235,6 +251,7 @@ Gesture system requirements:
 - Track recognition confidence for debug display.
 
 Prototype Magic candidates:
+
 - Frost Nova
 - Chain Lightning
 
@@ -245,9 +262,11 @@ Meteor can wait because targeted-cast adds another input mode.
 ## 11. Magic
 
 Prototype Magic count:
+
 - 2
 
 Each Magic contains:
+
 - cooldown
 - effect type
 - visual placeholder
@@ -256,11 +275,13 @@ Each Magic contains:
 Suggested prototype roles:
 
 ### Frost Nova
+
 - Crowd control
 - Instant cast
 - Applies global movement-only slow, including enemies spawned during its duration
 
 ### Chain Lightning
+
 - Multi-target damage
 - Demonstrates target chaining and horde payoff
 
@@ -275,16 +296,19 @@ Current tuning: Frost Nova has 30000ms cooldown, 7000ms duration and movement mu
 Prototype enemy count: 3
 
 ### Grunt
+
 - Baseline enemy
 - Walks to wall
 - Basic wall attack
 
 ### Runner
+
 - Fast
 - Lower durability
 - Tests threat prioritization
 
 ### Shield
+
 - Slower
 - Higher effective durability against normal primary fire
 - Tests build / Magic decision making
@@ -296,6 +320,7 @@ Keep enemy behaviors intentionally simple.
 ## 13. Wall
 
 Prototype:
+
 - One shared Wall HP pool
 - Wall takes damage from enemies that reach attack range
 - Wall HP reaches 0 → Run ends
@@ -303,62 +328,31 @@ Prototype:
 No separate player HP.
 
 HUD:
+
 - clear Wall HP display
 - no lane-specific wall HP
 
 ---
 
-## 14. XP / Level Up
+## 14. XP / Weapon Trait choices
 
-Enemies grant XP.
+XP Grunt/Runner1, Shield3. At level L, threshold=8+6(L−1)+2(L−1)^2. Preserve overflow/queued choices; pause completely until selection. Six Traits are independently Lv1–5, at most2types unless the separate expansion drop unlocks3. Offer up to three distinct applicable non-MAX cards; never fill with invalid traits when slots are full. No Reroll. Current type/level/rank data are run-only.
 
-On level up:
-- Full combat pause
-- Present 3 upgrade choices
-- Player selects one
-- Resume immediately
-
-Prototype upgrade pool should be intentionally small.
-
-Suggested initial upgrade examples:
-- Gauss burst count +1
-- Gauss attack cycle improvement
-- Gauss penetration +1
-- Frost Nova duration/slow-strength improvement
-- Chain Lightning target count +2
-
-No Reroll in prototype.
-
----
+Existing fragmented Primary upgrades are replaced by cumulative trait levels. Three Legendary capstones remain eligible at corresponding trait Lv4 (Ricochet forks retain at least80% damage, preserving traitLv5 retention100%); advanced Magic requires six tag ranks. Stim/Magic cards still target equipped abilities. The complete behavior tables are in GDDv0.2 and data/traits.ts.
 
 ## 15. Build Bias
 
-Prototype may begin with plain weighted random.
+Per-card weight × rarity weight × min(1.6,1+0.08×invested tag ranks). Eligible invested tags can fill the existing build-related slot. Sampling is without replacement and never bypasses trait capacity/prerequisites. No complex adaptive RNG.
 
-Do not implement complex adaptive RNG until:
-- basic upgrade loop works
-- repeated playtest shows poor build control
+## 16. Relics
 
-Architecture should allow weights to be data-driven.
+Elite death queues a separate paused reward. Two types currently: siege-core/tesla-coil. Maximum3types, each Lv1→5. Same type upgrades; MAX excluded; full capacity restricts new types instead of replacing owned ones. An exhausted pool skips empty dialogs. Reset each Run.
 
----
+Siege Core: Lv1 shield hits refund Lightning60ms (cap240/round); Lv2 refund120(cap480); Lv3 magic primes3armor-bypass primary rounds; Lv4 five rounds/×1.5Shield damage; Lv5 seven rounds/×2 and120Wall heal per successful magic. Later levels retain prior effects.
 
-## 16. Module
+Tesla Coil: every12/10/10/10/6 landed rounds arcs1/2/3/4/5targets at12/16/20/24/30damage, radius240. Lv3 critical rounds gain+2charge (3total), Lv4 Lightning primes next landed round, Lv5 landed arcs refund400ms both magics. A multi-target round counts once; arcs never recursively charge themselves.
 
-Prototype:
-- 1–2 Module types
-- Maximum 3 Module type slots remains the long-term rule
-- Elite kill triggers a Module reward choice
-
-Module levels:
-- Lv.1
-- Lv.2
-- Lv.3 MAX
-
-Prototype can implement only one complete Module progression if needed.
-
-Example:
-- Penetration Module
+RelicCombat reads modifiers before primary damage, processes fired rounds before removing dead states, and returns final enemy states/arc IDs/cooldown refunds. Apply deaths/XP once. Only successful casts trigger empowerment/healing. Clamp healing to Wall max and cooldowns to zero.
 
 ---
 
@@ -367,29 +361,25 @@ Example:
 Prototype requires at least one Elite encounter.
 
 Elite can reuse an existing enemy with:
+
 - higher HP
 - one clearly visible modifier
-- Module reward on death
+- Relic reward on death
 
 Avoid building a full Elite modifier framework before the basic reward loop is proven.
 
 ---
 
-## 18. Evolution
+## 18. Synergy / Evolution
 
-Prototype implements exactly 1 Evolution.
+RecipeRequirements contains optional traits/relics/magic rank maps, evaluated by shared meetsRecipeRequirements. No Marine-specific condition logic.
 
-Example concept:
-- Gauss Rifle reaches required upgrade state
-- Penetration Module reaches required level
-- Evolution becomes available or triggers according to design
+- 심층 폭발: penetration1 + explosive1; explosions along pierced hits.
+- 살상 도탄: ricochet1 + critical1; critical propagation and+2bounces.
+- 탄막 폭풍: rapid1 + multishot1; every fourth round adds2full-damage simultaneous rays.
+- 초관통 가우스 (Hyper Gauss): penetration4 + siege-core3; extra3pierces, width×1.6, cyan tracer width8, once per Run with brief Korean notification.
 
-The purpose is not content volume.
-The purpose is to test:
-- anticipation
-- discovery
-- payoff
-- visible combat transformation
+No recursive effect loops. Distance/angle calculations use combatGeometry, never perspective scale or visual crowd offsets.
 
 ---
 
@@ -398,6 +388,7 @@ The purpose is to test:
 Prototype includes 1 Burst.
 
 Requirements:
+
 - Gauge accumulation from combat performance
 - Manual BURST button
 - Extreme slow motion, not full pause
@@ -414,7 +405,7 @@ Current implementation: gauge100, credit0.02 per confirmed hit/0.08 per kill/+6 
 
 ## 20. Horde Stress Test
 
-Current normal-run tuning: initial65 Grunts distributed over progress0.08–0.45. Twelve encounters raise caps90→110–135→150–160 with one reserved Elite slot, four relief windows and no blocked-spawn backlog. The final45s uses batch16/650ms; first Elite60s, then40s intervals. Grunt progress/s is0.032; Runner/Shield stay0.08/0.025. All values live in horde/enemy/elite data. Screen ratio must not change these logical pacing values;160-enemy mobile performance is not yet established.
+Current normal-run tuning: initial65 Grunts distributed over progress0.08–0.45. Twelve encounters raise caps90→110–135→150–160 with one reserved Elite slot, four relief windows and no blocked-spawn backlog. Interval(ms)/batch by encounter:900/14,1200/10,850/16,800/18,1200/12,750/20,700/22,1100/14,650/24,1000/16,600/26,500/30. Stage timings/type weights remain unchanged; final45s uses batch30/500ms; first Elite60s, then40s intervals. Grunt progress/s is0.032; Runner/Shield stay0.08/0.025. All values live in horde/enemy/elite data. Screen ratio must not change these logical pacing values;160-enemy mobile performance is not yet established.
 
 This is a separate prototype test mode or debug mode.
 
@@ -422,6 +413,7 @@ Purpose:
 Find real performance limits on actual devices.
 
 Test progressively:
+
 - enemy count
 - animation
 - targeting
@@ -431,6 +423,7 @@ Test progressively:
 - Burst effects
 
 Record:
+
 - FPS
 - frame-time spikes
 - memory growth
@@ -471,7 +464,7 @@ Separate data categories conceptually:
 - magic
 - enemies
 - upgrades
-- modules
+- relics
 - evolution recipes
 - wave timings
 - score/reward values later
@@ -491,12 +484,13 @@ Prototype should expose enough debug capability to:
 - Spawn multiple enemies
 - Change game speed
 - Grant XP / force level-up
-- Grant Module
+- Grant Relic
 - Fill Burst gauge
 - Toggle debug hit areas
 - Display FPS
 
 Later:
+
 - dedicated `/dev/balance`
 - spawn console
 - wave editor
@@ -534,7 +528,7 @@ Conceptual modules:
 - Lane movement
 - Wall
 - XP / level-up
-- Module
+- Relic
 - Evolution
 - Burst
 - Balance data
@@ -547,12 +541,14 @@ Avoid one giant `GameScene` containing all game rules.
 ## 26. Art Strategy
 
 Prototype art:
+
 - geometric placeholders
 - labels
 - simple colors / outlines
 - no final StarCraft Marine sprite production yet
 
 Only after combat prototype passes:
+
 - define art direction
 - define sprite size
 - animation frame counts
@@ -565,11 +561,13 @@ Only after combat prototype passes:
 ## 27. Audio Strategy
 
 Prototype:
+
 - temporary SFX only if useful for feel testing
 
 No final music / sound design production yet.
 
 Important eventual categories:
+
 - primary fire
 - hit
 - enemy death
@@ -582,21 +580,24 @@ Important eventual categories:
 
 ---
 
-## 28. Development Milestones
+## 28. Original roadmap (historical numbering)
 
 ### Milestone 0 — Foundation
+
 - Phaser + TypeScript + Vite
 - portrait full-bleed canvas
 - basic game loop
 - mobile test page
 
 ### Milestone 1 — Battlefield
+
 - wall
 - Marine placeholder
 - 3 Soft Lanes
 - one enemy moving to wall
 
 ### Milestone 2 — Primary Combat
+
 - tap input
 - auto target
 - enemy manual target
@@ -605,6 +606,7 @@ Important eventual categories:
 - one-command input buffer
 
 ### Milestone 3 — Enemy Pressure
+
 - Grunt
 - Runner
 - Shield
@@ -612,23 +614,27 @@ Important eventual categories:
 - loss condition
 
 ### Milestone 4 — Secondary + Gesture
+
 - Stimpack
 - tap-vs-gesture distinction
 - 2 Magic spells
 
 ### Milestone 5 — Progression
+
 - XP
 - pause-on-level
 - 3 upgrade choices
 - minimal build branches
 
-### Milestone 6 — Module + Elite + Evolution
+### Milestone 6 — Relic + Elite + Evolution
+
 - Elite encounter
-- Module reward
-- Module leveling
+- Relic reward
+- Relic leveling
 - one Evolution
 
 ### Milestone 7 — Burst
+
 - gauge
 - manual activation
 - time dilation
@@ -636,16 +642,18 @@ Important eventual categories:
 - Ultimate payoff
 
 ### Milestone 8 — 5-Minute Playtest Build
+
 - basic pacing
 - complete start-to-fail/finish loop
 - real-device testing
 
 ### Milestone 9 — Horde Stress Test
+
 - controlled high-enemy scenarios
 - performance measurements
 - documented budgets
 
-STOP after Milestone 9 for prototype review.
+Repository milestone numbering supersedes this original roadmap. Stop after each requested work item for user playtest. Do not auto-start another milestone.
 
 Do not continue into production automatically.
 
@@ -653,7 +661,7 @@ Do not continue into production automatically.
 
 ## 29. Prototype Review Gate
 
-After Milestone 9, answer:
+At the user playtest review gate, answer:
 
 1. Is tap combat satisfying?
 2. Is auto/manual targeting intuitive?
@@ -669,12 +677,15 @@ After Milestone 9, answer:
 Possible outcomes:
 
 ### PASS
+
 Proceed to Vertical Slice design.
 
 ### REVISE
+
 Change core combat and repeat focused prototype tests.
 
 ### FAIL
+
 Stop production investment and redesign the concept.
 
 ---
@@ -685,6 +696,7 @@ Prototype is Phaser-first.
 
 If production later moves to Godot:
 Reusable:
+
 - GDD
 - balance data concepts
 - content definitions
@@ -695,6 +707,7 @@ Reusable:
 - recipe design
 
 Likely reimplemented:
+
 - rendering
 - scene graph
 - input
@@ -725,9 +738,4 @@ When implementation begins:
 
 ## Status
 
-**Prototype Technical Spec v0.1 ready for review.**
-
-Next artifact after approval:
-- Codex Implementation Plan / task breakdown
-- repository setup instructions
-- first milestone handoff prompt
+Current implementation follows GDD v0.2; user playtest determines fun, readability and mobile viability before merge.

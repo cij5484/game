@@ -39,6 +39,15 @@ export class Magic {
     return this.cooldowns[id];
   }
 
+  refundCooldowns(refunds: Partial<Record<MagicId, number>>): void {
+    for (const id of Object.keys(this.cooldowns) as MagicId[]) {
+      this.cooldowns[id] = Math.max(
+        0,
+        this.cooldowns[id] - Math.max(0, refunds[id] ?? 0),
+      );
+    }
+  }
+
   get frostRemainingMs(): number {
     return this.frostMs;
   }

@@ -71,6 +71,44 @@ export class TapInput {
   }
 }
 
+/** Mouse chording changes `buttons` on pointermove, not a second pointerdown. */
+export class MouseTapInput {
+  private input = new TapInput();
+  private buttons = 0;
+  private usedRight = false;
+
+  update(
+    buttons: number,
+    x: number,
+    y: number,
+    time: number,
+  ): CombatInput | null {
+    const next = buttons & 3;
+    if (!this.buttons && next) this.usedRight = false;
+    if (next & 2) this.usedRight = true;
+    for (const button of [1, 2]) {
+      if (next & button && !(this.buttons & button))
+        this.input.down(button, x, y, time);
+    }
+    let result: CombatInput | null = null;
+    for (const button of [1, 2]) {
+      if (this.buttons & button) {
+        if (next & button) this.input.move(button, x, y);
+        else result = this.input.up(button, x, y, time);
+      }
+    }
+    this.buttons = next;
+    return result && (!this.usedRight || result.kind === "secondary")
+      ? result
+      : null;
+  }
+
+  cancel(): void {
+    this.input.cancel();
+    this.buttons = 0;
+  }
+}
+
 /** Native pointer IDs preserve multi-touch independently of Phaser's mouse pointer. */
 export function bindTapInput(
   canvas: HTMLCanvasElement,
@@ -79,44 +117,74 @@ export function bindTapInput(
     points: readonly Point[],
     displayPoints: readonly Point[],
   ) => void,
-): () => void {
+): { destroy: () => void; cancel: () => void } {
   const input = new TapInput();
-  const down = (event: PointerEvent) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
-    input.down(event.pointerId, event.clientX, event.clientY, event.timeStamp);
-  };
-  const move = (event: PointerEvent) =>
-    input.move(event.pointerId, event.clientX, event.clientY);
-  const up = (event: PointerEvent) => {
-    event.preventDefault();
-    const tap = input.up(
-      event.pointerId,
-      event.clientX,
-      event.clientY,
-      event.timeStamp,
-    );
-    if (tap) {
-      const rect = canvas.getBoundingClientRect();
-      if (tap.kind === "gesture") {
-        onGesture?.(
-          tap.points,
-          tap.points.map((point) => ({
-            x: ((point.x - rect.left) * canvas.width) / rect.width,
-            y: ((point.y - rect.top) * canvas.height) / rect.height,
-          })),
-        );
-        return;
-      }
-      onTap(
-        tap.kind,
-        ((tap.x - rect.left) * canvas.width) / rect.width,
-        ((tap.y - rect.top) * canvas.height) / rect.height,
-      );
+  const mouse = new MouseTapInput();
+  let mouseActive = false;
+  const emit = (tap: CombatInput | null) => {
+    if (!tap) return;
+    const rect = canvas.getBoundingClientRect();
+    const point = (value: Point) => ({
+      x: ((value.x - rect.left) * canvas.width) / rect.width,
+      y: ((value.y - rect.top) * canvas.height) / rect.height,
+    });
+    if (tap.kind === "gesture") onGesture?.(tap.points, tap.points.map(point));
+    else {
+      const { x, y } = point(tap);
+      onTap(tap.kind, x, y);
     }
   };
-  const cancel = () => input.cancel();
+  const mouseEvent = (event: PointerEvent) =>
+    emit(
+      mouse.update(
+        event.buttons,
+        event.clientX,
+        event.clientY,
+        event.timeStamp,
+      ),
+    );
+  const down = (event: PointerEvent) => {
+    if (
+      event.button !== 0 &&
+      !(event.pointerType === "mouse" && event.button === 2)
+    )
+      return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse") {
+      mouseActive = true;
+      mouseEvent(event);
+    }
+    else
+      input.down(
+        event.pointerId,
+        event.clientX,
+        event.clientY,
+        event.timeStamp,
+      );
+  };
+  const move = (event: PointerEvent) => {
+    if (event.pointerType === "mouse") {
+      if (mouseActive) mouseEvent(event);
+    }
+    else input.move(event.pointerId, event.clientX, event.clientY);
+  };
+  const up = (event: PointerEvent) => {
+    event.preventDefault();
+    if (event.pointerType === "mouse") {
+      if (mouseActive) mouseEvent(event);
+      mouseActive = false;
+      return;
+    }
+    emit(
+      input.up(event.pointerId, event.clientX, event.clientY, event.timeStamp),
+    );
+  };
+  const cancel = () => {
+    mouseActive = false;
+    input.cancel();
+    mouse.cancel();
+  };
   const menu = (event: Event) => event.preventDefault();
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointermove", move);
@@ -124,12 +192,15 @@ export function bindTapInput(
   canvas.addEventListener("pointercancel", cancel);
   canvas.addEventListener("contextmenu", menu);
   window.addEventListener("blur", cancel);
-  return () => {
-    canvas.removeEventListener("pointerdown", down);
-    canvas.removeEventListener("pointermove", move);
-    canvas.removeEventListener("pointerup", up);
-    canvas.removeEventListener("pointercancel", cancel);
-    canvas.removeEventListener("contextmenu", menu);
-    window.removeEventListener("blur", cancel);
+  return {
+    cancel,
+    destroy: () => {
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointercancel", cancel);
+      canvas.removeEventListener("contextmenu", menu);
+      window.removeEventListener("blur", cancel);
+    },
   };
 }

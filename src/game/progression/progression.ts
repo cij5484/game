@@ -1,4 +1,11 @@
 import { progressionBalance, rarityWeights, upgrades } from "../data/upgrades";
+import {
+  traitBalance,
+  weaponTraitIds,
+  weaponTraits,
+  type WeaponTraitId,
+  type WeaponTraitLevels,
+} from "../data/traits";
 import type {
   UpgradeAbility,
   UpgradeDefinition,
@@ -29,6 +36,7 @@ export class Progression {
   xp = 0;
   pendingChoices = 0;
   readonly ranks: UpgradeRanks = {};
+  traitLimit: number = traitBalance.initialLimit;
   private choices: UpgradeDefinition[] | null = null;
   private readonly random: () => number;
   private readonly availableAbilities: readonly UpgradeAbility[];
@@ -52,6 +60,25 @@ export class Progression {
       (this.level - 1) * progressionBalance.xpPerLevel +
       (this.level - 1) ** 2 * progressionBalance.xpQuadratic
     );
+  }
+
+  get traitLevels(): WeaponTraitLevels {
+    return Object.fromEntries(
+      weaponTraitIds
+        .filter((id) => (this.ranks[id] ?? 0) > 0)
+        .map((id) => [id, this.ranks[id]]),
+    );
+  }
+
+  tryExpandTraitLimit(random = Math.random): boolean {
+    if (
+      this.traitLimit >= traitBalance.maximumLimit ||
+      random() >= traitBalance.eliteExpansionChance
+    )
+      return false;
+    this.traitLimit = traitBalance.maximumLimit;
+    this.choices = null;
+    return true;
   }
 
   gainXp(amount: number): void {
@@ -113,14 +140,32 @@ export class Progression {
   }
 
   private eligible(): UpgradeDefinition[] {
-    return Object.values(upgrades).filter(
-      (card) =>
-        card.weight > 0 &&
-        this.availableAbilities.includes(card.ability) &&
-        (this.ranks[card.id] ?? 0) < card.maxRank &&
-        (!card.requires ||
-          this.tagRanks(card.requires.tag) >= card.requires.ranks),
-    );
+    const ownedTraits = Object.keys(this.traitLevels).length;
+    return Object.values(upgrades)
+      .filter(
+        (card) =>
+          card.weight > 0 &&
+          this.availableAbilities.includes(card.ability) &&
+          (this.ranks[card.id] ?? 0) < card.maxRank &&
+          (!weaponTraitIds.includes(card.id as WeaponTraitId) ||
+            (this.ranks[card.id] ?? 0) > 0 ||
+            ownedTraits < this.traitLimit) &&
+          (!card.requires ||
+            (weaponTraitIds.includes(card.requires.tag as WeaponTraitId)
+              ? (this.ranks[card.requires.tag as WeaponTraitId] ?? 0)
+              : this.tagRanks(card.requires.tag)) >= card.requires.ranks),
+      )
+      .map((card) => {
+        if (!weaponTraitIds.includes(card.id as WeaponTraitId)) return card;
+        const nextLevel = (this.ranks[card.id] ?? 0) + 1;
+        return {
+          ...card,
+          description:
+            weaponTraits[card.id as WeaponTraitId].levels[nextLevel - 1]!
+              .description,
+          rarity: nextLevel === 5 ? "EPIC" : nextLevel >= 3 ? "RARE" : "COMMON",
+        };
+      });
   }
 
   private clearExhaustedChoices(): void {

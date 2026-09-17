@@ -1,6 +1,7 @@
 import { battlefieldLayout, readSafeArea } from "../battlefield/layout";
 import { burstBalance } from "../data/burst";
 import type { Burst } from "../combat/burst";
+import { display, gradeLabels } from "../data/display";
 
 /** Native accessible button, anchored to the same logical wall as the canvas HUD. */
 export class BurstView {
@@ -47,19 +48,20 @@ export class BurstView {
     this.rhythm.hidden = !rhythm || blocked;
     this.button.disabled = blocked || ultimate || (!rhythm && !burst.ready);
     this.button.textContent = ultimate
-      ? "BARRAGE"
+      ? display.barrage
       : rhythm
-        ? "TAP"
+        ? display.tap
         : burst.ready
-          ? "BURST\nREADY"
-          : `BURST\n${Math.floor((burst.gauge / burstBalance.gaugeMax) * 100)}%`;
+          ? `${display.burst}\n${display.ready}`
+          : `${display.burst}\n${Math.floor((burst.gauge / burstBalance.gaugeMax) * 100)}%`;
     this.button.classList.toggle("ready", burst.ready);
     this.button.style.setProperty(
       "--charge",
       `${(burst.gauge / burstBalance.gaugeMax) * 100}%`,
     );
     this.cursor.style.left = `${burst.progress * 100}%`;
-    const grade = burst.grades[burst.grades.length - 1] ?? "선에 맞춰 탭";
+    const last = burst.grades[burst.grades.length - 1];
+    const grade = last ? gradeLabels[last] : display.rhythmHint;
     this.label.textContent = `${grade} · ${burst.beatIndex}/${burstBalance.beatTargetsMs.length}`;
   }
 

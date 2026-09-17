@@ -4,6 +4,18 @@ import { enemyConfigs } from "../../src/game/data/enemies";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
+it("relic refunds shorten cooldowns without advancing or extending global slow", () => {
+  const magic = new Magic();
+  magic.cast("frost-nova", []);
+  magic.cast("chain-lightning", []);
+  magic.refundCooldowns({ "chain-lightning": 480, "frost-nova": 400 });
+  expect(magic.remaining("chain-lightning")).toBe(23520);
+  expect(magic.remaining("frost-nova")).toBe(29600);
+  expect(magic.frostRemainingMs).toBe(7000);
+  magic.refundCooldowns({ "chain-lightning": 100000 });
+  expect(magic.remaining("chain-lightning")).toBe(0);
+});
+
 it("slows the whole world including later spawns and restores movement at expiry", () => {
   const magic = new Magic();
   const existing = {

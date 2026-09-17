@@ -1,10 +1,12 @@
+export interface RecipeRequirements {
+  traits?: Readonly<Record<string, number>>;
+  relics?: Readonly<Record<string, number>>;
+  magic?: Readonly<Record<string, number>>;
+}
 export interface EvolutionRecipe {
   id: string;
   title: string;
-  requires: {
-    upgrades: Readonly<Record<string, number>>;
-    modules: Readonly<Record<string, number>>;
-  };
+  requires: RecipeRequirements;
   effects: {
     penetrationBonus: number;
     penetrationWidthMultiplier: number;
@@ -12,13 +14,11 @@ export interface EvolutionRecipe {
     tracerWidth: number;
   };
 }
-
-// Prototype recipe and beam tuning; conditions are independent of character code.
 export const evolutionRecipes: readonly EvolutionRecipe[] = [
   {
     id: "hyper-gauss",
-    title: "HYPER GAUSS",
-    requires: { upgrades: { penetration: 2 }, modules: { penetration: 3 } },
+    title: "초관통 가우스 (Hyper Gauss)",
+    requires: { traits: { penetration: 4 }, relics: { "siege-core": 3 } },
     effects: {
       penetrationBonus: 3,
       penetrationWidthMultiplier: 1.6,

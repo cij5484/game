@@ -1,12 +1,20 @@
-import type { UpgradeDefinition } from "../data/upgrades";
-import type { ModuleDefinition, ModuleId, ModuleLevels } from "../data/modules";
+import type { UpgradeDefinition, UpgradeRanks } from "../data/upgrades";
+import type { RelicDefinition, RelicId, RelicLevels } from "../data/relics";
+import {
+  display,
+  rarityLabels,
+  levelChange,
+  levelLabel,
+  choiceFaces,
+} from "../data/display";
+import { weaponTraitIds, weaponTraits } from "../data/traits";
 
 export class LevelUpView {
   private readonly dialog = document.createElement("dialog");
 
   constructor() {
-    this.dialog.className = "level-up";
-    this.dialog.setAttribute("aria-label", "레벨업 강화 선택");
+    this.dialog.className = "level-up upgrade-picker";
+    this.dialog.setAttribute("aria-label", display.choose);
     this.dialog.addEventListener("cancel", (event) => event.preventDefault());
     document.body.append(this.dialog);
   }
@@ -14,32 +22,52 @@ export class LevelUpView {
   show(
     level: number,
     choices: readonly UpgradeDefinition[],
+    ranks: UpgradeRanks,
     select: (id: UpgradeDefinition["id"]) => void,
+    traitLimit: number,
   ): void {
     this.render(
-      `LEVEL ${level} · 강화 선택`,
+      `${levelLabel(level)} · ${display.choose}`,
       choices.map((choice) => ({
         id: choice.id,
-        title: `${choice.tag.toUpperCase()} · ${choice.title}`,
+        title: choice.title,
+        level: levelChange(ranks[choice.id] ?? 0, choice.maxRank),
+        symbol: choiceFaces[choice.id].symbol,
+        compact:
+          choiceFaces[choice.id].lines[
+            Math.min(
+              ranks[choice.id] ?? 0,
+              choiceFaces[choice.id].lines.length - 1,
+            )
+          ]!,
         description: choice.description,
         rarity: choice.rarity,
       })),
       select,
+      `${display.trait} ${weaponTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${
+        weaponTraitIds
+          .filter((id) => (ranks[id] ?? 0) > 0)
+          .map((id) => weaponTraits[id].title)
+          .join(" + ") || display.none
+      }`,
     );
   }
 
-  showModules(
-    choices: readonly ModuleDefinition[],
-    levels: ModuleLevels,
-    select: (id: ModuleId) => void,
+  showRelics(
+    choices: readonly RelicDefinition[],
+    levels: RelicLevels,
+    select: (id: RelicId) => void,
   ): void {
     this.render(
-      "ELITE 격파 · MODULE 보상",
+      display.reward,
       choices.map((choice) => {
         const nextLevel = (levels[choice.id] ?? 0) + 1;
         return {
           id: choice.id,
-          title: `${choice.title} · Lv.${nextLevel}`,
+          title: choice.title,
+          level: levelChange(nextLevel - 1, choice.maxLevel),
+          symbol: choiceFaces[choice.id].symbol,
+          compact: choiceFaces[choice.id].lines[nextLevel - 1]!,
           description: choice.levels[nextLevel - 1]!.description,
         };
       }),
@@ -53,34 +81,59 @@ export class LevelUpView {
       id: T;
       title: string;
       description: string;
+      level: string;
+      symbol: string;
+      compact: string;
       rarity?: UpgradeDefinition["rarity"];
     }[],
     select: (id: T) => void,
+    summary = "",
   ): void {
     this.dialog.replaceChildren();
     this.dialog.setAttribute("aria-label", title);
     const heading = document.createElement("h2");
     heading.textContent = title;
     const note = document.createElement("p");
-    note.textContent = "전투 일시정지 · 하나를 선택하세요";
+    note.textContent = [display.paused, summary].filter(Boolean).join("\n");
+    note.style.whiteSpace = "pre-line";
     this.dialog.append(heading, note);
+    const row = document.createElement("div");
+    row.className = "upgrade-cards";
     for (const choice of choices) {
       const card = document.createElement("button");
       card.type = "button";
+      card.className = "upgrade-card";
+      card.title = choice.description;
+      card.setAttribute(
+        "aria-label",
+        [
+          choice.title,
+          choice.level,
+          choice.rarity ? rarityLabels[choice.rarity] : display.relic,
+          choice.description,
+        ].join(" · "),
+      );
       if (choice.rarity) {
         card.dataset.rarity = choice.rarity;
         const badge = document.createElement("small");
-        badge.textContent = choice.rarity;
+        badge.textContent = rarityLabels[choice.rarity];
         card.append(badge);
       }
+      const icon = document.createElement("b");
+      icon.className = "choice-symbol";
+      icon.textContent = choice.symbol;
+      icon.setAttribute("aria-hidden", "true");
       const title = document.createElement("strong");
       title.textContent = choice.title;
+      const level = document.createElement("small");
+      level.textContent = choice.level;
       const detail = document.createElement("span");
-      detail.textContent = choice.description;
-      card.append(title, detail);
+      detail.textContent = choice.compact;
+      card.append(icon, title, level, detail);
       card.addEventListener("click", () => select(choice.id), { once: true });
-      this.dialog.append(card);
+      row.append(card);
     }
+    this.dialog.append(row);
     if (!this.dialog.open) this.dialog.showModal();
   }
 

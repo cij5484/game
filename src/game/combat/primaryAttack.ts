@@ -1,27 +1,23 @@
 import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
 import { primaryAttackBalance } from "../data/primaryAttack";
-import { upgrades, type UpgradeRanks } from "../data/upgrades";
+import { getTraitEffects } from "../data/traits";
+import type { UpgradeRanks } from "../data/upgrades";
 import { gaussRifleBalance } from "../data/weapons";
 import { evolutionRecipes } from "../data/evolutions";
-import type { ModuleLevels } from "../data/modules";
-import { moduleEffects } from "../progression/modules";
+import { activeSynergies } from "../progression/synergy";
 import type { EnemyState } from "../enemies/enemySimulation";
 import type { GaussRifleConfig } from "../model/types";
 import { enemyConfigs } from "../data/enemies";
-import { applyPrimaryDamage } from "./damage";
 
 export function deriveWeaponConfig(ranks: UpgradeRanks): GaussRifleConfig {
+  const traits = getTraitEffects(ranks);
   return {
     ...gaussRifleBalance,
-    roundsPerBurst:
-      gaussRifleBalance.roundsPerBurst +
-      (ranks["extended-burst"] ?? 0) * upgrades["extended-burst"].amount,
+    roundsPerBurst: gaussRifleBalance.roundsPerBurst + traits.burstRoundsBonus,
     roundIntervalMs:
-      gaussRifleBalance.roundIntervalMs -
-      (ranks["round-interval"] ?? 0) * upgrades["round-interval"].amount,
+      gaussRifleBalance.roundIntervalMs - traits.roundIntervalReductionMs,
     burstRecoveryMs:
-      gaussRifleBalance.burstRecoveryMs -
-      (ranks["faster-cycle"] ?? 0) * upgrades["faster-cycle"].amount,
+      gaussRifleBalance.burstRecoveryMs - traits.burstRecoveryReductionMs,
   };
 }
 
@@ -30,216 +26,328 @@ export function primaryAttack(
   enemies: readonly EnemyState[],
   ranks: UpgradeRanks,
   baseDamage: number,
-  moduleLevels: ModuleLevels = {},
+  relicModifiers: {
+    shieldBypass?: number;
+    shieldDamageMultiplier?: number;
+  } = {},
   evolutionIds: readonly string[] = [],
-  frostActive = false,
+  context: { shotIndex: number; random: () => number } = {
+    shotIndex: 1,
+    random: Math.random,
+  },
 ): {
   enemies: EnemyState[];
   hitIds: number[];
   ricochetIds: number[];
   splashIds: number[];
+  shotTargetIds: number[];
+  criticalIds: number[];
+  explosionIds: number[];
 } {
-  const bonus = (id: keyof UpgradeRanks) =>
-    (ranks[id] ?? 0) * upgrades[id].amount;
-  const modules = moduleEffects(moduleLevels);
+  const traits = getTraitEffects(ranks);
+  const synergies = activeSynergies(ranks);
+  const deepBlast = synergies.some((s) => s.effects.pierceExplosion);
+  const lethal = synergies.find((s) => s.effects.propagateCritical)?.effects;
+  const storm = synergies.find((s) => s.effects.everyRounds)?.effects;
+  const stormRound =
+    !!storm?.everyRounds &&
+    context.shotIndex > 0 &&
+    context.shotIndex % storm.everyRounds === 0;
   const evolutions = evolutionRecipes.filter((recipe) =>
     evolutionIds.includes(recipe.id),
   );
-  const hits: EnemyState[] = target.hp > 0 ? [target] : [];
-  const ricochetIds: number[] = [];
-  const splashIds: number[] = [];
-  const forkIds: number[] = [];
-  const shockwaveRadius = Math.max(
-    modules.aftershockRadius,
-    bonus("siege-lance") > 0
-      ? primaryAttackBalance.legendaryShockwaveRadius
-      : 0,
+  const living = enemies.filter((enemy) => enemy.hp > 0);
+  const points = new Map(
+    living.map((enemy) => [enemy.id, combatPosition(enemy)]),
   );
-  const shockwaveDamage = Math.max(
-    modules.aftershockDamageFactor,
-    bonus("siege-lance") > 0
-      ? primaryAttackBalance.legendaryShockwaveDamageFactor
-      : 0,
-  );
-  if (hits.length) {
-    const origin = {
-      x: combatGeometry.width / 2,
-      y: combatGeometry.depth + primaryAttackBalance.marineDepthOffset,
-    };
-    const aim = combatPosition(target);
+  const point = (enemy: EnemyState) => points.get(enemy.id)!;
+  const origin = {
+    x: combatGeometry.width / 2,
+    y: combatGeometry.depth + primaryAttackBalance.marineDepthOffset,
+  };
+  const direction = (enemy: EnemyState) =>
+    Math.atan2(point(enemy).x - origin.x, origin.y - point(enemy).y);
+  const nearby = (
+    center: EnemyState,
+    radius: number,
+    excluded = new Set<number>(),
+  ) => {
+    const p = point(center);
+    return living
+      .filter((enemy) => enemy.id !== center.id && !excluded.has(enemy.id))
+      .map((enemy) => ({
+        enemy,
+        distance: Math.hypot(point(enemy).x - p.x, point(enemy).y - p.y),
+      }))
+      .filter((entry) => entry.distance <= radius)
+      .sort((a, b) => a.distance - b.distance || a.enemy.id - b.enemy.id)
+      .map(({ enemy }) => enemy);
+  };
+  const roots: EnemyState[] = target.hp > 0 ? [target] : [];
+  if (roots.length) {
+    const angle = direction(target);
+    const extra =
+      traits.multishotTargets + (stormRound ? (storm?.extraRays ?? 0) : 0);
+    const options = living.filter(
+      (enemy) =>
+        enemy.id !== target.id &&
+        Math.abs(direction(enemy) - angle) <= traits.multishotSpreadRadians,
+    );
+    // Distinct, spread-out aim rays. Logical angles never depend on screen aspect ratio.
+    for (let i = 0; i < extra && options.length; i++) {
+      const rayAngle =
+        angle +
+        traits.multishotSpreadRadians *
+          (i % 2 === 0 ? -1 : 1) *
+          (1 - Math.floor(i / 2) / Math.max(1, extra));
+      options.sort(
+        (a, b) =>
+          Math.abs(direction(a) - rayAngle) -
+            Math.abs(direction(b) - rayAngle) || a.id - b.id,
+      );
+      roots.push(options.shift()!);
+    }
+  }
+  const claimed = new Set(roots.map((enemy) => enemy.id));
+  const hits = new Set<number>();
+  const ricochets = new Set<number>();
+  const splashes = new Set<number>();
+  const criticals = new Set<number>();
+  const explosionCenters = new Set<number>();
+  const factors = new Map<number, number>();
+  // ponytail: merge intersecting effects by strongest damage once per enemy/round;
+  // replace with an explicit hit budget only if future mechanics require stacking.
+  const register = (
+    enemy: EnemyState,
+    factor: number,
+    kind: "direct" | "bounce" | "splash",
+    critical = false,
+  ) => {
+    factors.set(enemy.id, Math.max(factors.get(enemy.id) ?? 0, factor));
+    if (kind === "splash") splashes.add(enemy.id);
+    else hits.add(enemy.id);
+    if (kind === "bounce") ricochets.add(enemy.id);
+    if (critical) criticals.add(enemy.id);
+  };
+  const splash = (center: EnemyState, radius: number, factor: number) => {
+    if (radius <= 0 || factor <= 0) return;
+    explosionCenters.add(center.id);
+    for (const enemy of nearby(center, radius))
+      register(enemy, factor, "splash");
+  };
+  const damageAmount = (enemy: EnemyState, factor: number) => {
+    const armor = enemyConfigs[enemy.kind].primaryDamageMultiplier;
+    const bypass = Math.min(
+      1,
+      traits.shieldBypass + (relicModifiers.shieldBypass ?? 0),
+    );
+    const shieldBonus =
+      enemy.kind === "shield"
+        ? (relicModifiers.shieldDamageMultiplier ?? 1)
+        : 1;
+    return baseDamage * factor * (armor + (1 - armor) * bypass) * shieldBonus;
+  };
+  const explosion = (center: EnemyState, factor: number) => {
+    splash(
+      center,
+      traits.explosionRadius,
+      factor * traits.explosionDamageFactor,
+    );
+    // Secondary explosions have one bounded tier; they cannot trigger each other.
+    for (const secondary of nearby(center, traits.explosionRadius)
+      .filter(
+        (enemy) =>
+          enemy.hp <=
+          damageAmount(enemy, factor * traits.explosionDamageFactor),
+      )
+      .slice(0, traits.explosionChainTargets)) {
+      splash(
+        secondary,
+        traits.explosionSecondaryRadius,
+        factor * traits.explosionSecondaryDamageFactor,
+      );
+    }
+  };
+  const criticalHit = (
+    enemy: EnemyState,
+    factor: number,
+    kind: "direct" | "bounce",
+    critical: boolean,
+  ) => {
+    const multiplier = critical ? traits.criticalMultiplier : 1;
+    register(enemy, factor * multiplier, kind, critical);
+    if (critical)
+      splash(
+        enemy,
+        traits.criticalSplashRadius,
+        factor * traits.criticalSplashFactor,
+      );
+  };
+  const pierceCount =
+    traits.pierceCount +
+    evolutions.reduce(
+      (sum, recipe) => sum + recipe.effects.penetrationBonus,
+      0,
+    );
+  const halfWidth =
+    primaryAttackBalance.penetrationHalfWidth *
+    evolutions.reduce(
+      (scale, recipe) => scale * recipe.effects.penetrationWidthMultiplier,
+      1,
+    );
+  const pierceRetention = ranks["siege-lance"]
+    ? primaryAttackBalance.legendaryPierceRetention
+    : traits.pierceDamageRetention;
+  for (const root of roots) {
+    const rootFactor =
+      root.id === target.id
+        ? 1
+        : stormRound
+          ? (storm?.rayDamageFactor ?? 1)
+          : traits.multishotDamageFactor;
+    const critical = context.random() < traits.criticalChance;
+    criticalHit(root, rootFactor, "direct", critical);
+    explosion(root, rootFactor);
+    const aim = point(root);
     const length = Math.hypot(aim.x - origin.x, aim.y - origin.y);
     const dx = (aim.x - origin.x) / length;
     const dy = (aim.y - origin.y) / length;
-    const penetration =
-      (ranks.penetration ?? 0) * upgrades.penetration.amount +
-      modules.penetrationBonus +
-      evolutions.reduce(
-        (sum, recipe) => sum + recipe.effects.penetrationBonus,
-        0,
+    const pierced = living
+      .filter((enemy) => !claimed.has(enemy.id))
+      .map((enemy) => {
+        const x = point(enemy).x - origin.x,
+          y = point(enemy).y - origin.y;
+        return {
+          enemy,
+          projection: x * dx + y * dy,
+          gap: Math.abs(x * dy - y * dx),
+        };
+      })
+      .filter(
+        ({ projection, gap }) =>
+          projection >= length - 1e-6 && gap <= halfWidth,
+      )
+      .sort((a, b) => a.projection - b.projection || a.enemy.id - b.enemy.id)
+      .slice(0, pierceCount)
+      .map(({ enemy }) => enemy);
+    for (const enemy of pierced) {
+      claimed.add(enemy.id);
+      criticalHit(enemy, rootFactor * pierceRetention, "direct", critical);
+      if (deepBlast) explosion(enemy, rootFactor * pierceRetention);
+    }
+    let last = pierced.at(-1) ?? root;
+    if (pierced.length) {
+      splash(
+        last,
+        ranks["siege-lance"]
+          ? primaryAttackBalance.legendaryShockwaveRadius
+          : traits.pierceShockwaveRadius,
+        rootFactor *
+          (ranks["siege-lance"]
+            ? primaryAttackBalance.legendaryShockwaveDamageFactor
+            : traits.pierceShockwaveFactor),
       );
-    const halfWidth =
-      (primaryAttackBalance.penetrationHalfWidth + modules.widthBonus) *
-      evolutions.reduce(
-        (scale, recipe) => scale * recipe.effects.penetrationWidthMultiplier,
-        1,
+    }
+    const bounceCount =
+      traits.bounceCount + (critical ? (lethal?.criticalBounceBonus ?? 0) : 0);
+    let didBounce = false;
+    for (let i = 0; i < bounceCount; i++) {
+      const next = nearby(
+        last,
+        primaryAttackBalance.ricochetRadius + traits.bounceRadiusBonus,
+        claimed,
+      )[0];
+      if (!next) break;
+      claimed.add(next.id);
+      criticalHit(
+        next,
+        rootFactor * traits.bounceDamageRetention,
+        "bounce",
+        critical && !!lethal?.propagateCritical,
       );
-    const candidates = enemies.flatMap((enemy) => {
-      if (enemy.hp <= 0 || enemy.id === target.id) return [];
-      const point = combatPosition(enemy);
-      const x = point.x - origin.x;
-      const y = point.y - origin.y;
-      const projection = x * dx + y * dy;
-      const gap = Math.abs(x * dy - y * dx);
-      return projection >= length - 1e-6 && gap <= halfWidth
-        ? [{ enemy, projection }]
-        : [];
-    });
-    candidates.sort(
-      (a, b) => a.projection - b.projection || a.enemy.id - b.enemy.id,
-    );
-    hits.push(...candidates.slice(0, penetration).map(({ enemy }) => enemy));
-
-    const lastPierced = hits.length > 1 ? hits[hits.length - 1] : undefined;
-    const bounces =
-      bonus("ricochet") +
-      modules.extraRicochet +
-      (frostActive ? bonus("frozen-ricochet") : 0);
-    for (let bounce = 0; bounce < bounces; bounce++) {
-      const last = combatPosition(hits[hits.length - 1]!);
-      let nearest: EnemyState | undefined;
-      let nearestDistance: number =
-        primaryAttackBalance.ricochetRadius +
-        modules.ricochetRadiusBonus +
-        bonus("bounce-radius");
-      for (const enemy of enemies) {
-        if (enemy.hp <= 0 || hits.some((hit) => hit.id === enemy.id)) continue;
-        const point = combatPosition(enemy);
-        const distance = Math.hypot(point.x - last.x, point.y - last.y);
-        if (
-          distance < nearestDistance ||
-          (distance === nearestDistance && (!nearest || enemy.id < nearest.id))
-        ) {
-          nearest = enemy;
-          nearestDistance = distance;
-        }
-      }
-      if (nearest) {
-        hits.push(nearest);
-        ricochetIds.push(nearest.id);
-      }
+      last = next;
+      didBounce = true;
     }
-    // A single fork from the final ordinary bounce; fork targets never fork again.
-    if (ricochetIds.length > 0 && bonus("ricochet-cascade") > 0) {
-      const center = combatPosition(hits[hits.length - 1]!);
-      const fork = enemies
-        .filter(
-          (enemy) => enemy.hp > 0 && !hits.some((hit) => hit.id === enemy.id),
-        )
-        .map((enemy) => ({
-          enemy,
-          distance: Math.hypot(
-            combatPosition(enemy).x - center.x,
-            combatPosition(enemy).y - center.y,
-          ),
-        }))
-        .filter(
-          (entry) => entry.distance <= primaryAttackBalance.legendaryForkRadius,
-        )
-        .sort((a, b) => a.distance - b.distance || a.enemy.id - b.enemy.id)
-        .slice(0, bonus("ricochet-cascade"));
-      for (const { enemy } of fork) {
-        hits.push(enemy);
-        ricochetIds.push(enemy.id);
-        forkIds.push(enemy.id);
-      }
-    }
-    if (lastPierced && shockwaveRadius > 0) {
-      const center = combatPosition(lastPierced);
-      for (const enemy of enemies) {
-        if (enemy.hp <= 0 || hits.some((hit) => hit.id === enemy.id)) continue;
-        const point = combatPosition(enemy);
-        if (
-          Math.hypot(point.x - center.x, point.y - center.y) <= shockwaveRadius
-        ) {
-          splashIds.push(enemy.id);
-        }
-      }
-    }
-  }
-  const hitIds = hits.map((enemy) => enemy.id);
-  const pierceFactor = Math.min(
-    1,
-    Math.max(
-      primaryAttackBalance.pierceRetention + bonus("pierce-retention"),
-      bonus("siege-lance") > 0
-        ? primaryAttackBalance.legendaryPierceRetention
-        : 0,
-    ),
-  );
-  const bounceFactor = Math.min(
-    1,
-    primaryAttackBalance.bounceRetention + bonus("bounce-retention"),
-  );
-  const damage = (enemy: EnemyState, factor: number) => {
-    const armor = enemyConfigs[enemy.kind].primaryDamageMultiplier;
-    const armorBonus = Math.min(1, bonus("armor-piercing"));
-    return applyPrimaryDamage(
-      enemy,
-      (baseDamage * factor * (armor + (1 - armor) * armorBonus)) / armor,
-    );
-  };
-  const result = enemies.map((enemy) =>
-    hitIds.includes(enemy.id)
-      ? damage(
-          enemy,
-          enemy.id === target.id
-            ? 1
-            : forkIds.includes(enemy.id)
-              ? primaryAttackBalance.legendaryForkDamageFactor
-              : ricochetIds.includes(enemy.id)
-                ? bounceFactor
-                : pierceFactor,
-        )
-      : splashIds.includes(enemy.id)
-        ? damage(enemy, shockwaveDamage)
-        : enemy,
-  );
-  // A kill can relay once per round; relay kills never recursively trigger it.
-  if (bonus("rapid-relay") > 0 || bonus("rapid-overdrive") > 0) {
-    const killed = result.find(
-      (enemy) => enemy.hp <= 0 && hitIds.includes(enemy.id),
-    );
-    if (killed) {
-      const point = combatPosition(killed);
-      const relays = result
-        .filter(
-          (enemy) =>
-            enemy.hp > 0 &&
-            !hitIds.includes(enemy.id) &&
-            !splashIds.includes(enemy.id),
-        )
-        .map((enemy) => ({
-          enemy,
-          distance: Math.hypot(
-            combatPosition(enemy).x - point.x,
-            combatPosition(enemy).y - point.y,
-          ),
-        }))
-        .filter((entry) => entry.distance <= primaryAttackBalance.relayRadius)
-        .sort((a, b) => a.distance - b.distance || a.enemy.id - b.enemy.id)
-        .slice(0, bonus("rapid-overdrive") || 1);
-      for (const relay of relays) {
-        const index = result.findIndex((enemy) => enemy.id === relay.enemy.id);
-        result[index] = damage(
-          relay.enemy,
-          bonus("rapid-overdrive") > 0
-            ? primaryAttackBalance.legendaryRelayDamageFactor
-            : bonus("rapid-relay"),
+    if (didBounce) {
+      const forkCount = Math.max(
+        traits.bounceForkTargets,
+        ranks["ricochet-cascade"]
+          ? primaryAttackBalance.legendaryForkTargets
+          : 0,
+      );
+      const forkFactor = ranks["ricochet-cascade"]
+        ? Math.max(
+            primaryAttackBalance.legendaryForkDamageFactor,
+            traits.bounceForkDamageFactor,
+          )
+        : traits.bounceForkDamageFactor;
+      for (const fork of nearby(
+        last,
+        primaryAttackBalance.ricochetRadius + traits.bounceRadiusBonus,
+        claimed,
+      ).slice(0, forkCount)) {
+        claimed.add(fork.id);
+        criticalHit(
+          fork,
+          rootFactor * forkFactor,
+          "bounce",
+          critical && !!lethal?.propagateCritical,
         );
-        hitIds.push(relay.enemy.id);
-        ricochetIds.push(relay.enemy.id);
       }
     }
   }
-  return { hitIds, ricochetIds, splashIds, enemies: result };
+  // Critical echo is a single extra hit per critical root, never a new attack chain.
+  if (traits.criticalEchoDamageFactor > 0) {
+    for (const root of roots.filter((enemy) => criticals.has(enemy.id))) {
+      const echo = nearby(root, traits.criticalSplashRadius, claimed)[0];
+      if (echo) {
+        claimed.add(echo.id);
+        register(
+          echo,
+          (factors.get(root.id) ?? 0) * traits.criticalEchoDamageFactor,
+          "bounce",
+          true,
+        );
+      }
+    }
+  }
+  const damage = (enemy: EnemyState, factor: number) => ({
+    ...enemy,
+    hp: Math.max(0, enemy.hp - damageAmount(enemy, factor)),
+  });
+  const result = enemies.map((enemy) =>
+    factors.has(enemy.id) ? damage(enemy, factors.get(enemy.id)!) : enemy,
+  );
+  const killed = result.find((enemy) => enemy.hp <= 0 && hits.has(enemy.id));
+  const relayCount = Math.max(
+    traits.killRelayTargets,
+    ranks["rapid-overdrive"] ? primaryAttackBalance.legendaryRelayTargets : 0,
+  );
+  if (killed && relayCount > 0) {
+    const excluded = new Set(factors.keys());
+    for (const relay of nearby(
+      killed,
+      primaryAttackBalance.relayRadius,
+      excluded,
+    ).slice(0, relayCount)) {
+      const factor = ranks["rapid-overdrive"]
+        ? primaryAttackBalance.legendaryRelayDamageFactor
+        : traits.killRelayDamageFactor;
+      result[result.findIndex((enemy) => enemy.id === relay.id)] = damage(
+        relay,
+        factor,
+      );
+      hits.add(relay.id);
+      ricochets.add(relay.id);
+    }
+  }
+  return {
+    enemies: result,
+    hitIds: [...hits],
+    ricochetIds: [...ricochets],
+    splashIds: [...splashes].filter((id) => !hits.has(id)),
+    shotTargetIds: roots.map((enemy) => enemy.id),
+    criticalIds: [...criticals],
+    explosionIds: [...explosionCenters],
+  };
 }

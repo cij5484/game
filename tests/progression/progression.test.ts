@@ -4,105 +4,102 @@ import {
   Progression,
 } from "../../src/game/progression/progression";
 import { upgrades } from "../../src/game/data/upgrades";
+import { weaponTraitIds, getTraitEffects } from "../../src/game/data/traits";
 
 describe("run progression", () => {
-  it("weights rarity and bounded build investment while keeping legendary cards reachable", () => {
-    const common = upgrades["extended-burst"];
-    expect(effectiveUpgradeWeight(common, {})).toBe(10);
-    expect(effectiveUpgradeWeight({ ...common, rarity: "RARE" }, {})).toBe(4);
-    expect(effectiveUpgradeWeight({ ...common, rarity: "EPIC" }, {})).toBe(1);
-    expect(effectiveUpgradeWeight({ ...common, rarity: "LEGENDARY" }, {})).toBe(
-      0.25,
-    );
-    expect(effectiveUpgradeWeight(common, { "extended-burst": 1 })).toBeCloseTo(
+  it("caps new traits at two, then permits exactly one rare run-only expansion", () => {
+    const p = new Progression(() => 0, ["gauss-rifle"]);
+    expect(p.traitLimit).toBe(2);
+    p.ranks.rapid = 1;
+    p.ranks.penetration = 1;
+    p.gainXp(8);
+    expect(p.offer().map((c) => c.id)).toEqual(["rapid", "penetration"]);
+    expect(p.choose("ricochet")).toBe(false);
+    expect(p.tryExpandTraitLimit(() => 0.5)).toBe(false);
+    expect(p.tryExpandTraitLimit(() => 0)).toBe(true);
+    expect(p.traitLimit).toBe(3);
+    expect(p.offer().some((c) => c.id === "ricochet")).toBe(true);
+    expect(p.choose("ricochet")).toBe(true);
+    p.gainXp(p.threshold);
+    expect(
+      p
+        .offer()
+        .every((c) => ["rapid", "penetration", "ricochet"].includes(c.id)),
+    ).toBe(true);
+    expect(p.tryExpandTraitLimit(() => 0)).toBe(false);
+    expect(new Progression().traitLimit).toBe(2);
+  });
+  it("offers level-specific rarity, caps traits at five and gates legendary on level four", () => {
+    const p = new Progression(() => 0, ["gauss-rifle"]);
+    p.ranks.rapid = 2;
+    p.ranks.penetration = 5;
+    p.gainXp(8);
+    const next = p.offer().find((c) => c.id === "rapid")!;
+    expect(next.rarity).toBe("RARE");
+    expect(next.description).not.toBe(upgrades.rapid.description);
+    expect(p.offer().some((c) => c.id === "rapid-overdrive")).toBe(false);
+    p.choose("rapid");
+    p.gainXp(p.threshold);
+    p.choose("rapid");
+    p.gainXp(p.threshold);
+    expect(p.offer().find((c) => c.id === "rapid")?.rarity).toBe("EPIC");
+    expect(p.offer().some((c) => c.id === "rapid-overdrive")).toBe(true);
+    p.choose("rapid");
+    expect(p.traitLevels.rapid).toBe(5);
+    p.gainXp(p.threshold);
+    expect(p.offer().some((c) => c.id === "rapid")).toBe(false);
+  });
+  it("weights rarity and investment without duplicate candidates", () => {
+    expect(effectiveUpgradeWeight(upgrades.rapid, {})).toBe(10);
+    expect(
+      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "RARE" }, {}),
+    ).toBe(4);
+    expect(
+      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "EPIC" }, {}),
+    ).toBe(1);
+    expect(
+      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "LEGENDARY" }, {}),
+    ).toBe(0.25);
+    expect(effectiveUpgradeWeight(upgrades.rapid, { rapid: 1 })).toBeCloseTo(
       10.8,
     );
-    expect(
-      effectiveUpgradeWeight(common, {
-        "extended-burst": 5,
-        "faster-cycle": 5,
-      }),
-    ).toBe(16);
-    expect(effectiveUpgradeWeight({ ...common, weight: 2 }, {})).toBe(20);
-    const p = new Progression(() => 0.999999, ["gauss-rifle"]);
-    p.ranks["extended-burst"] = 5;
+    const p = new Progression(() => 0.99);
+    p.ranks.penetration = 1;
     p.gainXp(8);
-    expect(p.offer().some((card) => card.rarity === "LEGENDARY")).toBe(false);
-    p.choose(p.offer()[0]!.id);
-    p.ranks["faster-cycle"] = 1;
-    p.gainXp(p.threshold);
-    expect(p.offer().some((card) => card.id === "rapid-overdrive")).toBe(true);
-    expect(new Set(p.offer().map((card) => card.id)).size).toBe(3);
+    expect(p.offer()[0]!.tag).toBe("penetration");
+    expect(new Set(p.offer().map((c) => c.id)).size).toBe(3);
+    expect(p.offer()).toBe(p.offer());
   });
-  it("preserves overflow and resolves queued choices one at a time", () => {
+  it("preserves overflow, queued choices, and exhausted pools", () => {
     const p = new Progression(() => 0);
     p.gainXp(27);
     expect([p.level, p.xp, p.threshold, p.pendingChoices]).toEqual([
       3, 3, 28, 2,
     ]);
-    const choices = p.offer();
-    expect(choices).toHaveLength(3);
-    expect(
-      choices.some((c) =>
-        ["pierce-retention", "bounce-radius", "bounce-retention"].includes(
-          c.id,
-        ),
-      ),
-    ).toBe(false);
     expect(p.choose("chain-damage")).toBe(false);
-    expect(p.choose(choices[0]!.id)).toBe(true);
+    expect(p.choose(p.offer()[0]!.id)).toBe(true);
     expect(p.pendingChoices).toBe(1);
     expect(p.choose(p.offer()[0]!.id)).toBe(true);
     expect(p.pendingChoices).toBe(0);
-  });
-
-  it("leaves most ranks unspent after a representative five-minute XP budget", () => {
-    for (const xp of [1000, 1800, 2500]) {
-      const p = new Progression(() => 0);
-      p.gainXp(xp);
-      expect(p.pendingChoices).toBeGreaterThanOrEqual(10);
-      expect(p.pendingChoices).toBeLessThanOrEqual(14);
-    }
-    expect(Object.values(upgrades).length).toBeGreaterThanOrEqual(20);
-    expect(
-      Object.values(upgrades).reduce((n, u) => n + u.maxRank, 0),
-    ).toBeGreaterThanOrEqual(65);
-  });
-
-  it("unlocks advanced cards at tag investment threshold, while filtering abilities and MAX", () => {
-    const p = new Progression(() => 0.999, ["gauss-rifle"]);
-    p.ranks["extended-burst"] = 5;
-    p.gainXp(8);
-    expect(p.offer().some((c) => c.id === "rapid-relay")).toBe(false);
-    const first = p.offer()[0]!.id;
-    p.choose(first);
-    p.ranks[first] = 0;
-    p.ranks["faster-cycle"] = 1;
-    // Remove other candidates to make prerequisite eligibility observable without luck.
-    for (const card of Object.values(upgrades)) {
-      if (card.tag !== "rapid") p.ranks[card.id] = card.maxRank;
-    }
-    p.gainXp(p.threshold);
-    const cards = p.offer();
-    expect(cards.some((c) => c.id === "rapid-relay")).toBe(true);
-    expect(
-      cards.every(
-        (c) => c.ability === "gauss-rifle" && c.id !== "extended-burst",
-      ),
-    ).toBe(true);
-    expect(new Set(cards.map((c) => c.id)).size).toBe(cards.length);
-    expect(p.offer()).toBe(cards);
-  });
-
-  it("keeps one invested-tag option and never pauses on an exhausted pool", () => {
-    const p = new Progression(() => 0.99);
-    p.ranks.penetration = 1;
-    p.gainXp(8);
-    expect(p.offer()[0]!.tag).toBe("penetration");
-    p.choose(p.offer()[0]!.id);
     for (const card of Object.values(upgrades)) p.ranks[card.id] = card.maxRank;
     p.gainXp(1000);
     expect(p.offer()).toEqual([]);
     expect(p.pendingChoices).toBe(0);
+  });
+  it("defines six five-level traits with Korean names and behavioral capstones", () => {
+    expect(weaponTraitIds).toHaveLength(6);
+    for (const id of weaponTraitIds) {
+      expect(upgrades[id].maxRank).toBe(5);
+      expect(upgrades[id].title).toMatch(/[가-힣]/);
+    }
+    expect(
+      getTraitEffects({ explosive: 5 }).explosionChainTargets,
+    ).toBeGreaterThan(0);
+    expect(
+      getTraitEffects({ critical: 5 }).criticalEchoDamageFactor,
+    ).toBeGreaterThan(0);
+    expect(getTraitEffects({ rapid: 5 }).burstRoundsBonus).toBeGreaterThan(
+      getTraitEffects({ rapid: 1 }).burstRoundsBonus,
+    );
   });
 });

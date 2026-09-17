@@ -5,7 +5,14 @@ import { laneCenterX, laneX } from "./lanes";
 import { perspectiveScale } from "./perspective";
 import { battlefieldLayout, readSafeArea } from "./layout";
 import { attackSlotPosition } from "./crowdSpacing";
-import { modules, type ModuleLevels } from "../data/modules";
+import { relics, type RelicLevels } from "../data/relics";
+import {
+  display,
+  levelLabel,
+  magicLabels,
+  remainingLabel,
+  stimLabels,
+} from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
 
 // Visual layout only, in logical reference units.
@@ -32,7 +39,7 @@ export class EnemyPressureView {
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private readonly xpText: Phaser.GameObjects.Text;
   private readonly xpFill: Phaser.GameObjects.Rectangle;
-  private readonly moduleText: Phaser.GameObjects.Text;
+  private readonly relicText: Phaser.GameObjects.Text;
   private readonly runText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private readonly debug: Phaser.GameObjects.Container;
@@ -84,13 +91,13 @@ export class EnemyPressureView {
       this.xpFill,
     ]);
 
-    this.moduleText = text(310, 1189, "", 17);
-    this.hud.add(this.moduleText);
+    this.relicText = text(310, 1189, "", 17);
+    this.hud.add(this.relicText);
     this.runText = text(75, 1189, "5:00", 18);
     this.hud.add(this.runText);
     this.stimText = text(360, 1105, "", 20).setVisible(false);
     this.hud.add(this.stimText);
-    this.magicText = text(250, 1258, "", 18);
+    this.magicText = text(246, 1258, "", 16);
     this.hud.add(this.magicText);
     this.gesturePath = scene.add.graphics().setDepth(3).setVisible(false);
     this.gestureText = text(360, 290, "", 18);
@@ -161,7 +168,9 @@ export class EnemyPressureView {
     this.debug.add(
       text(360, 1095, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 22),
     );
-    this.debug.add(text(360, 1130, "두 손가락 탭: STIMPACK", 22));
+    this.debug.add(
+      text(360, 1130, "두 손가락 탭 / 마우스 좌우 동시 클릭: STIMPACK", 22),
+    );
     this.debug.add(
       text(360, 1165, "빨간 테두리: 성벽 공격 · 결과창에서 RETRY", 20),
     );
@@ -220,7 +229,7 @@ export class EnemyPressureView {
     // Separate HUD root leaves room for future safe-area/camera handling.
     scene.game.canvas.setAttribute(
       "aria-label",
-      "세로 전장: 빈 공간 탭 자동 3점사, 적 탭 우선 공격, 두 손가락 탭 Stimpack",
+      display.battlefieldDescription,
     );
   }
 
@@ -243,7 +252,7 @@ export class EnemyPressureView {
     if (enemy.elite) {
       visual.add(
         this.scene.add
-          .text(0, -60, "◆ ELITE", {
+          .text(0, -60, `◆ ${display.elite}`, {
             fontFamily: "sans-serif",
             fontSize: "24px",
             color: "#ffe18b",
@@ -359,7 +368,7 @@ export class EnemyPressureView {
       crash: "#ff796f",
       recovery: "#ffda82",
     };
-    this.stimText.setText(`${phase.toUpperCase()} · ×${multiplier.toFixed(2)}`);
+    this.stimText.setText(`${stimLabels[phase]} · ×${multiplier.toFixed(2)}`);
     this.stimText.setVisible(phase !== "normal");
     this.debugStim.setText(
       `STIM ${phase.toUpperCase()} ×${multiplier.toFixed(2)}`,
@@ -368,7 +377,7 @@ export class EnemyPressureView {
   }
 
   renderWall(hp: number, maxHp: number): void {
-    this.hpText.setText(`HP ${hp} / ${maxHp}`);
+    this.hpText.setText(`${display.wall} ${Math.ceil(hp)} / ${maxHp}`);
     this.hpFill.setDisplaySize(210 * (hp / maxHp), 7);
   }
 
@@ -380,7 +389,7 @@ export class EnemyPressureView {
   }
 
   renderProgression(level: number, xp: number, threshold: number): void {
-    this.xpText.setText(`Lv.${level} · XP ${xp}/${threshold}`);
+    this.xpText.setText(`${levelLabel(level)} · ${xp}/${threshold}`);
     this.xpFill.setDisplaySize(220 * Math.min(1, xp / threshold), 7);
   }
 
@@ -390,10 +399,15 @@ export class EnemyPressureView {
     hitIds: readonly number[],
     evolved = false,
     splashIds: readonly number[] = [],
+    shotTargetIds: readonly number[] = [],
+    criticalIds: readonly number[] = [],
+    explosionIds: readonly number[] = [],
   ): void {
     if (!targets.length) return;
-    this.showShot(targets[0]!);
-    if (targets.length < 2 && !evolved) return;
+    for (const [index, target] of targets.entries()) {
+      if (index === 0 || shotTargetIds.includes(hitIds[index]!))
+        this.showShot(target);
+    }
     const effect = this.scene.add.graphics();
     this.world.add(effect);
     const evolution = evolutionRecipes[0]!;
@@ -417,31 +431,61 @@ export class EnemyPressureView {
         evolved ? evolution.effects.tracerWidth : 3,
         ricochetIds.includes(hitIds[index]!) ? 0xffab6b : 0x85eaff,
       );
-      effect.lineBetween(previous.x, previous.y, target.x, target.y);
+      if (
+        !shotTargetIds.includes(hitIds[index]!) &&
+        !splashIds.includes(hitIds[index]!)
+      )
+        effect.lineBetween(previous.x, previous.y, target.x, target.y);
       effect.strokeCircle(target.x, target.y, 12);
       if (splashIds.includes(hitIds[index]!))
         effect.strokeCircle(target.x, target.y, 28);
       previous = target;
     }
-    this.scene.time.delayedCall(120, () => effect.destroy());
+    for (const [index, target] of targets.entries()) {
+      if (explosionIds.includes(hitIds[index]!)) {
+        effect.lineStyle(4, 0xff9e5f, 0.95);
+        effect.strokeCircle(target.x, target.y, 44 * target.scaleX);
+        effect
+          .fillStyle(0xffb75f, 0.2)
+          .fillCircle(target.x, target.y, 40 * target.scaleX);
+      }
+      if (criticalIds.includes(hitIds[index]!)) {
+        effect.lineStyle(4, 0xfff28d).strokeCircle(target.x, target.y, 18);
+      }
+    }
+    if (criticalIds.length) {
+      const criticalTarget =
+        targets[hitIds.indexOf(criticalIds[0]!)] ?? targets[0]!;
+      const label = this.scene.add
+        .text(criticalTarget.x, criticalTarget.y - 35, display.critical, {
+          fontFamily: "sans-serif",
+          fontSize: "20px",
+          color: "#fff28d",
+        })
+        .setOrigin(0.5);
+      this.world.add(label);
+      this.scene.time.delayedCall(220, () => label.destroy());
+    }
+    this.scene.time.delayedCall(180, () => effect.destroy());
   }
 
-  renderModules(levels: ModuleLevels): void {
-    this.moduleText.setText(
+  renderRelics(levels: RelicLevels): void {
+    this.relicText.setText(
       Object.entries(levels)
         .map(
           ([id, level]) =>
-            `${modules[id as keyof typeof modules].shortLabel} Lv${level}`,
+            `${relics[id as keyof typeof relics].shortLabel} ${levelLabel(level)}`,
         )
         .join("  ·  "),
     );
   }
 
-  showEvolution(title: string): void {
+  showNotice(title: string): void {
     const notice = this.scene.add
-      .text(360, 580, `EVOLUTION\n${title}`, {
+      .text(360, 580, title, {
         fontFamily: "sans-serif",
-        fontSize: "38px",
+        fontSize: "26px",
+        wordWrap: { width: 560 },
         color: "#b9ffff",
         align: "center",
         backgroundColor: "#162b36dd",
@@ -457,12 +501,11 @@ export class EnemyPressureView {
   }
 
   renderMagic(frostMs: number, chainMs: number, fieldMs: number): void {
-    const remaining = (ms: number) =>
-      ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
+    const remaining = remainingLabel;
     this.magicText.setText(
       fieldMs > 0
-        ? `○ SLOW ${remaining(fieldMs)} / CD ${Math.ceil(frostMs / 1000)}s · Z ${remaining(chainMs)}`
-        : `○ FROST ${remaining(frostMs)}  ·  Z CHAIN ${remaining(chainMs)}`,
+        ? `○ ${display.slow} ${remaining(fieldMs)} · ${display.cooldown} ${Math.ceil(frostMs / 1000)}초 / Z ${remaining(chainMs)}`
+        : `○ ${magicLabels["frost-nova"]} ${remaining(frostMs)} · Z ${magicLabels["chain-lightning"]} ${remaining(chainMs)}`,
     );
     this.magicText.setColor(fieldMs > 0 ? "#b2f7ff" : "#ffffff");
   }

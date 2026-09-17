@@ -3,7 +3,10 @@ import {
   type UpgradeAbility,
   type UpgradeRanks,
 } from "../data/upgrades";
-import { modules, type ModuleLevels } from "../data/modules";
+import { relics, type RelicLevels } from "../data/relics";
+import { weaponTraits, weaponTraitIds } from "../data/traits";
+import { activeSynergies } from "../progression/synergy";
+import { display, levelLabel } from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
 
 export interface RunResult {
@@ -13,7 +16,8 @@ export interface RunResult {
   level: number;
   wallHp: number;
   ranks: UpgradeRanks;
-  modules: ModuleLevels;
+  relics: RelicLevels;
+  traitLimit: number;
   evolutions: ReadonlySet<string>;
 }
 
@@ -21,7 +25,7 @@ export class ResultView {
   private readonly dialog = document.createElement("dialog");
   constructor() {
     this.dialog.className = "level-up run-result";
-    this.dialog.setAttribute("aria-label", "전투 결과");
+    this.dialog.setAttribute("aria-label", display.result);
     this.dialog.addEventListener("cancel", (event) => event.preventDefault());
     document.body.append(this.dialog);
   }
@@ -30,7 +34,7 @@ export class ResultView {
     this.dialog.replaceChildren();
     const title = document.createElement("h2");
     title.textContent =
-      result.status === "cleared" ? "PROTOTYPE CLEAR" : "RUN FAILED";
+      result.status === "cleared" ? display.cleared : display.failed;
     const stats = document.createElement("dl");
     const selections = (abilities: readonly UpgradeAbility[]) =>
       Object.values(upgrades)
@@ -39,54 +43,52 @@ export class ResultView {
             abilities.includes(upgrade.ability) &&
             (result.ranks[upgrade.id] ?? 0) > 0,
         )
-        .map((upgrade) => `${upgrade.title} ${result.ranks[upgrade.id]}`)
-        .join(" · ") || "없음";
-    const primary = Object.values(upgrades).filter(
-      (upgrade) => upgrade.ability === "gauss-rifle",
-    );
-    const tags = ["rapid", "penetration", "ricochet"];
+        .map(
+          (upgrade) =>
+            `${upgrade.title} ${levelLabel(result.ranks[upgrade.id]!)}`,
+        )
+        .join(" · ") || display.none;
     const direction =
-      tags
-        .map((tag) => ({
-          tag,
-          rank: primary
-            .filter((upgrade) => upgrade.tag === tag)
-            .reduce(
-              (total, upgrade) => total + (result.ranks[upgrade.id] ?? 0),
-              0,
-            ),
-        }))
-        .filter((entry) => entry.rank > 0)
-        .sort((a, b) => b.rank - a.rank)
-        .map((entry) => `${entry.tag.toUpperCase()} ${entry.rank}`)
-        .join(" / ") || "기본 Gauss Rifle";
+      weaponTraitIds
+        .filter((id) => (result.ranks[id] ?? 0) > 0)
+        .map(
+          (id) => `${weaponTraits[id].title} ${levelLabel(result.ranks[id]!)}`,
+        )
+        .join(" · ") || display.baseWeapon;
     const seconds = Math.floor(result.elapsedMs / 1000);
     const rows = [
       [
-        "전투 시간",
+        display.time,
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
       ],
-      ["처치 / Level", `${result.kills} / Lv.${result.level}`],
-      ["남은 Wall HP", String(Math.ceil(result.wallHp))],
-      ["Primary Build", direction],
-      ["Primary 강화", selections(["gauss-rifle"])],
-      ["Stimpack", selections(["stimpack"])],
-      ["Magic 성장", selections(["frost-nova", "chain-lightning"])],
+      [display.killsLevel, `${result.kills} / ${levelLabel(result.level)}`],
+      [display.wall, String(Math.ceil(result.wallHp))],
+      [`${display.trait} (${result.traitLimit})`, direction],
+      [display.primary, selections(["gauss-rifle"])],
+      [display.stimpack, selections(["stimpack"])],
+      [display.magicGrowth, selections(["frost-nova", "chain-lightning"])],
       [
-        "Module",
-        Object.values(modules)
-          .filter((module) => (result.modules[module.id] ?? 0) > 0)
+        display.relic,
+        Object.values(relics)
+          .filter((module) => (result.relics[module.id] ?? 0) > 0)
           .map(
-            (module) => `${module.shortLabel} Lv${result.modules[module.id]}`,
+            (module) =>
+              `${module.title} ${levelLabel(result.relics[module.id]!)}`,
           )
-          .join(" · ") || "없음",
+          .join(" · ") || display.none,
       ],
       [
-        "Evolution",
+        display.synergy,
+        activeSynergies(result.ranks)
+          .map((recipe) => recipe.title)
+          .join(" · ") || display.none,
+      ],
+      [
+        display.evolution,
         evolutionRecipes
           .filter((recipe) => result.evolutions.has(recipe.id))
           .map((recipe) => recipe.title)
-          .join(" · ") || "없음",
+          .join(" · ") || display.none,
       ],
     ];
     for (const [key, value] of rows) {
@@ -98,7 +100,7 @@ export class ResultView {
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "RETRY · 다시 시작";
+    button.textContent = display.retry;
     button.addEventListener(
       "click",
       () => {

@@ -15,7 +15,11 @@ import { resolveAttackTarget } from "../combat/targeting";
 import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
 import { Progression } from "../progression/progression";
 import { LevelUpView } from "../ui/LevelUpView";
-import { Modules } from "../progression/modules";
+import { Relics } from "../progression/relics";
+import { RelicCombat } from "../combat/relicCombat";
+import { activeSynergies } from "../progression/synergy";
+import { display } from "../data/display";
+import { PauseView } from "../ui/PauseView";
 import { eligibleEvolutions } from "../progression/evolution";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
@@ -48,16 +52,22 @@ export class CombatScene extends Phaser.Scene {
   private magic = new Magic();
   private progression = new Progression();
   private choices!: LevelUpView;
-  private modules = new Modules();
+  private relics = new Relics();
+  private relicCombat = new RelicCombat();
+  private shotIndex = 0;
+  private synergies = new Set<string>();
+  private pauseUi!: PauseView;
+  private manualPaused = false;
+  private cancelInput = () => {};
   private evolutions = new Set<string>();
-  private evolutionNotice = "";
+  private notices: string[] = [];
   private burst = new Burst();
   private burstUi!: BurstView;
   private ultimateRemainingMs = 0;
   private get choosing(): boolean {
     return (
       this.ultimateRemainingMs === 0 &&
-      (this.progression.pendingChoices > 0 || this.modules.pendingRewards > 0)
+      (this.progression.pendingChoices > 0 || this.relics.pendingRewards > 0)
     );
   }
 
@@ -76,9 +86,13 @@ export class CombatScene extends Phaser.Scene {
     this.stimpack = new Stimpack(stimpackBalance);
     this.magic = new Magic();
     this.progression = new Progression();
-    this.modules = new Modules();
+    this.relics = new Relics();
+    this.relicCombat = new RelicCombat();
+    this.shotIndex = 0;
+    this.synergies = new Set();
+    this.manualPaused = false;
     this.evolutions = new Set();
-    this.evolutionNotice = "";
+    this.notices = [];
     this.burst = new Burst();
     this.ultimateRemainingMs = 0;
     this.time.timeScale = 1;
@@ -92,6 +106,7 @@ export class CombatScene extends Phaser.Scene {
       () => {
         if (
           this.run.status !== "running" ||
+          this.manualPaused ||
           this.choosing ||
           this.ultimateRemainingMs > 0
         )
@@ -101,20 +116,30 @@ export class CombatScene extends Phaser.Scene {
       },
       () => this.rhythmTap(),
     );
-    const resizeBurst = () =>
+    this.pauseUi = new PauseView((paused) => {
+      this.manualPaused = paused;
+      this.cancelInput();
+      this.time.paused = paused;
+      this.renderBurst();
+    });
+    const resizeBurst = () => {
       this.burstUi.resize(this.scale.width, this.scale.height);
+      this.pauseUi.resize(this.scale.width, this.scale.height);
+    };
     resizeBurst();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeBurst);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, resizeBurst);
       this.burstUi.destroy();
+      this.pauseUi.destroy();
     });
     this.spawnBatch();
     this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
     const unbindInput = bindTapInput(
       this.game.canvas,
       (kind, x, y) => {
-        if (this.run.status !== "running" || this.choosing) return;
+        if (this.run.status !== "running" || this.choosing || this.manualPaused)
+          return;
         if (this.burst.phase === "rhythm") {
           if (kind === "primary") this.rhythmTap();
           return;
@@ -130,6 +155,7 @@ export class CombatScene extends Phaser.Scene {
       (points, displayPoints) => {
         if (
           this.run.status !== "running" ||
+          this.manualPaused ||
           this.choosing ||
           this.burst.phase === "rhythm" ||
           this.ultimateRemainingMs > 0
@@ -153,11 +179,20 @@ export class CombatScene extends Phaser.Scene {
             (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
           ),
         );
+        const relicCast = this.relicCombat.onMagic(id);
+        this.run = {
+          ...this.run,
+          wallHp: Math.min(
+            runBalance.wallMaxHp,
+            this.run.wallHp + relicCast.wallHealing,
+          ),
+        };
         this.applyEnemyStates(result.enemies);
         this.renderMagic();
       },
     );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput);
+    this.cancelInput = unbindInput.cancel;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput.destroy);
     this.view.renderStimpack(
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
@@ -168,7 +203,8 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private rhythmTap(): void {
-    if (this.run.status !== "running" || this.choosing) return;
+    if (this.run.status !== "running" || this.choosing || this.manualPaused)
+      return;
     this.burst.tap();
     this.renderBurst();
   }
@@ -176,7 +212,7 @@ export class CombatScene extends Phaser.Scene {
   private renderBurst(): void {
     this.burstUi.render(
       this.burst,
-      this.run.status !== "running" || this.choosing,
+      this.run.status !== "running" || this.choosing || this.manualPaused,
       this.ultimateRemainingMs > 0,
     );
   }
@@ -202,7 +238,8 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    if (this.run.status !== "running" || this.choosing) return;
+    if (this.run.status !== "running" || this.choosing || this.manualPaused)
+      return;
     if (this.burst.phase === "rhythm") {
       const step = Math.min(
         Math.max(0, deltaMs),
@@ -235,6 +272,7 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.advance(step);
       this.ultimateRemainingMs -= step;
       if (this.choosing && this.run.status === "running") this.showChoices();
+      else if (this.ultimateRemainingMs === 0) this.flushNotices();
       this.renderCombat();
       return;
     }
@@ -252,6 +290,7 @@ export class CombatScene extends Phaser.Scene {
 
   private renderCombat(): void {
     this.finishRun();
+    this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
     this.renderBurst();
     this.view.renderStimpack(
       this.stimpack.phase,
@@ -288,7 +327,8 @@ export class CombatScene extends Phaser.Scene {
         level: this.progression.level,
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
-        modules: this.modules.levels,
+        relics: this.relics.levels,
+        traitLimit: this.progression.traitLimit,
         evolutions: this.evolutions,
       },
       () => this.scene.restart(),
@@ -304,6 +344,7 @@ export class CombatScene extends Phaser.Scene {
         this.advanceWorld(offsetMs - elapsed);
         elapsed = offsetMs;
         if (this.run.status !== "running") return false;
+        this.shotIndex++;
         const target = resolveAttackTarget(
           command.manualTargetId,
           this.enemies.map((entry) => entry.state),
@@ -315,9 +356,9 @@ export class CombatScene extends Phaser.Scene {
             this.progression.ranks,
             gaussRifleBalance.damagePerRound *
               marineConfig.baseStats.damageMultiplier,
-            this.modules.levels,
+            this.relicCombat.primaryModifiers,
             [...this.evolutions],
-            this.magic.frostRemainingMs > 0,
+            { shotIndex: this.shotIndex, random: Math.random },
           );
           this.view.showPrimary(
             [...result.hitIds, ...result.splashIds].map(
@@ -328,10 +369,32 @@ export class CombatScene extends Phaser.Scene {
             [...result.hitIds, ...result.splashIds],
             this.evolutions.size > 0,
             result.splashIds,
+            result.shotTargetIds,
+            result.criticalIds,
+            result.explosionIds,
           );
-          this.applyEnemyStates(result.enemies);
+          const relicResult = this.relicCombat.afterPrimary(
+            result.enemies,
+            result.hitIds,
+            result.criticalIds.length > 0,
+          );
+          if (relicResult.hitIds.length)
+            this.view.showMagic(
+              "chain-lightning",
+              relicResult.hitIds.map(
+                (id) =>
+                  this.enemies.find((entry) => entry.state.id === id)!.visual,
+              ),
+            );
+          this.magic.refundCooldowns(relicResult.cooldownRefunds);
+          this.applyEnemyStates(relicResult.enemies);
           if (this.choosing) return false;
-        }
+        } else
+          this.relicCombat.afterPrimary(
+            this.enemies.map((entry) => entry.state),
+            [],
+            false,
+          );
       },
       !(
         this.stimpack.phase === "boost" &&
@@ -361,7 +424,11 @@ export class CombatScene extends Phaser.Scene {
         kills++;
         xp += enemyConfigs[entry.state.kind].xpOnKill;
         if (entry.state.elite) {
-          this.modules.reward();
+          this.relics.reward();
+          if (this.progression.tryExpandTraitLimit())
+            this.notices.push(
+              `${display.expansion}\n${display.expansionDetail}`,
+            );
           eliteKills++;
         }
         entry.visual.destroy();
@@ -378,6 +445,7 @@ export class CombatScene extends Phaser.Scene {
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
     this.renderProgression();
     if (this.choosing) this.showChoices();
+    else if (this.ultimateRemainingMs === 0) this.flushNotices();
     this.renderBurst();
   }
 
@@ -387,15 +455,17 @@ export class CombatScene extends Phaser.Scene {
       this.progression.xp,
       this.progression.threshold,
     );
-    this.view.renderModules(this.modules.levels);
+    this.view.renderRelics(this.relics.levels);
+    this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
   }
 
   private showChoices(): void {
-    const moduleOffer = this.modules.offer();
-    if (moduleOffer.length) {
+    this.cancelInput();
+    const relicOffer = this.relics.offer();
+    if (relicOffer.length) {
       this.time.paused = true;
-      this.choices.showModules(moduleOffer, this.modules.levels, (id) => {
-        if (this.modules.choose(id)) this.applyBuildChoice();
+      this.choices.showRelics(relicOffer, this.relics.levels, (id) => {
+        if (this.relics.choose(id)) this.applyBuildChoice();
       });
       return;
     }
@@ -403,28 +473,46 @@ export class CombatScene extends Phaser.Scene {
     if (!offered.length) {
       this.time.paused = false;
       this.choices.hide();
-      if (this.evolutionNotice) {
-        this.view.showEvolution(this.evolutionNotice);
-        this.evolutionNotice = "";
-      }
+      this.flushNotices();
       return;
     }
     this.time.paused = true;
-    this.choices.show(this.progression.level, offered, (id) => {
-      if (!this.progression.choose(id)) return;
-      this.applyBuildChoice();
-    });
+    this.choices.show(
+      this.progression.level,
+      offered,
+      this.progression.ranks,
+      (id) => {
+        if (!this.progression.choose(id)) return;
+        this.applyBuildChoice();
+      },
+      this.progression.traitLimit,
+    );
+  }
+
+  private flushNotices(): void {
+    if (!this.notices.length) return;
+    this.view.showNotice(this.notices.join("\n\n"));
+    this.notices = [];
   }
 
   private applyBuildChoice(): void {
     for (const recipe of eligibleEvolutions(
-      this.progression.ranks,
-      this.modules.levels,
+      this.progression.traitLevels,
+      this.relics.levels,
       this.evolutions,
+      this.progression.ranks,
     )) {
       this.evolutions.add(recipe.id);
-      this.evolutionNotice = recipe.title;
+      this.notices.push(`${display.evolution}\n${recipe.title}`);
     }
+    for (const recipe of activeSynergies(this.progression.traitLevels)) {
+      if (!this.synergies.has(recipe.id))
+        this.notices.push(
+          `${display.synergy} · ${recipe.title}\n${recipe.description}`,
+        );
+      this.synergies.add(recipe.id);
+    }
+    this.relicCombat.setLevels(this.relics.levels);
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
     this.magic.setUpgrades(this.progression.ranks);
     this.stimpack.setUpgrades(this.progression.ranks);
