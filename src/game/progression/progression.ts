@@ -11,6 +11,7 @@ import type {
   UpgradeDefinition,
   UpgradeId,
   UpgradeRanks,
+  UpgradeRarity,
 } from "../data/upgrades";
 
 function tagRanks(tag: UpgradeDefinition["tag"], ranks: UpgradeRanks): number {
@@ -23,12 +24,21 @@ function tagRanks(tag: UpgradeDefinition["tag"], ranks: UpgradeRanks): number {
 export function effectiveUpgradeWeight(
   card: UpgradeDefinition,
   ranks: UpgradeRanks,
+  rarityModifiers: Partial<Record<UpgradeRarity, number>> = {},
 ): number {
   const bias = Math.min(
     progressionBalance.maxBuildBias,
     1 + progressionBalance.buildBiasPerRank * tagRanks(card.tag, ranks),
   );
-  return card.weight * rarityWeights[card.rarity] * bias;
+  return (
+    card.weight *
+    rarityWeights[card.rarity] *
+    bias *
+    (rarityModifiers[card.rarity] ?? 1) *
+    (weaponTraitIds.includes(card.id as WeaponTraitId)
+      ? progressionBalance.traitWeightMultiplier
+      : 1)
+  );
 }
 
 export class Progression {
@@ -37,6 +47,7 @@ export class Progression {
   pendingChoices = 0;
   readonly ranks: UpgradeRanks = {};
   traitLimit: number = traitBalance.initialLimit;
+  private rarityModifiers: Partial<Record<UpgradeRarity, number>> = {};
   private choices: UpgradeDefinition[] | null = null;
   private readonly random: () => number;
   private readonly availableAbilities: readonly UpgradeAbility[];
@@ -70,15 +81,34 @@ export class Progression {
     );
   }
 
-  tryExpandTraitLimit(random = Math.random): boolean {
-    if (
-      this.traitLimit >= traitBalance.maximumLimit ||
-      random() >= traitBalance.eliteExpansionChance
-    )
-      return false;
+  expandTraitLimit(): boolean {
+    if (this.traitLimit >= traitBalance.maximumLimit) return false;
     this.traitLimit = traitBalance.maximumLimit;
     this.choices = null;
     return true;
+  }
+
+  growOwnedTraits(): number {
+    let grown = 0;
+    for (const id of weaponTraitIds) {
+      const level = this.ranks[id] ?? 0;
+      if (level > 0 && level < traitBalance.maxLevel) {
+        this.ranks[id] = level + 1;
+        grown++;
+      }
+    }
+    this.choices = null;
+    this.clearExhaustedChoices();
+    return grown;
+  }
+
+  setRarityModifiers(modifiers: Partial<Record<UpgradeRarity, number>>): void {
+    this.rarityModifiers = Object.fromEntries(
+      Object.entries(modifiers).filter(
+        ([, value]) => Number.isFinite(value) && value >= 0,
+      ),
+    );
+    this.choices = null;
   }
 
   gainXp(amount: number): void {
@@ -95,24 +125,24 @@ export class Progression {
   offer(): UpgradeDefinition[] {
     if (this.pendingChoices === 0) return [];
     if (this.choices) return this.choices;
-    const pool = this.eligible();
+    const pool = this.eligible().filter(
+      (card) =>
+        effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers) > 0,
+    );
     const choices: UpgradeDefinition[] = [];
     while (pool.length > 0 && choices.length < progressionBalance.choiceCount) {
-      // One build-related slot; remaining slots stay open to hybrid directions.
-      const invested =
-        choices.length === 0
-          ? pool.filter((card) => this.tagRanks(card.tag) > 0)
-          : [];
-      const candidates = invested.length > 0 ? invested : pool;
+      const candidates = pool;
       let roll =
         this.random() *
         candidates.reduce(
-          (sum, card) => sum + effectiveUpgradeWeight(card, this.ranks),
+          (sum, card) =>
+            sum +
+            effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers),
           0,
         );
       let selected = candidates[candidates.length - 1]!;
       for (const card of candidates) {
-        roll -= effectiveUpgradeWeight(card, this.ranks);
+        roll -= effectiveUpgradeWeight(card, this.ranks, this.rarityModifiers);
         if (roll < 0) {
           selected = card;
           break;
@@ -151,9 +181,11 @@ export class Progression {
             (this.ranks[card.id] ?? 0) > 0 ||
             ownedTraits < this.traitLimit) &&
           (!card.requires ||
-            (weaponTraitIds.includes(card.requires.tag as WeaponTraitId)
-              ? (this.ranks[card.requires.tag as WeaponTraitId] ?? 0)
-              : this.tagRanks(card.requires.tag)) >= card.requires.ranks),
+            (card.requires.upgrade
+              ? (this.ranks[card.requires.upgrade] ?? 0)
+              : weaponTraitIds.includes(card.requires.tag as WeaponTraitId)
+                ? (this.ranks[card.requires.tag as WeaponTraitId] ?? 0)
+                : this.tagRanks(card.requires.tag)) >= card.requires.ranks),
       )
       .map((card) => {
         if (!weaponTraitIds.includes(card.id as WeaponTraitId)) return card;
@@ -163,7 +195,9 @@ export class Progression {
           description:
             weaponTraits[card.id as WeaponTraitId].levels[nextLevel - 1]!
               .description,
-          rarity: nextLevel === 5 ? "EPIC" : nextLevel >= 3 ? "RARE" : "COMMON",
+          rarity:
+            weaponTraits[card.id as WeaponTraitId].levels[nextLevel - 1]!
+              .rarity,
         };
       });
   }

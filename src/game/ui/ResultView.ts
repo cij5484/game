@@ -8,6 +8,7 @@ import { weaponTraits, weaponTraitIds } from "../data/traits";
 import { activeSynergies } from "../progression/synergy";
 import { display, levelLabel } from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
+import { cores, type CoreId } from "../data/cores";
 
 export interface RunResult {
   status: "cleared" | "failed";
@@ -18,6 +19,7 @@ export interface RunResult {
   ranks: UpgradeRanks;
   relics: RelicLevels;
   traitLimit: number;
+  cores: ReadonlySet<CoreId>;
   evolutions: ReadonlySet<string>;
 }
 
@@ -76,6 +78,11 @@ export class ResultView {
               `${module.title} ${levelLabel(result.relics[module.id]!)}`,
           )
           .join(" · ") || display.none,
+      ],
+      [
+        display.core,
+        [...result.cores].map((id) => cores[id].title).join(" · ") ||
+          display.none,
       ],
       [
         display.synergy,

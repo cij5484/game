@@ -15,7 +15,12 @@ import { resolveAttackTarget } from "../combat/targeting";
 import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
 import { Progression } from "../progression/progression";
 import { LevelUpView } from "../ui/LevelUpView";
-import { Relics } from "../progression/relics";
+import { Relics, relicEffects } from "../progression/relics";
+import { Cores } from "../progression/cores";
+import { coreEffects } from "../data/cores";
+import { BuildBar } from "../ui/BuildBar";
+import { buildSummary } from "../ui/buildSummary";
+import type { UpgradeRarity } from "../data/upgrades";
 import { RelicCombat } from "../combat/relicCombat";
 import { activeSynergies } from "../progression/synergy";
 import { display } from "../data/display";
@@ -54,6 +59,8 @@ export class CombatScene extends Phaser.Scene {
   private choices!: LevelUpView;
   private relics = new Relics();
   private relicCombat = new RelicCombat();
+  private cores = new Cores();
+  private buildBar!: BuildBar;
   private shotIndex = 0;
   private synergies = new Set<string>();
   private pauseUi!: PauseView;
@@ -88,6 +95,7 @@ export class CombatScene extends Phaser.Scene {
     this.progression = new Progression();
     this.relics = new Relics();
     this.relicCombat = new RelicCombat();
+    this.cores = new Cores();
     this.shotIndex = 0;
     this.synergies = new Set();
     this.manualPaused = false;
@@ -126,12 +134,14 @@ export class CombatScene extends Phaser.Scene {
       this.burstUi.resize(this.scale.width, this.scale.height);
       this.pauseUi.resize(this.scale.width, this.scale.height);
     };
+    this.buildBar = new BuildBar();
     resizeBurst();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeBurst);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, resizeBurst);
       this.burstUi.destroy();
       this.pauseUi.destroy();
+      this.buildBar.destroy();
     });
     this.spawnBatch();
     this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
@@ -145,8 +155,16 @@ export class CombatScene extends Phaser.Scene {
           return;
         }
         if (this.ultimateRemainingMs > 0) return;
-        if (kind === "secondary") this.stimpack.activate();
-        else if (this.stimpack.canAttack)
+        if (kind === "secondary") {
+          if (this.stimpack.activate()) {
+            const effect = this.relicCombat.onStim();
+            this.run = {
+              ...this.run,
+              wallHp: Math.max(1, this.run.wallHp - effect.wallCost),
+            };
+            this.magic.refundCooldowns(effect.cooldownRefunds);
+          }
+        } else if (this.stimpack.canAttack)
           this.rifle.request({
             manualTargetId: this.view.pickEnemy(x, y, this.enemies),
           });
@@ -162,9 +180,11 @@ export class CombatScene extends Phaser.Scene {
         )
           return;
         const gesture = recognizeGesture(points);
+        const debugGesture = `${gesture.kind} · ○ ${gesture.circleScore.toFixed(2)} / Z ${gesture.zScore.toFixed(2)}\n${gesture.reason} · samples ${gesture.metrics?.samples ?? points.length} · length ${(gesture.metrics?.pathLength ?? 0).toFixed(0)}px`;
         this.view.showGesture(
           displayPoints,
-          `${gesture.kind} · ○ ${gesture.circleScore.toFixed(2)} / Z ${gesture.zScore.toFixed(2)}\n${gesture.reason}`,
+          debugGesture,
+          gesture.kind === "unknown",
         );
         if (gesture.kind === "unknown") return;
         const id = gesture.kind === "circle" ? "frost-nova" : "chain-lightning";
@@ -172,14 +192,29 @@ export class CombatScene extends Phaser.Scene {
           id,
           this.enemies.map((entry) => entry.state),
         );
-        if (!result) return;
+        if (!result) {
+          this.view.showGesture(
+            displayPoints,
+            `${debugGesture}\ncooldown blocked`,
+          );
+          return;
+        }
         this.view.showMagic(
           id,
           result.hitIds.map(
             (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
           ),
         );
-        const relicCast = this.relicCombat.onMagic(id);
+        this.view.showImpacts(
+          "lightning",
+          result.strikeIds.map(
+            (id) => this.enemies.find((e) => e.state.id === id)!.visual,
+          ),
+        );
+        const relicCast = this.relicCombat.onMagic(
+          id,
+          this.run.wallHp / runBalance.wallMaxHp,
+        );
         this.run = {
           ...this.run,
           wallHp: Math.min(
@@ -187,7 +222,8 @@ export class CombatScene extends Phaser.Scene {
             this.run.wallHp + relicCast.wallHealing,
           ),
         };
-        this.applyEnemyStates(result.enemies);
+        this.magic.refundCooldowns(relicCast.cooldownRefunds);
+        this.applyEnemyStates(result.enemies, true, true);
         this.renderMagic();
       },
     );
@@ -200,6 +236,7 @@ export class CombatScene extends Phaser.Scene {
     this.renderMagic();
     this.renderProgression();
     this.renderBurst();
+    this.refreshBuild();
   }
 
   private rhythmTap(): void {
@@ -226,6 +263,7 @@ export class CombatScene extends Phaser.Scene {
           this.nextEnemyId++,
           spawn.offset01,
           spawn.elite,
+          this.run.elapsedMs,
         ),
         progress01: spawn.progress01,
       };
@@ -311,6 +349,14 @@ export class CombatScene extends Phaser.Scene {
       this.magic.remaining("chain-lightning"),
       this.magic.frostRemainingMs,
     );
+    this.burstUi.renderAbilities(
+      { phase: this.stimpack.phase, progress: this.stimpack.phaseProgress },
+      {
+        frostProgress: this.magic.readyProgress("frost-nova"),
+        chainProgress: this.magic.readyProgress("chain-lightning"),
+        frostActive: this.magic.frostRemainingMs > 0,
+      },
+    );
   }
 
   private finishRun(): void {
@@ -329,6 +375,7 @@ export class CombatScene extends Phaser.Scene {
         ranks: this.progression.ranks,
         relics: this.relics.levels,
         traitLimit: this.progression.traitLimit,
+        cores: this.cores.owned,
         evolutions: this.evolutions,
       },
       () => this.scene.restart(),
@@ -355,10 +402,19 @@ export class CombatScene extends Phaser.Scene {
             this.enemies.map((entry) => entry.state),
             this.progression.ranks,
             gaussRifleBalance.damagePerRound *
-              marineConfig.baseStats.damageMultiplier,
-            this.relicCombat.primaryModifiers,
+              marineConfig.baseStats.damageMultiplier *
+              this.magic.primaryDamageMultiplier,
+            this.relicCombat.primaryModifiersFor(
+              this.run.wallHp / runBalance.wallMaxHp,
+              this.stimpack.phase === "boost",
+            ),
             [...this.evolutions],
-            { shotIndex: this.shotIndex, random: Math.random },
+            {
+              shotIndex: this.shotIndex,
+              random: Math.random,
+              synergyMultiplier: coreEffects(this.cores.owned)
+                .synergyMultiplier,
+            },
           );
           this.view.showPrimary(
             [...result.hitIds, ...result.splashIds].map(
@@ -411,24 +467,46 @@ export class CombatScene extends Phaser.Scene {
   private applyEnemyStates(
     states: readonly EnemyState[],
     chargeBurst = true,
+    magicKill = false,
   ): void {
+    const frostBurst = this.magic.afterDeaths(
+      states,
+      states.filter((e) => e.hp <= 0).map((e) => e.id),
+    );
+    this.view.showImpacts(
+      "frost",
+      frostBurst.centerIds.map(
+        (id) => this.enemies.find((e) => e.state.id === id)!.visual,
+      ),
+    );
+    const byId = new Map(frostBurst.enemies.map((enemy) => [enemy.id, enemy]));
+    let buildChanged = false;
     let xp = 0;
+    let magicXp = 0;
+    const frostHits = new Set(frostBurst.hitIds);
     let hits = 0;
     let kills = 0;
     let eliteKills = 0;
     for (const entry of this.enemies) {
       const oldHp = entry.state.hp;
-      entry.state = states.find((enemy) => enemy.id === entry.state.id)!;
+      entry.state = byId.get(entry.state.id)!;
       if (entry.state.hp < oldHp) hits++;
       if (entry.state.hp <= 0) {
         kills++;
         xp += enemyConfigs[entry.state.kind].xpOnKill;
+        if (magicKill || frostHits.has(entry.state.id))
+          magicXp += enemyConfigs[entry.state.kind].xpOnKill;
         if (entry.state.elite) {
+          const core = this.cores.tryDrop(this.progression.traitLevels);
+          if (core) {
+            if (core.id === "tactical-expansion")
+              this.progression.expandTraitLimit();
+            if (core.id === "relic-expansion") this.relics.expandCapacity();
+            if (core.id === "overload") this.progression.growOwnedTraits();
+            this.notices.push(`${core.title}\n${core.description}`);
+            buildChanged = true;
+          }
           this.relics.reward();
-          if (this.progression.tryExpandTraitLimit())
-            this.notices.push(
-              `${display.expansion}\n${display.expansionDetail}`,
-            );
           eliteKills++;
         }
         entry.visual.destroy();
@@ -441,7 +519,21 @@ export class CombatScene extends Phaser.Scene {
     }
     this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
     this.kills += kills;
-    this.progression.gainXp(xp);
+    const reward = this.relicCombat.onKills(kills, {
+      frost: this.magic.frostRemainingMs > 0,
+      boost: this.stimpack.phase === "boost",
+      magic: magicXp > 0,
+    });
+    this.run = {
+      ...this.run,
+      wallHp: Math.min(
+        runBalance.wallMaxHp,
+        this.run.wallHp + reward.wallHealing,
+      ),
+    };
+    this.magic.refundCooldowns(reward.cooldownRefunds);
+    if (buildChanged) this.refreshBuild();
+    this.progression.gainXp(xp + magicXp * (reward.xpMultiplier - 1));
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
     this.renderProgression();
     if (this.choosing) this.showChoices();
@@ -455,7 +547,6 @@ export class CombatScene extends Phaser.Scene {
       this.progression.xp,
       this.progression.threshold,
     );
-    this.view.renderRelics(this.relics.levels);
     this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
   }
 
@@ -496,6 +587,12 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private applyBuildChoice(): void {
+    this.refreshBuild();
+    this.renderProgression();
+    this.showChoices();
+  }
+
+  private refreshBuild(): void {
     for (const recipe of eligibleEvolutions(
       this.progression.traitLevels,
       this.relics.levels,
@@ -505,7 +602,7 @@ export class CombatScene extends Phaser.Scene {
       this.evolutions.add(recipe.id);
       this.notices.push(`${display.evolution}\n${recipe.title}`);
     }
-    for (const recipe of activeSynergies(this.progression.traitLevels)) {
+    for (const recipe of activeSynergies(this.progression.ranks)) {
       if (!this.synergies.has(recipe.id))
         this.notices.push(
           `${display.synergy} · ${recipe.title}\n${recipe.description}`,
@@ -513,11 +610,30 @@ export class CombatScene extends Phaser.Scene {
       this.synergies.add(recipe.id);
     }
     this.relicCombat.setLevels(this.relics.levels);
+    const relic = relicEffects(this.relics.levels);
+    const core = coreEffects(this.cores.owned);
+    const modifiers = Object.fromEntries(
+      (["COMMON", "RARE", "EPIC", "LEGENDARY"] as UpgradeRarity[]).map(
+        (rarity) => [
+          rarity,
+          (core.rarityModifiers[rarity] ?? 1) *
+            (1 +
+              (rarity === "COMMON" ? 0 : (relic.rarityModifiers[rarity] ?? 0))),
+        ],
+      ),
+    );
+    this.progression.setRarityModifiers(modifiers);
+    this.magic.setRelicFrostDuration(relic.frostDurationBonusMs);
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
     this.magic.setUpgrades(this.progression.ranks);
     this.stimpack.setUpgrades(this.progression.ranks);
-    this.renderProgression();
-    this.showChoices();
+    const summary = buildSummary(
+      this.progression.ranks,
+      this.relics.levels,
+      this.cores.owned,
+    );
+    this.buildBar.render(summary);
+    this.pauseUi.setBuildDetails(summary);
   }
 
   private advanceWorld(deltaMs: number): void {

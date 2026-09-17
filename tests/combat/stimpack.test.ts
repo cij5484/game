@@ -3,6 +3,22 @@ import { Stimpack } from "../../src/game/combat/stimpack";
 import { stimpackBalance } from "../../src/game/data/balance";
 
 describe("Stimpack", () => {
+  it("reports current-phase progress from simulated time", () => {
+    const stim = new Stimpack(stimpackBalance);
+    expect(stim.phaseProgress).toBe(1);
+    stim.activate();
+    expect(stim.phaseProgress).toBe(0);
+    stim.advance(2500);
+    expect(stim.phaseProgress).toBe(0.5);
+    stim.advance(3000);
+    expect(stim.phase).toBe("crash");
+    expect(stim.phaseProgress).toBe(0.5);
+    stim.advance(1500);
+    expect(stim.phase).toBe("recovery");
+    expect(stim.phaseProgress).toBe(0.5);
+    stim.advance(1000);
+    expect(stim.phaseProgress).toBe(1);
+  });
   it("boosts, locks primary for one second, then recovers over two seconds", () => {
     const stim = new Stimpack(stimpackBalance);
     expect(stim.phase).toBe("normal");

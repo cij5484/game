@@ -36,6 +36,7 @@ describe("enemy simulation", () => {
       expect(enemy).toEqual({
         id: 7,
         hp: enemyConfigs[kind].hp,
+        maxHp: enemyConfigs[kind].hp,
         kind,
         lane: "left",
         offset01: 0.5,

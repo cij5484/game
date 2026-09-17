@@ -24,13 +24,13 @@ export class TapInput {
     if (++this.count > 2) this.valid = false;
   }
 
-  move(id: number, x: number, y: number): void {
+  move(id: number, x: number, y: number, endpoint = false): void {
     const start = this.fingers.get(id);
     if (start && this.count === 1) {
       const last = this.path[this.path.length - 1]!;
       if (
         Math.hypot(x - last.x, y - last.y) >=
-        drawingInputBalance.sampleDistancePx
+        (endpoint ? Number.EPSILON : drawingInputBalance.sampleDistancePx)
       ) {
         // Keep the entire drawing at bounded storage instead of clipping its end.
         if (this.path.length >= drawingInputBalance.maxPoints)
@@ -47,7 +47,7 @@ export class TapInput {
 
   up(id: number, x: number, y: number, time: number): CombatInput | null {
     if (!this.fingers.has(id)) return null;
-    this.move(id, x, y);
+    this.move(id, x, y, true);
     this.fingers.delete(id);
     if (
       !this.fingers.size &&
@@ -154,8 +154,7 @@ export function bindTapInput(
     if (event.pointerType === "mouse") {
       mouseActive = true;
       mouseEvent(event);
-    }
-    else
+    } else
       input.down(
         event.pointerId,
         event.clientX,
@@ -164,10 +163,23 @@ export function bindTapInput(
       );
   };
   const move = (event: PointerEvent) => {
+    // Browsers may combine an entire fast stroke into one dispatched move.
+    for (const sample of event.getCoalescedEvents?.() ?? []) {
+      if (event.pointerType === "mouse") {
+        if (mouseActive)
+          emit(
+            mouse.update(
+              event.buttons,
+              sample.clientX,
+              sample.clientY,
+              event.timeStamp,
+            ),
+          );
+      } else input.move(event.pointerId, sample.clientX, sample.clientY);
+    }
     if (event.pointerType === "mouse") {
       if (mouseActive) mouseEvent(event);
-    }
-    else input.move(event.pointerId, event.clientX, event.clientY);
+    } else input.move(event.pointerId, event.clientX, event.clientY);
   };
   const up = (event: PointerEvent) => {
     event.preventDefault();

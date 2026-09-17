@@ -5,6 +5,7 @@ export function meetsRecipeRequirements(
   traits: Levels,
   relics: Levels = {},
   magic: Levels = {},
+  upgrades: Levels = {},
 ): boolean {
   const meets = (requirements: Levels = {}, levels: Levels) =>
     Object.entries(requirements).every(
@@ -13,7 +14,8 @@ export function meetsRecipeRequirements(
   return (
     meets(requires.traits, traits) &&
     meets(requires.relics, relics) &&
-    meets(requires.magic, magic)
+    meets(requires.magic, magic) &&
+    meets(requires.upgrades, upgrades)
   );
 }
 export function eligibleEvolutions(
@@ -21,10 +23,11 @@ export function eligibleEvolutions(
   relics: Levels,
   already: ReadonlySet<string>,
   magic: Levels = {},
+  upgrades: Levels = {},
 ) {
   return evolutionRecipes.filter(
     (recipe) =>
       !already.has(recipe.id) &&
-      meetsRecipeRequirements(recipe.requires, traits, relics, magic),
+      meetsRecipeRequirements(recipe.requires, traits, relics, magic, upgrades),
   );
 }

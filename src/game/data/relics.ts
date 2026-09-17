@@ -1,4 +1,12 @@
-export type RelicId = "siege-core" | "tesla-coil";
+export type RelicId =
+  | "siege-amplifier"
+  | "tesla-coil"
+  | "ice-heart"
+  | "stim-circuit"
+  | "last-bulwark"
+  | "berserker-seal"
+  | "time-gear"
+  | "lucky-coin";
 export type RelicLevels = Partial<Record<RelicId, number>>;
 export interface RelicEffects {
   shieldHitRefundMs: number;
@@ -13,20 +21,38 @@ export interface RelicEffects {
   criticalChargeBonus: number;
   lightningReadiesArc: boolean;
   arcRefundMs: number;
+  frostDurationBonusMs: number;
+  frostKillRefundMs: number;
+  frostKillRefundCapMs: number;
+  stimRefundMs: number;
+  boostKillHealing: number;
+  lowWallHealing: number;
+  lowWallDamageBonus: number;
+  stimWallCost: number;
+  boostDamageBonus: number;
+  alternatingRefundMs: number;
+  alternatingHealing: number;
+  magicKillXpMultiplier: number;
+  rarityModifiers: Partial<Record<"RARE" | "EPIC" | "LEGENDARY", number>>;
 }
 export interface RelicDefinition {
   id: RelicId;
   title: string;
   shortLabel: string;
+  symbol?: string;
   maxLevel: number;
   levels: readonly { description: string; effects: Partial<RelicEffects> }[];
 }
 // Prototype tuning. Each row replaces the previous level; effects are cumulative within a row.
-export const relicBalance = { maxTypes: 3 } as const;
+export const relicBalance = {
+  maxTypes: 3,
+  expandedMaxTypes: 4,
+  lowWallRatio: 0.3,
+} as const;
 export const relics: Record<RelicId, RelicDefinition> = {
-  "siege-core": {
-    id: "siege-core",
-    title: "공성 코어",
+  "siege-amplifier": {
+    id: "siege-amplifier",
+    title: "공성 증폭기",
     shortLabel: "공성",
     maxLevel: 5,
     levels: [
@@ -69,6 +95,89 @@ export const relics: Record<RelicId, RelicDefinition> = {
         },
       },
     ],
+  },
+  "ice-heart": {
+    id: "ice-heart",
+    title: "얼음 심장",
+    shortLabel: "빙심",
+    symbol: "❄",
+    maxLevel: 5,
+    levels: [500, 1000, 1500, 2000, 3000].map((duration, rank) => ({
+      description: `서리장 지속 +${duration / 1000}초${rank >= 2 ? ` · 서리 중 처치마다 서리 대기 ${[0, 0, 60, 90, 120][rank]}ms 감소 (판정당 최대 0.6초)` : ""}`,
+      effects: {
+        frostDurationBonusMs: duration,
+        frostKillRefundMs: [0, 0, 60, 90, 120][rank]!,
+        frostKillRefundCapMs: 600,
+      },
+    })),
+  },
+  "stim-circuit": {
+    id: "stim-circuit",
+    title: "자극 회로",
+    shortLabel: "회로",
+    symbol: "ϟ",
+    maxLevel: 5,
+    levels: [300, 500, 800, 1100, 1500].map((refund, rank) => ({
+      description: `스팀팩 사용 시 두 마법 대기 ${refund / 1000}초 감소${rank >= 2 ? ` · 강화 중 처치마다 성벽 ${[0, 0, 2, 3, 5][rank]} 회복` : ""}`,
+      effects: {
+        stimRefundMs: refund,
+        boostKillHealing: [0, 0, 2, 3, 5][rank]!,
+      },
+    })),
+  },
+  "last-bulwark": {
+    id: "last-bulwark",
+    title: "최후의 보루",
+    shortLabel: "보루",
+    symbol: "▣",
+    maxLevel: 5,
+    levels: [60, 90, 120, 150, 200].map((healing, rank) => ({
+      description: `성벽 30% 이하: 마법 사용 시 ${healing} 회복 · 기본 피해 +${(rank + 1) * 10}%`,
+      effects: { lowWallHealing: healing, lowWallDamageBonus: (rank + 1) / 10 },
+    })),
+  },
+  "berserker-seal": {
+    id: "berserker-seal",
+    title: "광전사 인장",
+    shortLabel: "광전",
+    symbol: "◆",
+    maxLevel: 5,
+    levels: [40, 50, 60, 80, 100].map((cost, rank) => ({
+      description: `스팀팩 사용 시 성벽 ${cost} 소모 (최소 1 유지) · 강화 중 기본 피해 +${(rank + 1) * 20}%`,
+      effects: { stimWallCost: cost, boostDamageBonus: (rank + 1) / 5 },
+    })),
+  },
+  "time-gear": {
+    id: "time-gear",
+    title: "시간 톱니",
+    shortLabel: "시간",
+    symbol: "◷",
+    maxLevel: 5,
+    levels: [300, 500, 800, 1200, 1800].map((refund, rank) => ({
+      description: `다른 마법을 번갈아 사용하면 이전 마법 대기 ${refund / 1000}초 감소${rank >= 2 ? ` · 성벽 ${[0, 0, 30, 50, 80][rank]} 회복` : ""}`,
+      effects: {
+        alternatingRefundMs: refund,
+        alternatingHealing: [0, 0, 30, 50, 80][rank]!,
+      },
+    })),
+  },
+  "lucky-coin": {
+    id: "lucky-coin",
+    title: "행운 동전",
+    shortLabel: "행운",
+    symbol: "◉",
+    maxLevel: 5,
+    levels: [1, 2, 3, 4, 5].map((level) => ({
+      description: `마법 처치 경험치 +${level * 10}% · 희귀 이상 선택 가중치 +${level * 5}%`,
+      effects: {
+        magicKillXpMultiplier: 1 + level / 10,
+        rarityModifiers: {
+          RARE: level / 20,
+          EPIC: level / 20,
+          LEGENDARY: level / 20,
+        },
+      },
+    })),
   },
   "tesla-coil": {
     id: "tesla-coil",

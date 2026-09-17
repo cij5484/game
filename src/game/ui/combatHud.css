@@ -1,0 +1,76 @@
+.combat-hud.burst-ui {
+  z-index: 2;
+}
+
+.combat-hud .ability-circle {
+  position: absolute;
+  top: 1168px;
+  width: 100px;
+  height: 100px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 8px;
+  border: 1px solid #829aa766;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    var(--accent, #9db4bd) var(--progress, 0%),
+    #49616c 0
+  );
+  color: #f5fbff;
+  font: 18px sans-serif;
+  line-height: 1.1;
+  white-space: nowrap;
+  isolation: isolate;
+}
+
+.combat-hud .ability-circle::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: -1;
+  border-radius: inherit;
+  background: #172d36;
+}
+
+.combat-hud .ability-symbol {
+  color: var(--accent);
+  font: bold 28px/1 sans-serif;
+}
+.combat-hud .ability-circle.ready {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: var(--accent);
+}
+
+.combat-hud .ability-name {
+  font-weight: 700;
+}
+
+.combat-hud .ability-state {
+  color: var(--accent);
+  font-size: 17px;
+}
+
+.combat-hud .burst-button {
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.combat-hud .burst-button.ready {
+  box-shadow: 0 0 16px #ffe18b66;
+  border-color: #ffe18b;
+}
+
+.combat-hud .burst-button:focus-visible {
+  outline: 4px solid #fff1b5;
+  outline-offset: 4px;
+}
+
+.combat-hud .rhythm {
+  top: 916px;
+}

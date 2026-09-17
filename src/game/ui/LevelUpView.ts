@@ -1,4 +1,8 @@
-import type { UpgradeDefinition, UpgradeRanks } from "../data/upgrades";
+import {
+  upgradeCategory,
+  type UpgradeDefinition,
+  type UpgradeRanks,
+} from "../data/upgrades";
 import type { RelicDefinition, RelicId, RelicLevels } from "../data/relics";
 import {
   display,
@@ -6,6 +10,7 @@ import {
   levelChange,
   levelLabel,
   choiceFaces,
+  upgradeCategoryLabels,
 } from "../data/display";
 import { weaponTraitIds, weaponTraits } from "../data/traits";
 
@@ -42,6 +47,7 @@ export class LevelUpView {
           ]!,
         description: choice.description,
         rarity: choice.rarity,
+        category: upgradeCategoryLabels[upgradeCategory(choice)],
       })),
       select,
       `${display.trait} ${weaponTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${
@@ -69,6 +75,7 @@ export class LevelUpView {
           symbol: choiceFaces[choice.id].symbol,
           compact: choiceFaces[choice.id].lines[nextLevel - 1]!,
           description: choice.levels[nextLevel - 1]!.description,
+          category: display.relic,
         };
       }),
       select,
@@ -84,6 +91,7 @@ export class LevelUpView {
       level: string;
       symbol: string;
       compact: string;
+      category: string;
       rarity?: UpgradeDefinition["rarity"];
     }[],
     select: (id: T) => void,
@@ -108,17 +116,13 @@ export class LevelUpView {
         "aria-label",
         [
           choice.title,
+          choice.category,
           choice.level,
           choice.rarity ? rarityLabels[choice.rarity] : display.relic,
           choice.description,
         ].join(" · "),
       );
-      if (choice.rarity) {
-        card.dataset.rarity = choice.rarity;
-        const badge = document.createElement("small");
-        badge.textContent = rarityLabels[choice.rarity];
-        card.append(badge);
-      }
+      if (choice.rarity) card.dataset.rarity = choice.rarity;
       const icon = document.createElement("b");
       icon.className = "choice-symbol";
       icon.textContent = choice.symbol;
@@ -129,7 +133,19 @@ export class LevelUpView {
       level.textContent = choice.level;
       const detail = document.createElement("span");
       detail.textContent = choice.compact;
-      card.append(icon, title, level, detail);
+      const tags = document.createElement("div");
+      tags.className = "choice-tags";
+      const category = document.createElement("small");
+      category.className = "choice-category";
+      category.textContent = choice.category;
+      tags.append(category);
+      if (choice.rarity) {
+        const rarity = document.createElement("small");
+        rarity.className = "choice-rarity";
+        rarity.textContent = rarityLabels[choice.rarity];
+        tags.append(rarity);
+      }
+      card.append(icon, title, detail, tags, level);
       card.addEventListener("click", () => select(choice.id), { once: true });
       row.append(card);
     }

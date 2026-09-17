@@ -1,7 +1,8 @@
 import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
 import { primaryAttackBalance } from "../data/primaryAttack";
 import { getTraitEffects } from "../data/traits";
-import type { UpgradeRanks } from "../data/upgrades";
+import { getGeneralStats, type UpgradeRanks } from "../data/upgrades";
+import { eliteBalance } from "../data/elite";
 import { gaussRifleBalance } from "../data/weapons";
 import { evolutionRecipes } from "../data/evolutions";
 import { activeSynergies } from "../progression/synergy";
@@ -10,14 +11,13 @@ import type { GaussRifleConfig } from "../model/types";
 import { enemyConfigs } from "../data/enemies";
 
 export function deriveWeaponConfig(ranks: UpgradeRanks): GaussRifleConfig {
-  const traits = getTraitEffects(ranks);
+  const stats = getGeneralStats(ranks);
   return {
     ...gaussRifleBalance,
-    roundsPerBurst: gaussRifleBalance.roundsPerBurst + traits.burstRoundsBonus,
     roundIntervalMs:
-      gaussRifleBalance.roundIntervalMs - traits.roundIntervalReductionMs,
+      gaussRifleBalance.roundIntervalMs / stats.attackSpeedMultiplier,
     burstRecoveryMs:
-      gaussRifleBalance.burstRecoveryMs - traits.burstRecoveryReductionMs,
+      gaussRifleBalance.burstRecoveryMs / stats.attackSpeedMultiplier,
   };
 }
 
@@ -27,11 +27,16 @@ export function primaryAttack(
   ranks: UpgradeRanks,
   baseDamage: number,
   relicModifiers: {
+    damageMultiplier?: number;
     shieldBypass?: number;
     shieldDamageMultiplier?: number;
   } = {},
   evolutionIds: readonly string[] = [],
-  context: { shotIndex: number; random: () => number } = {
+  context: {
+    shotIndex: number;
+    random: () => number;
+    synergyMultiplier?: number;
+  } = {
     shotIndex: 1,
     random: Math.random,
   },
@@ -45,6 +50,11 @@ export function primaryAttack(
   explosionIds: number[];
 } {
   const traits = getTraitEffects(ranks);
+  const stats = getGeneralStats(ranks);
+  const synergyMultiplier = Math.max(
+    1,
+    Math.min(2, context.synergyMultiplier ?? 1),
+  );
   const synergies = activeSynergies(ranks);
   const deepBlast = synergies.some((s) => s.effects.pierceExplosion);
   const lethal = synergies.find((s) => s.effects.propagateCritical)?.effects;
@@ -87,7 +97,8 @@ export function primaryAttack(
   if (roots.length) {
     const angle = direction(target);
     const extra =
-      traits.multishotTargets + (stormRound ? (storm?.extraRays ?? 0) : 0);
+      traits.multishotTargets +
+      (stormRound ? Math.ceil((storm?.extraRays ?? 0) * synergyMultiplier) : 0);
     const options = living.filter(
       (enemy) =>
         enemy.id !== target.id &&
@@ -113,6 +124,8 @@ export function primaryAttack(
   const ricochets = new Set<number>();
   const splashes = new Set<number>();
   const criticals = new Set<number>();
+  const executions = new Set<number>();
+  const heavyHits = new Set<number>();
   const explosionCenters = new Set<number>();
   const factors = new Map<number, number>();
   // ponytail: merge intersecting effects by strongest damage once per enemy/round;
@@ -145,7 +158,14 @@ export function primaryAttack(
       enemy.kind === "shield"
         ? (relicModifiers.shieldDamageMultiplier ?? 1)
         : 1;
-    return baseDamage * factor * (armor + (1 - armor) * bypass) * shieldBonus;
+    const amount =
+      baseDamage *
+      stats.primaryDamageMultiplier *
+      (relicModifiers.damageMultiplier ?? 1) *
+      factor *
+      (armor + (1 - armor) * bypass) *
+      shieldBonus;
+    return executions.has(enemy.id) ? Math.max(enemy.hp, amount) : amount;
   };
   const explosion = (center: EnemyState, factor: number) => {
     splash(
@@ -174,8 +194,30 @@ export function primaryAttack(
     kind: "direct" | "bounce",
     critical: boolean,
   ) => {
-    const multiplier = critical ? traits.criticalMultiplier : 1;
-    register(enemy, factor * multiplier, kind, critical);
+    const multiplier = critical ? stats.criticalMultiplier : 1;
+    register(
+      enemy,
+      factor * multiplier * traits.heavyDamageMultiplier,
+      kind,
+      critical,
+    );
+    if (traits.heavyPushback > 0) heavyHits.add(enemy.id);
+    splash(enemy, traits.heavySplashRadius, factor * traits.heavySplashFactor);
+    const maximumHp =
+      enemy.maxHp ??
+      enemyConfigs[enemy.kind].hp *
+        (enemy.elite ? eliteBalance.hpMultiplier : 1);
+    if (
+      traits.executionThreshold > 0 &&
+      enemy.hp <= maximumHp * traits.executionThreshold
+    ) {
+      executions.add(enemy.id);
+      splash(
+        enemy,
+        traits.executionSplashRadius,
+        factor * traits.executionSplashFactor,
+      );
+    }
     if (critical)
       splash(
         enemy,
@@ -205,7 +247,7 @@ export function primaryAttack(
         : stormRound
           ? (storm?.rayDamageFactor ?? 1)
           : traits.multishotDamageFactor;
-    const critical = context.random() < traits.criticalChance;
+    const critical = context.random() < stats.criticalChance;
     criticalHit(root, rootFactor, "direct", critical);
     explosion(root, rootFactor);
     const aim = point(root);
@@ -233,7 +275,8 @@ export function primaryAttack(
     for (const enemy of pierced) {
       claimed.add(enemy.id);
       criticalHit(enemy, rootFactor * pierceRetention, "direct", critical);
-      if (deepBlast) explosion(enemy, rootFactor * pierceRetention);
+      if (deepBlast)
+        explosion(enemy, rootFactor * pierceRetention * synergyMultiplier);
     }
     let last = pierced.at(-1) ?? root;
     if (pierced.length) {
@@ -249,7 +292,10 @@ export function primaryAttack(
       );
     }
     const bounceCount =
-      traits.bounceCount + (critical ? (lethal?.criticalBounceBonus ?? 0) : 0);
+      traits.bounceCount +
+      (critical
+        ? Math.ceil((lethal?.criticalBounceBonus ?? 0) * synergyMultiplier)
+        : 0);
     let didBounce = false;
     for (let i = 0; i < bounceCount; i++) {
       const next = nearby(
@@ -296,6 +342,22 @@ export function primaryAttack(
       }
     }
   }
+  // Only original shot roots split. Children cannot split, pierce, bounce or execute.
+  for (const root of roots) {
+    const rootFactor =
+      root.id === target.id
+        ? 1
+        : stormRound
+          ? (storm?.rayDamageFactor ?? 1)
+          : traits.multishotDamageFactor;
+    for (const child of nearby(root, traits.splitRadius, claimed).slice(
+      0,
+      traits.splitTargets,
+    )) {
+      claimed.add(child.id);
+      register(child, rootFactor * traits.splitDamageFactor, "bounce");
+    }
+  }
   // Critical echo is a single extra hit per critical root, never a new attack chain.
   if (traits.criticalEchoDamageFactor > 0) {
     for (const root of roots.filter((enemy) => criticals.has(enemy.id))) {
@@ -314,15 +376,20 @@ export function primaryAttack(
   const damage = (enemy: EnemyState, factor: number) => ({
     ...enemy,
     hp: Math.max(0, enemy.hp - damageAmount(enemy, factor)),
+    ...(heavyHits.has(enemy.id)
+      ? {
+          progress01: Math.max(0, enemy.progress01 - traits.heavyPushback),
+          phase: "moving" as const,
+        }
+      : {}),
   });
   const result = enemies.map((enemy) =>
     factors.has(enemy.id) ? damage(enemy, factors.get(enemy.id)!) : enemy,
   );
   const killed = result.find((enemy) => enemy.hp <= 0 && hits.has(enemy.id));
-  const relayCount = Math.max(
-    traits.killRelayTargets,
-    ranks["rapid-overdrive"] ? primaryAttackBalance.legendaryRelayTargets : 0,
-  );
+  const relayCount = ranks["rapid-overdrive"]
+    ? primaryAttackBalance.legendaryRelayTargets
+    : 0;
   if (killed && relayCount > 0) {
     const excluded = new Set(factors.keys());
     for (const relay of nearby(
@@ -330,9 +397,7 @@ export function primaryAttack(
       primaryAttackBalance.relayRadius,
       excluded,
     ).slice(0, relayCount)) {
-      const factor = ranks["rapid-overdrive"]
-        ? primaryAttackBalance.legendaryRelayDamageFactor
-        : traits.killRelayDamageFactor;
+      const factor = primaryAttackBalance.legendaryRelayDamageFactor;
       result[result.findIndex((enemy) => enemy.id === relay.id)] = damage(
         relay,
         factor,

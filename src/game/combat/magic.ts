@@ -20,6 +20,55 @@ export class Magic {
     "frost-nova": 0,
     "chain-lightning": 0,
   };
+  private cooldownTotals: Record<MagicId, number> = {
+    "frost-nova": magicConfigs["frost-nova"].cooldownMs,
+    "chain-lightning": magicConfigs["chain-lightning"].cooldownMs,
+  };
+  private relicFrostDurationMs = 0;
+
+  setRelicFrostDuration(bonusMs: number): void {
+    this.relicFrostDurationMs = bonusMs;
+  }
+
+  private bonus(id: keyof UpgradeRanks): number {
+    return (this.ranks[id] ?? 0) * upgrades[id].amount;
+  }
+
+  readyProgress(id: MagicId): number {
+    return 1 - this.remaining(id) / this.cooldownTotals[id];
+  }
+
+  get primaryDamageMultiplier(): number {
+    return this.frostMs > 0 ? 1 + this.bonus("frost-vulnerability") : 1;
+  }
+
+  afterDeaths(enemies: readonly EnemyState[], killedIds: readonly number[]) {
+    const damage = this.bonus("frost-deathburst");
+    const centers =
+      this.frostMs > 0 && damage > 0
+        ? enemies
+            .filter((e) => killedIds.includes(e.id))
+            .slice(0, magicBehaviorBalance.maxFrostDeathCenters)
+        : [];
+    const hitIds: number[] = [];
+    // One tier only: secondary kills never recursively trigger more frost bursts.
+    return {
+      centerIds: centers.map((e) => e.id),
+      hitIds,
+      enemies: enemies.map((enemy) => {
+        if (
+          enemy.hp <= 0 ||
+          !centers.some(
+            (center) =>
+              distance(center, enemy) <= magicBehaviorBalance.frostDeathRadius,
+          )
+        )
+          return enemy;
+        hitIds.push(enemy.id);
+        return { ...enemy, hp: Math.max(0, enemy.hp - damage) };
+      }),
+    };
+  }
 
   setUpgrades(ranks: UpgradeRanks): void {
     this.ranks = { ...ranks };
@@ -59,7 +108,7 @@ export class Magic {
   cast(
     id: MagicId,
     enemies: readonly EnemyState[],
-  ): { enemies: EnemyState[]; hitIds: number[] } | null {
+  ): { enemies: EnemyState[]; hitIds: number[]; strikeIds: number[] } | null {
     if (this.cooldowns[id] > 0) return null;
     const base = magicConfigs[id];
     const bonus = (upgrade: keyof UpgradeRanks) =>
@@ -68,7 +117,10 @@ export class Magic {
       base.effect === "global-slow"
         ? {
             ...base,
-            durationMs: base.durationMs + bonus("frost-duration"),
+            durationMs:
+              base.durationMs +
+              bonus("frost-duration") +
+              this.relicFrostDurationMs,
             moveSpeedMultiplier: Math.max(
               magicBehaviorBalance.minimumFrostMoveSpeedMultiplier,
               base.moveSpeedMultiplier - bonus("frost-strength"),
@@ -81,6 +133,7 @@ export class Magic {
             chainRadiusPx: base.chainRadiusPx + bonus("chain-radius"),
           };
     this.cooldowns[id] = config.cooldownMs;
+    this.cooldownTotals[id] = this.cooldowns[id];
     const start = selectAutoTarget(enemies);
     const hits: EnemyState[] = [];
     const forkIds: number[] = [];
@@ -91,7 +144,13 @@ export class Magic {
     } else if (start && config.effect === "chain-damage") {
       hits.push(start);
       // ponytail: linear scan per hop suits the capped horde; spatial index only if counts grow.
-      while (hits.length < config.maxTargets) {
+      let killBonus =
+        start.hp <= config.damagePerTarget ? bonus("chain-killchain") : 0;
+      while (
+        hits.length <
+        config.maxTargets +
+          Math.min(magicBehaviorBalance.maxKillChainBonus, killBonus)
+      ) {
         const previous = hits[hits.length - 1]!;
         let next: EnemyState | null = null;
         let nearest: number = config.chainRadiusPx;
@@ -106,6 +165,8 @@ export class Magic {
         }
         if (!next) break;
         hits.push(next);
+        if (next.hp <= config.damagePerTarget)
+          killBonus += bonus("chain-killchain");
       }
     }
     if (config.effect === "chain-damage" && bonus("storm-fork") > 0) {
@@ -126,9 +187,27 @@ export class Magic {
         forkIds.push(enemy.id);
       }
     }
+    const strikeCenters =
+      config.effect === "chain-damage" && bonus("chain-strike") > 0
+        ? hits.filter(
+            (_, index) =>
+              (index + 1) % magicBehaviorBalance.strikeEveryHits === 0,
+          )
+        : [];
+    const strikeIds = strikeCenters.map((e) => e.id);
     const hitIds = hits.map((enemy) => enemy.id);
+    const strikeVictims = enemies.filter(
+      (e) =>
+        e.hp > 0 &&
+        !hitIds.includes(e.id) &&
+        strikeCenters.some(
+          (center) => distance(center, e) <= magicBehaviorBalance.strikeRadius,
+        ),
+    );
+    hitIds.push(...strikeVictims.map((e) => e.id));
     return {
       hitIds,
+      strikeIds,
       enemies: enemies.map((enemy) => {
         if (!hitIds.includes(enemy.id)) return enemy;
         return config.effect === "global-slow"
@@ -142,9 +221,11 @@ export class Magic {
                 0,
                 enemy.hp -
                   config.damagePerTarget *
-                    (forkIds.includes(enemy.id)
-                      ? magicBehaviorBalance.forkDamageFactor
-                      : 1),
+                    (strikeVictims.some((e) => e.id === enemy.id)
+                      ? bonus("chain-strike")
+                      : forkIds.includes(enemy.id)
+                        ? magicBehaviorBalance.forkDamageFactor
+                        : 1),
               ),
             };
       }),

@@ -9,6 +9,8 @@ export const gestureBalance = {
   circleMaxWinding: 1.2,
   circleMinDirectionConsistency: 0.85,
   zMaxTemplateError: 0.18,
+  zTiltDegrees: [0, -10, 10, -20, 20],
+  zSampleSlack: 4,
   zMinLength: 2.6,
   zMaxLength: 4.3,
 } as const;

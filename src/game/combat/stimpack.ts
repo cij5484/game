@@ -31,6 +31,12 @@ export class Stimpack {
     return this.state;
   }
 
+  get phaseProgress(): number {
+    if (this.state === "normal") return 1;
+    const duration = this.elapsedMs + this.timeToBoundaryMs;
+    return Math.min(1, this.elapsedMs / Math.max(1, duration));
+  }
+
   get canAttack(): boolean {
     return this.state !== "crash";
   }

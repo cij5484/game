@@ -4,6 +4,6 @@ export function activeSynergies(
   traits: Readonly<Record<string, number | undefined>>,
 ) {
   return synergyRecipes.filter((recipe) =>
-    meetsRecipeRequirements(recipe.requires, traits),
+    meetsRecipeRequirements(recipe.requires, traits, {}, traits, traits),
   );
 }

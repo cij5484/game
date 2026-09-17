@@ -261,3 +261,23 @@ canvas {
   line-height: 1.2;
   word-break: keep-all;
 }
+.choice-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+}
+.upgrade-card .choice-tags small {
+  font-size: clamp(7px, 1.8vw, 11px);
+  white-space: nowrap;
+}
+.upgrade-card .choice-category {
+  background: #172d38;
+  border-radius: 3px;
+  padding: 2px;
+  color: #d0e1e7;
+}
+.upgrade-card .choice-rarity {
+  font-weight: bold;
+}

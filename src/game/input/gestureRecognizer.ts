@@ -16,6 +16,7 @@ export interface GestureResult {
     radialError: number;
     consistency: number;
     samples: number;
+    pathLength: number;
   };
 }
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -61,19 +62,52 @@ const zTemplate = resample([
   { x: 1, y: 1 },
 ]);
 
+// Align ordered samples locally: unequal bars reach their corners at different
+// fractions of the path. The fixed 32-sample, 4-slot band bounds work and drift.
+function zTemplateError(samples: readonly Point[]): number {
+  let previous = Array<number>(zTemplate.length + 1).fill(Infinity);
+  previous[0] = 0;
+  for (let i = 1; i <= samples.length; i++) {
+    const row = Array<number>(zTemplate.length + 1).fill(Infinity);
+    for (
+      let j = Math.max(1, i - tuning.zSampleSlack);
+      j <= Math.min(zTemplate.length, i + tuning.zSampleSlack);
+      j++
+    )
+      row[j] =
+        distance(samples[i - 1]!, zTemplate[j - 1]!) +
+        Math.min(previous[j]!, previous[j - 1]!, row[j - 1]!);
+    previous = row;
+  }
+  return previous[zTemplate.length]! / samples.length;
+}
+
 export function recognizeGesture(points: readonly Point[]): GestureResult {
+  const validCoordinates = points.every(
+    (p) => Number.isFinite(p.x) && Number.isFinite(p.y),
+  );
+  const pathLength = validCoordinates
+    ? points
+        .slice(1)
+        .reduce((sum, point, i) => sum + distance(points[i]!, point), 0)
+    : 0;
   const unknown: GestureResult = {
     kind: "unknown",
     confidence: 0,
     circleScore: 0,
     zScore: 0,
     reason: "insufficient path",
+    metrics: {
+      samples: points.length,
+      pathLength,
+      closure: 0,
+      revolutions: 0,
+      radialError: 0,
+      consistency: 0,
+    },
   };
-  if (
-    points.length < 3 ||
-    points.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))
-  )
-    return unknown;
+  if (!validCoordinates) return { ...unknown, reason: "invalid coordinates" };
+  if (points.length < 3) return unknown;
   const { width, height } = bounds(points);
   if (
     Math.min(width, height) < tuning.minDimensionPx ||
@@ -145,14 +179,27 @@ export function recognizeGesture(points: readonly Point[]): GestureResult {
       2 - revolutions,
     ),
   );
-  // Z stays in screen coordinates; rotating it would accept unrelated diagonals.
-  const zSamples = resample(normalize(points));
-  const zError =
-    zSamples.reduce((s, p, i) => s + distance(p, zTemplate[i]!), 0) /
-    zSamples.length;
-  const zLength = zSamples
-    .slice(1)
-    .reduce((s, p, i) => s + distance(zSamples[i]!, p), 0);
+  // A small bounded tilt tolerance keeps Z upright; PCA would also admit N shapes.
+  let zError = Infinity,
+    zLength = 0;
+  for (const degrees of tuning.zTiltDegrees) {
+    const angle = (degrees * Math.PI) / 180;
+    const zSamples = resample(
+      normalize(
+        points.map((p) => ({
+          x: p.x * Math.cos(angle) - p.y * Math.sin(angle),
+          y: p.x * Math.sin(angle) + p.y * Math.cos(angle),
+        })),
+      ),
+    );
+    const error = zTemplateError(zSamples);
+    if (error < zError) {
+      zError = error;
+      zLength = zSamples
+        .slice(1)
+        .reduce((s, p, i) => s + distance(zSamples[i]!, p), 0);
+    }
+  }
   const zScore = Math.max(0, 1 - zError / tuning.zMaxTemplateError);
   const result = {
     ...unknown,
@@ -164,6 +211,7 @@ export function recognizeGesture(points: readonly Point[]): GestureResult {
       radialError,
       consistency,
       samples: points.length,
+      pathLength,
     },
   };
   if (!reasons.length)
@@ -179,5 +227,8 @@ export function recognizeGesture(points: readonly Point[]): GestureResult {
     zLength <= tuning.zMaxLength
   )
     return { ...result, kind: "z", confidence: zScore, reason: "z accepted" };
-  return { ...result, reason: reasons.join(", ") || "no template match" };
+  return {
+    ...result,
+    reason: `circle: ${reasons.join(", ")}; z: ${zError > tuning.zMaxTemplateError ? "template mismatch" : "path length"}`,
+  };
 }

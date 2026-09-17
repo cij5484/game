@@ -1,14 +1,12 @@
 # Prototype Technical Spec v0.1
 
-## Current implementation — Weapon Trait / Relic overhaul
+## Current implementation — Growth / HUD / Horde pass
 
-Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md); GDD v0.1 is a preserved historical document. Current Run remains five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Magic/Burst tuning is unchanged. Initial65 and caps90→160 remain, while sustained spawn intervals/batches increase substantially as listed below.
+Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md). GDD v0.1 remains preserved. Five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Eight weapon traits, eight relics, five rare run-only cores. Initial100 enemies, thirteen encounters, cap130→300; spawn-time HP×1→1.15 and speed×1→1.05. Values are prototype tuning, not mobile performance guarantees.
 
-Six Weapon Traits (rapid/penetration/ricochet/multishot/explosive/critical), each Lv1–5. Default type limit2. Elite-death special drop 전술 확장 코어 has prototype chance3%, raises the run-only limit to3 once, and consumes no Relic slot. Filter inactive traits at capacity, MAX cards, unmet prerequisites and unequipped abilities before weighted sampling. Level-up (up to3) and Relic (1–2) choices use centered, horizontally arranged square cards. Show a symbol, Korean name, short effect, rarity and current→next level; retain the full description in aria/title. Symbols can later be replaced by images. COMMON/RARE/EPIC/LEGENDARY weights10/4/1/0.25; tag bias+8% per invested rank capped1.6. Existing invested-tag candidate slot remains. Trait rows replace prior levels with cumulative effects; see data/traits.ts and the six complete level tables in GDDv0.2.
+Traits have three slots, expandable to four, and Lv1–5. Upgrade kind and rarity are independent: 기본 강화/무기 특성/마법 강화/보조 기술 강화 versus 일반/희귀/유니크/전설. Only 무기 특성 consumes weapon-trait slots. Rapid is removed; COMMON 기본 강화 attack-speed shortens round/recovery intervals while preserving three-round bursts. Base crit chance5%/multiplier1.75 are independent of the critical trait. Every trait level stores its own rarity: RARE at1/2/4 and EPIC at3/5. Korean rarity labels are 일반/희귀/유니크/전설; investment affects weights, without a guaranteed invested candidate slot.
 
-Player text is Korean-first, internal IDs remain English. Content definitions hold names/descriptions; common display text is data, not scattered Scene literals. No i18n framework. Two redesigned Relics grow Lv1–5, three-type capacity; old PEN/STORM effects are removed. Recipes accept traits/relics/magic requirements. Hyper Gauss now requires penetration4 + siege-core3.
-
-Desktop left+right mouse chord (120ms join/300ms release) supplements unchanged two-finger Stimpack. Circle recognizer structure/thresholds are unchanged. A small top-right Pause icon with a Korean accessible name stops gameplay/rhythm/effect clocks until Resume; no buffered input leakage. Portrait/Full-Bleed and separated logical/pixel coordinates remain mandatory.
+Player text is Korean-first; English IDs and data-owned content remain. Top Build Bar uses compact owned group/trait/relic/core icons and levels; pause shows detail. Bottom wall HUD presents HP/XP/time plus persistent Stim/Frost/Chain/Burst status in four slots. Desktop mouse chord/two-finger 스팀팩, safe-area, Portrait/Full-Bleed and logical coordinates remain. Circle/Z stabilization preserves coalesced and pointer-up samples, raises drawing timeout to5000ms while keeping Tap300ms, and supports Z alignment without changing Circle PCA/thresholds. Focused gesture checks pass38/38; this does not establish the cause of a real-device report. Selection and Pause stop gameplay/rhythm/effect clocks.
 
 > Project phase: Pre-production → Graybox Prototype  
 > Source of truth for implementation details: this file + `GAME_GDD_v0.2.md`
@@ -81,8 +79,7 @@ Prototype must remain usable with touch input.
 
 Single combat scene.
 
-HUD anchor: keep the top available for distant battlefield except the small top-right Pause icon. Trait ownership is shown in choice summaries/results, not added to the crowded wall HUD. Integrate Wall HP into the lower wall, with compact non-interactive magic cooldown indicators and temporary Secondary Ability feedback. Preserve separate battlefield/HUD roots for future safe-area handling; do not reserve blank panels for unimplemented systems.
-
+HUD anchor: small owned-build icons and levels at the top; no large text panel or empty slots. Group general upgrades, traits, relics and cores visually; pause exposes full details. Lower wall contains HP/XP/time and four aligned Stim/Frost/Chain/Burst status slots. Display 스팀팩 phase duration/progress, magic cooldown progress and Burst readiness. Ready ring, color and Korean status labels must clearly distinguish immediately available abilities from cooldown/charging states. Only the ready Burst slot is a cast button; spell gesture indicators are informational. Keep battlefield and HUD roots separate.
 Milestone 8 presentation: map visual spawn depth to the top of the viewport while keeping progress-based simulation and logical spell distances invariant. Arrived enemies occupy stable per-lane visual attack slots (four columns, multiple rows), released on removal. Picking uses rendered positions; slots never change wall damage or gameplay coordinates.
 
 **Global presentation requirement:** Mobile Portrait with Full-Bleed Presentation. Support 9:16, 9:19.5, 9:20 and portrait tablet ratios through Phaser Scale Manager. A 720×1280 logical presentation reference fits a bounded playfield; full-viewport environment absorbs additional space instead of black letterboxing. Enemy progress, travel duration and combat rules remain independent of viewport dimensions and visual scale. Keep HUD and battlefield roots separate so future safe-area insets can be applied independently.
@@ -237,7 +234,7 @@ If two-finger input proves unreliable on target mobile browsers, treat that as a
 
 Prototype implements 2 spell gestures only.
 
-Recommended initial gestures:
+Current gesture bindings:
 
 - Circle-like gesture
 - Z-like gesture
@@ -249,6 +246,14 @@ Gesture system requirements:
 - Recognizer should tolerate rough finger input.
 - Reject very short/noisy paths.
 - Track recognition confidence for debug display.
+
+### 제스처 안정화
+
+3초 동안 정상적인 원/Z를 그려도 기존 2,500ms 입력 제한 때문에 인식기까지 전달되지 않는 경우를 테스트에서 재현했습니다. **그리기만 최대 5,000ms로 확대**했고 Tap의 300ms 제한은 유지합니다. 브라우저가 묶어서 전달한 중간점(coalesced events)과 손을 뗄 때의 마지막 점을 보존합니다.
+
+원의 PCA 정렬·인식 임계값은 유지하고 기존 정상 원의 다양한 크기·시작점·방향 fixture를 보강했습니다. Z는 ±20도 정렬과 ±4 sample 범위의 순서 정렬로 느슨한 획을 수용합니다. N·역Z·미완성Z·L·V·C·낙서·너무 작은 링은 거절합니다. 관련 집중 테스트 **38/38 통과**이며, 실제 휴대폰에서 보고된 인식 문제의 원인을 확정한 것은 아닙니다.
+
+Debug의 `samples`는 필터를 통과해 인식기에 들어온 점 수이며 브라우저의 전체 pointer 이벤트 수가 아닙니다. `pathLength`는 CSS px 기준입니다. 실제 Android/iPhone에서 느린 입력·빈도 차이·다중 터치 사용감은 별도 확인이 필요합니다.
 
 Prototype Magic candidates:
 
@@ -287,7 +292,13 @@ Suggested prototype roles:
 
 Cooldown values belong in balance data.
 
-Current tuning: Frost Nova has 30000ms cooldown, 7000ms duration and movement multiplier0.5. Its global timer applies to new spawns and does not slow Wall attacks, spawn, Primary or other cooldowns. Upgrade ranks add slow strength0.04/duration600ms; Frost Shatter deals30 to current enemies. Chain Lightning has 24000ms cooldown, damage75, 30 distinct targets and logical hop radius360; upgrades add targets2/damage12/radius40 per rank. Upgrades preserve running cooldowns.
+- 서리장: 전역 이동속도 ×0.5, 7초, 대기 30초. 신규 적도 느려지고 성벽 공격·spawn·Primary·다른 대기는 느려지지 않습니다. 감속 +6%p×5(최저 이동배율 0.25), 지속 +0.8초×5, 서리 tag 6 이후 파쇄 즉시 피해 30.
+- 서리 균열: 서리 중 기본 피해 +15%×3. 빙결 파편: 서리 중 처치 지점 반경 130에 피해 35×3, 한 판정 최대 8중심·한 세대·대상 중복 피해 없음.
+- 연쇄 번개: 연결 반경 360, 최대 30명, 각 피해 75, 대기 24초. 대상 +2×5 / 피해 +18×5 / 거리 +40×4. 번개 tag 6 이후 분기 폭풍은 미적중 3명에게 60% 피해.
+- 처치 연쇄: 번개 처치당 추가 연결 +2×3, 한 시전 추가 대상 상한 12. 낙뢰 충격: 6번째 연결 적중마다 반경 150의 미적중 적에게 번개 피해 50%×2, 재귀·중복 타격 없음.
+- 공용 치명 피해 강화와 마법 대기시간 강화 카드는 없습니다. 강화 획득으로 이미 진행 중인 마법 대기를 초기화하지 않습니다. 빈 전장 시전도 대기를 소모합니다.
+
+Magic.setUpgrades preserves existing cooldowns; new casts use the base spell cooldown. Relic refunds remain separate from upgrade cards. Frost death bursts process at most8dead centers, radius130, one tier; chain kill extensions cap12, and every sixth chain hit can strike unhit targets within150. Root transaction applies deaths/XP/relic hooks once.
 
 ---
 
@@ -336,25 +347,62 @@ HUD:
 
 ## 14. XP / Weapon Trait choices
 
-XP Grunt/Runner1, Shield3. At level L, threshold=8+6(L−1)+2(L−1)^2. Preserve overflow/queued choices; pause completely until selection. Six Traits are independently Lv1–5, at most2types unless the separate expansion drop unlocks3. Offer up to three distinct applicable non-MAX cards; never fill with invalid traits when slots are full. No Reroll. Current type/level/rank data are run-only.
+### 강화 종류와 희귀도
 
-Existing fragmented Primary upgrades are replaced by cumulative trait levels. Three Legendary capstones remain eligible at corresponding trait Lv4 (Ricochet forks retain at least80% damage, preserving traitLv5 retention100%); advanced Magic requires six tag ranks. Stim/Magic cards still target equipped abilities. The complete behavior tables are in GDDv0.2 and data/traits.ts.
+강화 카드의 **종류**와 **희귀도**는 독립된 축입니다. 종류는 효과가 작동하는 계통을, 희귀도는 일반·희귀·유니크·전설 등급을 뜻합니다. 희귀도 이름인 “일반”을 강화 종류 이름으로 사용하지 않습니다.
+
+| 공식 강화 종류 | 현재 범위 | 무기 특성 슬롯 |
+| --- | --- | --- |
+| 기본 강화 | 기본 공격력·공격속도·치명 확률 3종 | 사용하지 않음 |
+| 무기 특성 | 8종 특성과 전설 행동 강화 3종 | 8종 신규 획득만 사용: 기본 3칸, 코어로 4칸. 전설 강화는 추가 슬롯 없음 |
+| 마법 강화 | 서리장·연쇄 번개 강화 | 사용하지 않음 |
+| 보조 기술 강화 | 스팀팩 지속·공격속도 배율·회복 강화 | 사용하지 않음 |
+
+전설 행동 강화인 폭주 연쇄·공성 관통포·연쇄 폭풍탄은 무기 특성 종류로 표시하되 추가 슬롯을 사용하지 않습니다. 카드 짧은 효과는 유지하고 상세 설명·일시정지에서 “전설 강화 · 추가 슬롯 없음”을 안내합니다.
+
+**필살기 강화는 미래 분류이며 현재 강화 카드에는 없습니다.** 유물·코어는 별도 보상 계통입니다. 공식 용어는 기본 공격 / 보조 기술 / 마법 / 필살기 / 강화 카드 / 기본 강화 / 무기 특성 / 마법 강화 / 보조 기술 강화 / 유물 / 코어 / 시너지 / 진화 / 비밀 진화입니다. 스팀팩은 보조 기술의 현재 콘텐츠 이름입니다. 비밀 진화는 미래 설계이며 현재는 초관통 가우스 진화만 구현합니다.
+
+카드는 중앙에 가로로 정렬한 정사각형을 유지합니다. 시각적 우선순위는 **큰 아이콘 → 이름 → 짧은 효과 → 종류 배지 + 희귀도 텍스트 → 현재/다음 레벨**입니다. 종류 배지는 계통을 설명하고 희귀도 텍스트는 별도로 표시합니다. 전체 효과 설명은 aria/title에 보존합니다.
+
+
+XP Grunt/Runner1, Shield3; threshold=8+6(L−1)+2(L−1)^2. Preserve overflow/queued choices. Eight traits (penetration, ricochet, multishot, explosive, critical, split, heavy, execution), Lv1–5. Default capacity3, expandTraitLimit() raises it to4 once. General stats/Stim/Magic remain eligible at capacity. Trait rarity comes from explicit level data, never a global level-to-rarity formula. Offer up to3distinct non-MAX eligible cards, no reroll.
+
+COMMON basic stats are exactly three: primary-damage+.15/rank, attack-speed+.06/rank, crit-chance+.05/rank, max5each. Crit damage and generic magic cooldown cards are removed. Critical baseline is .05 chance with fixed1.75 damage multiplier without a trait; critical trait adds on-crit splash/echo fromLv1/3. Attack speed affects both intervals while three-round bursts remain. Split children cannot recurse; heavy adds direct damage/pushback and high-level splash; execution reads spawn maxHp (fallback base/eliteHP), not current HP or unscaled species HP.
+
+Legendary rapid-overdrive requires attack-speed4; siege-lance penetration4; ricochet-cascade ricochet4. Legacy frost-shatter/storm-fork require six magic tag ranks. growOwnedTraits() increments owned non-MAX traits only and invalidates cached offers.
 
 ## 15. Build Bias
 
-Per-card weight × rarity weight × min(1.6,1+0.08×invested tag ranks). Eligible invested tags can fill the existing build-related slot. Sampling is without replacement and never bypasses trait capacity/prerequisites. No complex adaptive RNG.
+Weight = card weight × rarity weight(10/4/1/.25) × min(1.6,1+.08×tag ranks) × rarity modifier × trait multiplier(2 for the eight weapon trait IDs,1 otherwise). Legendary behavior cards keep their own rarity weight. No invested-slot guarantee. Progression.setRarityModifiers accepts per-rarity multipliers, invalidates cached choices, and zero-weight cards are excluded. Sample without replacement after capacity/ability/prerequisite/MAX filters. Luck core and relic multipliers combine in Scene.
 
 ## 16. Relics
 
-Elite death queues a separate paused reward. Two types currently: siege-core/tesla-coil. Maximum3types, each Lv1→5. Same type upgrades; MAX excluded; full capacity restricts new types instead of replacing owned ones. An exhausted pool skips empty dialogs. Reset each Run.
+정예는 Grunt 기반 HP ×4(기본 120, 생성 시점 HP 성장 배율 추가), 첫 60초/이후 40초에 등장합니다. 처치 유물 선택은 레벨업과 별개로 전투를 멈춥니다. 유물 **8종**, 기본 한도 **3종**, 유물 확장 코어로 **4종**. 각 Lv1~5, 같은 유물 재획득 시 강화, MAX 제외, 한도가 차면 새 종류 제외. 최대 3개 후보를 보여주며 교체 UI는 없습니다.
 
-Siege Core: Lv1 shield hits refund Lightning60ms (cap240/round); Lv2 refund120(cap480); Lv3 magic primes3armor-bypass primary rounds; Lv4 five rounds/×1.5Shield damage; Lv5 seven rounds/×2 and120Wall heal per successful magic. Later levels retain prior effects.
+| 유물 | Lv1→Lv5 누적 성장과 행동 |
+| --- | --- |
+| 공성 증폭기 | 방패 명중 번개 환급 60→120ms(발당 240→480ms 상한), Lv3 마법 후 방어 무시 3발→7발, Lv4 방패 피해 ×1.5→2, Lv5 마법마다 성벽 120 회복 |
+| 테슬라 코일 | 명중 12→6발마다 전격 1→5명 / 피해 12→30 / 거리 240, Lv3 치명 충전 +2, Lv4 번개 후 다음 명중 전격, Lv5 전격 적중 시 두 마법 −400ms |
+| 얼음 심장 | 서리 지속 +0.5→3초, Lv3 서리 중 처치마다 서리 대기 −60→120ms(판정당 600ms 상한) |
+| 자극 회로 | 스팀팩 사용 시 두 마법 대기 −0.3→1.5초, Lv3 강화 중 처치당 성벽 +2→5 |
+| 최후의 보루 | 성벽 30% 이하에서 마법마다 성벽 +60→200, 기본 피해 +10→50% |
+| 광전사 인장 | 스팀팩 사용 시 성벽 40→100 소모(최소 1 유지), 강화 중 기본 피해 +20→100% |
+| 시간 톱니 | 서로 다른 마법을 번갈아 쓰면 이전 마법 대기 −0.3→1.8초, Lv3 성벽 +30→80 |
+| 행운 동전 | 마법 처치 XP +10→50%, 희귀 이상 선택 가중치 +5→25% |
 
-Tesla Coil: every12/10/10/10/6 landed rounds arcs1/2/3/4/5targets at12/16/20/24/30damage, radius240. Lv3 critical rounds gain+2charge (3total), Lv4 Lightning primes next landed round, Lv5 landed arcs refund400ms both magics. A multi-target round counts once; arcs never recursively charge themselves.
+유물은 성공한 시전·실제 명중·확정 처치에 연결합니다. 전격/서리 파편은 무한 재귀하지 않으며 회복은 성벽 최대치, 대기는 0을 경계로 제한합니다. **관통 Lv4 + 공성 증폭기 Lv3 → 초관통 가우스**(추가 관통 3명, 폭 ×1.6, 청록 tracer). 모든 유물 MAX 도달은 보장하지 않습니다.
 
-RelicCombat reads modifiers before primary damage, processes fired rounds before removing dead states, and returns final enemy states/arc IDs/cooldown refunds. Apply deaths/XP once. Only successful casts trigger empowerment/healing. Clamp healing to Wall max and cooldowns to zero.
+코어는 정예 처치 시 **8% 별도 추첨**, 한 Run 최대 **2개**, 종류 중복 없음입니다. 보유 한도를 소비하지 않는 Run 전용 효과이며 레벨은 없습니다. 레벨업 일반 후보에도 섞이지 않습니다.
 
----
+| 코어 | 효과 |
+| --- | --- |
+| 전술 확장 코어 | 특성 한도 3→4 |
+| 유물 확장 코어 | 유물 한도 3→4 |
+| 행운 코어 | 희귀 ×1.5 / 유니크 ×2 / 전설 ×3 후보 가중치 |
+| 과부하 코어 | 보유 특성 즉시 +1, Lv5 상한; 성장 가능한 특성이 있을 때만 등장 |
+| 공명 코어 | 활성 시너지의 관통 폭발 피해·추가 도탄·탄막 효과 ×1.5; 정수 대상 수는 올림 |
+
+Relics.expandCapacity() raises3→4. Only successful casts, confirmed kills and landed rounds trigger combat hooks. Clamp wall healing/costs and cooldown refunds; no recursive arcs or duplicate kill rewards. Cores.tryDrop owns the8%/max2/unique constraints; Scene applies the five effects without consuming relic or trait capacity.
 
 ## 17. Elite Enemy
 
@@ -372,12 +420,12 @@ Avoid building a full Elite modifier framework before the basic reward loop is p
 
 ## 18. Synergy / Evolution
 
-RecipeRequirements contains optional traits/relics/magic rank maps, evaluated by shared meetsRecipeRequirements. No Marine-specific condition logic.
+RecipeRequirements contains optional traits/relics/magic/upgrades rank maps, evaluated by shared meetsRecipeRequirements. No Marine-specific condition logic.
 
 - 심층 폭발: penetration1 + explosive1; explosions along pierced hits.
 - 살상 도탄: ricochet1 + critical1; critical propagation and+2bounces.
-- 탄막 폭풍: rapid1 + multishot1; every fourth round adds2full-damage simultaneous rays.
-- 초관통 가우스 (Hyper Gauss): penetration4 + siege-core3; extra3pierces, width×1.6, cyan tracer width8, once per Run with brief Korean notification.
+- 탄막 폭풍: attack-speed3 + multishot1; every fourth round adds2full-damage simultaneous rays.
+- 초관통 가우스 (Hyper Gauss): penetration4 + siege-amplifier3; extra3pierces, width×1.6, cyan tracer width8, once per Run with brief Korean notification.
 
 No recursive effect loops. Distance/angle calculations use combatGeometry, never perspective scale or visual crowd offsets.
 
@@ -405,7 +453,7 @@ Current implementation: gauge100, credit0.02 per confirmed hit/0.08 per kill/+6 
 
 ## 20. Horde Stress Test
 
-Current normal-run tuning: initial65 Grunts distributed over progress0.08–0.45. Twelve encounters raise caps90→110–135→150–160 with one reserved Elite slot, four relief windows and no blocked-spawn backlog. Interval(ms)/batch by encounter:900/14,1200/10,850/16,800/18,1200/12,750/20,700/22,1100/14,650/24,1000/16,600/26,500/30. Stage timings/type weights remain unchanged; final45s uses batch30/500ms; first Elite60s, then40s intervals. Grunt progress/s is0.032; Runner/Shield stay0.08/0.025. All values live in horde/enemy/elite data. Screen ratio must not change these logical pacing values;160-enemy mobile performance is not yet established.
+Current normal-run tuning: initial100 Grunts at progress.08–.45. Thirteen encounter starts0/30/38/60/90/98/135/165/173/210/218/255/285seconds. Caps130/130/150/170/180/200/220/230/250/260/270/280/300. Interval(ms)/batch:700/20,850/16,650/22,600/24,800/20,575/26,550/28,750/22,500/30,700/24,475/32,450/36,380/40. Relief windows last8seconds; retain one Elite slot and discard blocked-spawn backlog. Elite first60s/then40s. Spawn-time linear growth ends at HP×1.15/speed×1.05 at300s; factory stores maxHp and speedMultiplier. Frost multiplies the stored speed and does not reset growth. Base Grunt/Runner/Shield progress/s .032/.08/.025. Mobile300-enemy performance remains unmeasured.
 
 This is a separate prototype test mode or debug mode.
 
@@ -737,5 +785,7 @@ When implementation begins:
 ---
 
 ## Status
+
+Current pass verification: `npm.cmd run check` passes29files/143tests, TypeScript and Vite production build. Focused gesture checks pass38/38. Existing500kB bundle warning remains (1291.06kB, gzip348.35kB). These checks do not establish real-device gesture reliability or300-enemy mobile performance.
 
 Current implementation follows GDD v0.2; user playtest determines fun, readability and mobile viability before merge.

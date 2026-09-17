@@ -3,72 +3,112 @@ import {
   effectiveUpgradeWeight,
   Progression,
 } from "../../src/game/progression/progression";
-import { upgrades } from "../../src/game/data/upgrades";
-import { weaponTraitIds, getTraitEffects } from "../../src/game/data/traits";
+import {
+  upgrades,
+  getGeneralStats,
+  type UpgradeId,
+} from "../../src/game/data/upgrades";
+import {
+  weaponTraitIds,
+  weaponTraits,
+  getTraitEffects,
+} from "../../src/game/data/traits";
+
+function only(p: Progression, ids: UpgradeId[]) {
+  for (const card of Object.values(upgrades))
+    if (!ids.includes(card.id) && !weaponTraitIds.includes(card.id as never))
+      p.ranks[card.id] = card.maxRank;
+}
 
 describe("run progression", () => {
-  it("caps new traits at two, then permits exactly one rare run-only expansion", () => {
+  it("starts with three slots, expands deterministically once, and commons never consume slots", () => {
     const p = new Progression(() => 0, ["gauss-rifle"]);
-    expect(p.traitLimit).toBe(2);
-    p.ranks.rapid = 1;
-    p.ranks.penetration = 1;
-    p.gainXp(8);
-    expect(p.offer().map((c) => c.id)).toEqual(["rapid", "penetration"]);
-    expect(p.choose("ricochet")).toBe(false);
-    expect(p.tryExpandTraitLimit(() => 0.5)).toBe(false);
-    expect(p.tryExpandTraitLimit(() => 0)).toBe(true);
     expect(p.traitLimit).toBe(3);
-    expect(p.offer().some((c) => c.id === "ricochet")).toBe(true);
-    expect(p.choose("ricochet")).toBe(true);
-    p.gainXp(p.threshold);
+    p.ranks.heavy = 1;
+    p.ranks.penetration = 1;
+    p.ranks.ricochet = 1;
+    p.ranks["primary-damage"] = 3;
+    expect(Object.keys(p.traitLevels)).toHaveLength(3);
+    p.gainXp(8);
     expect(
       p
         .offer()
-        .every((c) => ["rapid", "penetration", "ricochet"].includes(c.id)),
+        .filter((c) => weaponTraitIds.includes(c.id as never))
+        .every((c) => !!p.ranks[c.id]),
     ).toBe(true);
-    expect(p.tryExpandTraitLimit(() => 0)).toBe(false);
-    expect(new Progression().traitLimit).toBe(2);
+    expect(p.choose("split")).toBe(false);
+    const old = p.offer();
+    expect(p.expandTraitLimit()).toBe(true);
+    expect(p.offer()).not.toBe(old);
+    expect(p.traitLimit).toBe(4);
+    expect(p.expandTraitLimit()).toBe(false);
+    expect(new Progression().traitLimit).toBe(3);
   });
-  it("offers level-specific rarity, caps traits at five and gates legendary on level four", () => {
+  it("uses explicit rarity per trait level, keeps new traits rare and Lv3/5 unique", () => {
+    for (const id of weaponTraitIds) {
+      expect(upgrades[id].rarity).toBe("RARE");
+      expect(weaponTraits[id].levels.map((l) => l.rarity)).toEqual([
+        "RARE",
+        "RARE",
+        "EPIC",
+        "RARE",
+        "EPIC",
+      ]);
+    }
     const p = new Progression(() => 0, ["gauss-rifle"]);
-    p.ranks.rapid = 2;
+    only(p, ["heavy", "rapid-overdrive", "attack-speed"]);
+    p.ranks["attack-speed"] = 3;
+    p.ranks.heavy = 2;
     p.ranks.penetration = 5;
+    p.ranks.ricochet = 5;
     p.gainXp(8);
-    const next = p.offer().find((c) => c.id === "rapid")!;
-    expect(next.rarity).toBe("RARE");
-    expect(next.description).not.toBe(upgrades.rapid.description);
+    const next = p.offer().find((c) => c.id === "heavy")!;
+    expect(next.rarity).toBe("EPIC");
+    expect(next.description).toBe(weaponTraits.heavy.levels[2]!.description);
     expect(p.offer().some((c) => c.id === "rapid-overdrive")).toBe(false);
-    p.choose("rapid");
+    expect(p.choose("heavy")).toBe(true);
     p.gainXp(p.threshold);
-    p.choose("rapid");
+    expect(p.choose("heavy")).toBe(true);
     p.gainXp(p.threshold);
-    expect(p.offer().find((c) => c.id === "rapid")?.rarity).toBe("EPIC");
+    p.ranks["attack-speed"] = 4;
+    p.setRarityModifiers({});
     expect(p.offer().some((c) => c.id === "rapid-overdrive")).toBe(true);
-    p.choose("rapid");
-    expect(p.traitLevels.rapid).toBe(5);
+    expect(p.choose("heavy")).toBe(true);
     p.gainXp(p.threshold);
-    expect(p.offer().some((c) => c.id === "rapid")).toBe(false);
+    expect(p.offer().some((c) => c.id === "heavy")).toBe(false);
   });
-  it("weights rarity and investment without duplicate candidates", () => {
-    expect(effectiveUpgradeWeight(upgrades.rapid, {})).toBe(10);
-    expect(
-      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "RARE" }, {}),
-    ).toBe(4);
-    expect(
-      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "EPIC" }, {}),
-    ).toBe(1);
-    expect(
-      effectiveUpgradeWeight({ ...upgrades.rapid, rarity: "LEGENDARY" }, {}),
-    ).toBe(0.25);
-    expect(effectiveUpgradeWeight(upgrades.rapid, { rapid: 1 })).toBeCloseTo(
-      10.8,
+  it("weights rarity and investment without guaranteeing an invested first slot", () => {
+    expect(effectiveUpgradeWeight(upgrades.heavy, {})).toBe(8);
+    expect(effectiveUpgradeWeight(upgrades.heavy, { heavy: 1 })).toBeCloseTo(
+      8.64,
     );
+    expect(effectiveUpgradeWeight(upgrades.heavy, {}, { RARE: 2 })).toBe(16);
+    expect(effectiveUpgradeWeight(upgrades["primary-damage"], {})).toBe(10);
+    expect(effectiveUpgradeWeight(upgrades["siege-lance"], {})).toBe(0.25);
     const p = new Progression(() => 0.99);
     p.ranks.penetration = 1;
     p.gainXp(8);
-    expect(p.offer()[0]!.tag).toBe("penetration");
+    expect(p.offer()[0]!.tag).not.toBe("penetration");
     expect(new Set(p.offer().map((c) => c.id)).size).toBe(3);
-    expect(p.offer()).toBe(p.offer());
+    const old = p.offer();
+    p.setRarityModifiers({ EPIC: 2 });
+    expect(p.offer()).not.toBe(old);
+  });
+  it("grows only owned traits once, caps at five, and invalidates cached cards", () => {
+    const p = new Progression(() => 0, ["gauss-rifle"]);
+    p.ranks.heavy = 2;
+    p.ranks.penetration = 5;
+    p.ranks["primary-damage"] = 1;
+    p.gainXp(8);
+    const old = p.offer();
+    expect(p.growOwnedTraits()).toBe(1);
+    expect(p.ranks).toMatchObject({
+      heavy: 3,
+      penetration: 5,
+      "primary-damage": 1,
+    });
+    expect(p.traitLevels.split).toBeUndefined();
+    expect(p.offer()).not.toBe(old);
   });
   it("preserves overflow, queued choices, and exhausted pools", () => {
     const p = new Progression(() => 0);
@@ -78,28 +118,58 @@ describe("run progression", () => {
     ]);
     expect(p.choose("chain-damage")).toBe(false);
     expect(p.choose(p.offer()[0]!.id)).toBe(true);
-    expect(p.pendingChoices).toBe(1);
     expect(p.choose(p.offer()[0]!.id)).toBe(true);
-    expect(p.pendingChoices).toBe(0);
     for (const card of Object.values(upgrades)) p.ranks[card.id] = card.maxRank;
     p.gainXp(1000);
     expect(p.offer()).toEqual([]);
     expect(p.pendingChoices).toBe(0);
   });
-  it("defines six five-level traits with Korean names and behavioral capstones", () => {
-    expect(weaponTraitIds).toHaveLength(6);
+  it("defines eight behavioral traits and independent capped general stats", () => {
+    expect(weaponTraitIds).toHaveLength(8);
+    expect("rapid" in upgrades).toBe(false);
     for (const id of weaponTraitIds) {
       expect(upgrades[id].maxRank).toBe(5);
       expect(upgrades[id].title).toMatch(/[가-힣]/);
     }
+    const basic = getGeneralStats({});
+    expect(basic.criticalChance).toBe(0.05);
+    expect(basic.criticalMultiplier).toBe(1.75);
+    expect(getGeneralStats({ critical: 5 })).toEqual(basic);
+    const stats = getGeneralStats({
+      "primary-damage": 99,
+      "attack-speed": 5,
+      "crit-chance": 5,
+    });
+    expect(stats.primaryDamageMultiplier).toBe(1.75);
+    expect(stats.attackSpeedMultiplier).toBe(1.3);
+    expect(stats.criticalChance).toBeCloseTo(0.3);
+    expect(stats.criticalMultiplier).toBe(1.75);
+    expect("magicCooldownMultiplier" in stats).toBe(false);
+    expect("crit-damage" in upgrades).toBe(false);
+    expect("magic-cooldown" in upgrades).toBe(false);
     expect(
-      getTraitEffects({ explosive: 5 }).explosionChainTargets,
-    ).toBeGreaterThan(0);
+      Object.values(upgrades)
+        .filter((card) => card.tag === "general" && card.rarity === "COMMON")
+        .map((card) => card.id),
+    ).toEqual(["primary-damage", "attack-speed", "crit-chance"]);
     expect(
-      getTraitEffects({ critical: 5 }).criticalEchoDamageFactor,
+      getTraitEffects({ critical: 1 }).criticalSplashFactor,
     ).toBeGreaterThan(0);
-    expect(getTraitEffects({ rapid: 5 }).burstRoundsBonus).toBeGreaterThan(
-      getTraitEffects({ rapid: 1 }).burstRoundsBonus,
-    );
   });
+});
+
+it("zero rarity modifiers remove candidates and capped traits still leave common stats", () => {
+  const p = new Progression(() => 0, ["gauss-rifle"]);
+  p.ranks.penetration = 5;
+  p.ranks.ricochet = 5;
+  p.ranks.heavy = 5;
+  p.setRarityModifiers({ RARE: 0, EPIC: 0, LEGENDARY: 0 });
+  p.gainXp(8);
+  expect(p.offer().every((c) => c.rarity === "COMMON")).toBe(true);
+  expect(p.choose("primary-damage")).toBe(true);
+  expect(Object.keys(p.traitLevels)).toHaveLength(3);
+  const empty = new Progression(() => 0.99);
+  empty.setRarityModifiers({ COMMON: 0, RARE: 0, EPIC: 0, LEGENDARY: 0 });
+  empty.gainXp(8);
+  expect(empty.offer()).toEqual([]);
 });

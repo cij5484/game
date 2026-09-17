@@ -4,6 +4,132 @@ import {
   MouseTapInput,
   bindTapInput,
 } from "../../src/game/input/tapInput";
+import { recognizeGesture } from "../../src/game/input/gestureRecognizer";
+
+it.each([
+  ["touch", "z"],
+  ["mouse", "z"],
+  ["touch", "circle"],
+  ["mouse", "circle"],
+])(
+  "retains coalesced %s %s paths and maps only display points to canvas pixels",
+  (pointerType, kind) => {
+    vi.stubGlobal("window", new EventTarget());
+    const canvas = Object.assign(new EventTarget(), {
+      width: 800,
+      height: 1600,
+      setPointerCapture: vi.fn(),
+      getBoundingClientRect: () => ({
+        left: 20,
+        top: 40,
+        width: 400,
+        height: 800,
+      }),
+    }) as unknown as HTMLCanvasElement;
+    const onTap = vi.fn();
+    const onGesture = vi.fn();
+    const binding = bindTapInput(canvas, onTap, onGesture);
+    const dispatch = (
+      type: string,
+      x: number,
+      y: number,
+      time: number,
+      samples: { clientX: number; clientY: number }[] = [],
+    ) => {
+      const event = new Event(type, { cancelable: true });
+      Object.defineProperties(event, {
+        pointerType: { value: pointerType },
+        pointerId: { value: 1 },
+        button: { value: 0 },
+        buttons: { value: type === "pointerup" ? 0 : 1 },
+        clientX: { value: x },
+        clientY: { value: y },
+        timeStamp: { value: time },
+        getCoalescedEvents: { value: () => samples },
+      });
+      canvas.dispatchEvent(event);
+    };
+    try {
+      const path =
+        kind === "z"
+          ? [
+              { x: 20, y: 40 },
+              { x: 140, y: 40 },
+              { x: 20, y: 160 },
+              { x: 140, y: 160 },
+            ]
+          : Array.from({ length: 13 }, (_, i) => ({
+              x: 100 + 60 * Math.cos((i * Math.PI) / 6),
+              y: 100 + 60 * Math.sin((i * Math.PI) / 6),
+            }));
+      const first = path[0]!,
+        last = path.at(-1)!;
+      for (const duration of [80, 2300, 3000]) {
+        dispatch("pointerdown", first.x, first.y, 0);
+        dispatch(
+          "pointermove",
+          last.x,
+          last.y,
+          duration / 2,
+          path.slice(1, -1).map((p) => ({ clientX: p.x, clientY: p.y })),
+        );
+        dispatch("pointerup", last.x + 2, last.y, duration);
+        expect(onTap).not.toHaveBeenCalled();
+        expect(onGesture).toHaveBeenCalledTimes(1);
+        const [points, displayPoints] = onGesture.mock.calls[0]!;
+        expect(recognizeGesture(points).kind).toBe(kind);
+        expect(points.at(-1)).toEqual({ x: last.x + 2, y: last.y });
+        expect(displayPoints.at(-1).x).toBeCloseTo((last.x + 2 - 20) * 2);
+        expect(displayPoints.at(-1).y).toBeCloseTo((last.y - 40) * 2);
+        onGesture.mockClear();
+      }
+      dispatch("pointerdown", 20, 40, 3000);
+      dispatch("pointermove", 140, 40, 3030);
+      dispatch("pointercancel", 140, 40, 3040);
+      dispatch("pointerup", 140, 160, 3060);
+      expect(onGesture).not.toHaveBeenCalled();
+      expect(onTap).not.toHaveBeenCalled();
+    } finally {
+      binding.destroy();
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("keeps tap timeout separate and rejects drawings beyond the bounded drawing timeout", () => {
+  const input = new TapInput();
+  input.down(1, 0, 0, 0);
+  expect(input.up(1, 0, 0, 301)).toBeNull();
+  input.down(1, 0, 0, 1000);
+  input.move(1, 120, 0);
+  input.move(1, 0, 120);
+  expect(input.up(1, 120, 120, 6001)).toBeNull();
+});
+
+it("does not turn a slow, repeated scribble into magic", () => {
+  const input = new TapInput();
+  input.down(1, 180, 100, 0);
+  for (let i = 1; i <= 600; i++) {
+    const angle = (i / 300) * Math.PI * 2;
+    input.move(1, 100 + 80 * Math.cos(angle), 100 + 80 * Math.sin(angle));
+  }
+  const result = input.up(1, 180, 100, 4000);
+  expect(result?.kind).toBe("gesture");
+  if (result?.kind !== "gesture") throw new Error("Missing slow drawing");
+  expect(result.points.length).toBeLessThanOrEqual(256);
+  expect(recognizeGesture(result.points).kind).toBe("unknown");
+});
+
+it("includes the final pointerup segment when no move event contains it", () => {
+  const input = new TapInput();
+  input.down(1, 0, 0, 0);
+  input.move(1, 100, 0);
+  input.move(1, 0, 100);
+  const result = input.up(1, 100, 100, 70);
+  expect(result?.kind).toBe("gesture");
+  if (result?.kind !== "gesture") throw new Error("Missing fast drawing");
+  expect(recognizeGesture(result.points).kind).toBe("z");
+});
 
 it("starts mouse sequences only on canvas down and does not revive cancelled held buttons", () => {
   vi.stubGlobal("window", new EventTarget());

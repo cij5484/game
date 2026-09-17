@@ -33,7 +33,7 @@ export const synergyRecipes: readonly SynergyDefinition[] = [
     title: "탄막 폭풍",
     description:
       "4번째 발사마다 온전한 피해의 추가 탄환 2발을 동시에 발사합니다.",
-    requires: { traits: { rapid: 1, multishot: 1 } },
+    requires: { traits: { multishot: 1 }, upgrades: { "attack-speed": 3 } },
     effects: { everyRounds: 4, extraRays: 2, rayDamageFactor: 1 },
   },
 ];

@@ -3,7 +3,10 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 export interface EnemyState {
   id: number;
   elite?: boolean;
+  /** Fixed at spawn; temporary movement effects multiply this value. */
+  speedMultiplier?: number;
   hp: number;
+  maxHp?: number;
   kind: EnemyKind;
   lane: LaneId;
   offset01: number;
@@ -24,7 +27,10 @@ export function advanceEnemy(
       wallTimeMs: deltaMs,
     };
   }
-  const progressPerSecond = config.progressPerSecond * movementMultiplier;
+  const progressPerSecond =
+    config.progressPerSecond *
+    (enemy.speedMultiplier ?? 1) *
+    movementMultiplier;
   if (progressPerSecond <= 0) return { enemy, wallTimeMs: 0 };
 
   const arrivalMs = ((1 - enemy.progress01) / progressPerSecond) * 1000;

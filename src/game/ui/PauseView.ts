@@ -1,9 +1,11 @@
 import { readSafeArea } from "../battlefield/layout";
 import { display } from "../data/display";
+import type { BuildIcon } from "./buildSummary";
 
 export class PauseView {
   private readonly button = document.createElement("button");
   private readonly dialog = document.createElement("dialog");
+  private readonly details = document.createElement("dl");
   private paused = false;
   private readonly keydown: (event: KeyboardEvent) => void;
   private readonly change: (paused: boolean) => void;
@@ -29,7 +31,8 @@ export class PauseView {
     resume.type = "button";
     resume.textContent = display.resume;
     resume.addEventListener("click", () => this.toggle());
-    this.dialog.append(title, note, resume);
+    this.details.className = "pause-build";
+    this.dialog.append(title, note, resume, this.details);
     this.dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       this.toggle();
@@ -59,6 +62,17 @@ export class PauseView {
 
   setBlocked(blocked: boolean): void {
     this.button.disabled = blocked;
+  }
+
+  setBuildDetails(entries: readonly BuildIcon[]): void {
+    this.details.replaceChildren();
+    for (const entry of entries) {
+      const title = document.createElement("dt");
+      title.textContent = `${entry.symbol} ${entry.title}${entry.level ? ` · ${entry.level}` : ""}`;
+      const detail = document.createElement("dd");
+      detail.textContent = entry.detail;
+      this.details.append(title, detail);
+    }
   }
 
   resize(_width: number, _height: number): void {

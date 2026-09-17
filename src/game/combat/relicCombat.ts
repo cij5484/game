@@ -1,5 +1,5 @@
 import { combatPosition } from "../battlefield/combatGeometry";
-import type { RelicLevels } from "../data/relics";
+import { relicBalance, type RelicLevels } from "../data/relics";
 import { relicEffects } from "../progression/relics";
 import type { EnemyState } from "../enemies/enemySimulation";
 import type { MagicId } from "./magic";
@@ -8,6 +8,7 @@ export class RelicCombat {
   private effects = relicEffects({});
   private empoweredRounds = 0;
   private arcCharge = 0;
+  private previousMagic: MagicId | undefined;
 
   setLevels(levels: RelicLevels): void {
     this.effects = relicEffects(levels);
@@ -24,13 +25,86 @@ export class RelicCombat {
     };
   }
 
+  primaryModifiersFor(wallRatio: number, boost: boolean) {
+    return {
+      ...this.primaryModifiers,
+      damageMultiplier:
+        1 +
+        (wallRatio <= relicBalance.lowWallRatio
+          ? this.effects.lowWallDamageBonus
+          : 0) +
+        (boost ? this.effects.boostDamageBonus : 0),
+    };
+  }
+
   // Only successful casts trigger relic effects; cooldown-blocked input never calls this.
-  onMagic(id: MagicId): { wallHealing: number } {
+  onMagic(
+    id: MagicId,
+    wallRatio = 1,
+  ): {
+    wallHealing: number;
+    cooldownRefunds: Partial<Record<MagicId, number>>;
+  } {
     this.empoweredRounds = this.effects.empoweredRounds;
     if (id === "chain-lightning" && this.effects.lightningReadiesArc) {
       this.arcCharge = this.effects.arcEveryRounds;
     }
-    return { wallHealing: this.effects.wallHealing };
+    const cooldownRefunds: Partial<Record<MagicId, number>> = {};
+    const alternating =
+      this.previousMagic !== undefined && this.previousMagic !== id;
+    if (alternating && this.effects.alternatingRefundMs > 0) {
+      cooldownRefunds[this.previousMagic!] = this.effects.alternatingRefundMs;
+    }
+    this.previousMagic = id;
+    return {
+      wallHealing:
+        this.effects.wallHealing +
+        (wallRatio <= relicBalance.lowWallRatio
+          ? this.effects.lowWallHealing
+          : 0) +
+        (alternating ? this.effects.alternatingHealing : 0),
+      cooldownRefunds,
+    };
+  }
+
+  // Called only after the normal Stim system accepts activation.
+  onStim(): {
+    wallCost: number;
+    cooldownRefunds: Partial<Record<MagicId, number>>;
+  } {
+    return {
+      wallCost: this.effects.stimWallCost,
+      cooldownRefunds:
+        this.effects.stimRefundMs > 0
+          ? {
+              "frost-nova": this.effects.stimRefundMs,
+              "chain-lightning": this.effects.stimRefundMs,
+            }
+          : {},
+    };
+  }
+
+  // A kill transaction calls this once; returned effects never create new kills.
+  onKills(
+    kills: number,
+    context: { frost: boolean; boost: boolean; magic: boolean },
+  ): {
+    wallHealing: number;
+    cooldownRefunds: Partial<Record<MagicId, number>>;
+    xpMultiplier: number;
+  } {
+    const count = Number.isFinite(kills) ? Math.max(0, Math.floor(kills)) : 0;
+    const refund = context.frost
+      ? Math.min(
+          this.effects.frostKillRefundCapMs,
+          count * this.effects.frostKillRefundMs,
+        )
+      : 0;
+    return {
+      wallHealing: context.boost ? count * this.effects.boostKillHealing : 0,
+      cooldownRefunds: refund > 0 ? { "frost-nova": refund } : {},
+      xpMultiplier: context.magic ? this.effects.magicKillXpMultiplier : 1,
+    };
   }
 
   // Call once per fired primary round, after its damage but before removing dead enemies.

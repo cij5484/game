@@ -4,6 +4,42 @@ import { enemyConfigs } from "../../src/game/data/enemies";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
+it("connects frost vulnerability and bounded death bursts without recursive kills", () => {
+  const magic = new Magic();
+  magic.setUpgrades({
+    "frost-vulnerability": 2,
+    "frost-deathburst": 1,
+  });
+  const pack = Array.from({ length: 3 }, (_, id) => ({
+    ...createPrototypeEnemy("grunt", "center", id),
+    progress01: 0.8 - id * 0.08,
+  }));
+  magic.cast("frost-nova", pack);
+  expect(magic.primaryDamageMultiplier).toBeCloseTo(1.3);
+  expect(magic.remaining("frost-nova")).toBe(30000);
+  const burst = magic.afterDeaths(
+    pack.map((e) => (e.id === 0 ? { ...e, hp: 0 } : e)),
+    [0],
+  );
+  expect(burst.enemies[1]!.hp).toBe(0);
+  expect(burst.enemies[2]!.hp).toBeGreaterThan(0);
+  magic.advance(30000);
+  expect(magic.primaryDamageMultiplier).toBe(1);
+});
+
+it("extends lightning on kills and makes periodic strikes hit nearby enemies once", () => {
+  const pack = Array.from({ length: 55 }, (_, id) => ({
+    ...createPrototypeEnemy("grunt", "center", id),
+    progress01: 0.95 - id * 0.01,
+  }));
+  const chain = new Magic();
+  chain.setUpgrades({ "chain-killchain": 1, "chain-strike": 1 });
+  const result = chain.cast("chain-lightning", pack)!;
+  expect(result.hitIds.length).toBeGreaterThan(30);
+  expect(new Set(result.hitIds).size).toBe(result.hitIds.length);
+  expect(result.strikeIds.length).toBeGreaterThan(0);
+});
+
 it("relic refunds shorten cooldowns without advancing or extending global slow", () => {
   const magic = new Magic();
   magic.cast("frost-nova", []);
@@ -104,8 +140,8 @@ it("grows global slow strength and duration without resetting an active effect o
   expect(magic.movementMultiplier).toBe(0.5);
   magic.advance(29000);
   magic.cast("frost-nova", []);
-  expect(magic.movementMultiplier).toBeCloseTo(0.3);
-  expect(magic.frostRemainingMs).toBe(8200);
+  expect(magic.movementMultiplier).toBeCloseTo(0.25);
+  expect(magic.frostRemainingMs).toBe(8600);
 });
 
 it("grows lightning target count and damage without resetting cooldown", () => {
@@ -118,7 +154,7 @@ it("grows lightning target count and damage without resetting cooldown", () => {
   magic.setUpgrades({ "chain-targets": 2, "chain-damage": 2 });
   const result = magic.cast("chain-lightning", enemies)!;
   expect(new Set(result.hitIds).size).toBe(34);
-  expect(result.enemies.slice(0, 34).every((enemy) => enemy.hp === 51)).toBe(
+  expect(result.enemies.slice(0, 34).every((enemy) => enemy.hp === 39)).toBe(
     true,
   );
   expect(result.enemies.slice(34).every((enemy) => enemy.hp === 150)).toBe(
