@@ -3,20 +3,26 @@ import type { EnemyState } from "../enemies/enemySimulation";
 import type { EnemyKind } from "../model/types";
 import { laneCenterX, laneX } from "./lanes";
 import { perspectiveScale } from "./perspective";
-import { battlefieldLayout } from "./layout";
+import { battlefieldLayout, readSafeArea } from "./layout";
 import { attackSlotPosition } from "./crowdSpacing";
-import { modules, type ModuleLevels } from "../data/modules";
+import {
+  display,
+  levelLabel,
+  magicLabels,
+  remainingLabel,
+  stimLabels,
+} from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
 
 // Visual layout only, in logical reference units.
-const field = { left: 36, width: 648, farY: 105, wallY: 1160, enemySize: 56 };
+const field = { left: 36, width: 648, farY: 105, wallY: 1080, enemySize: 56 };
 // View/input tuning only; never used for movement, targeting priority or damage.
 const combatVisual = {
   touchPadding: 10,
   minimumTouchSize: 44,
   flashMs: 75,
   marineX: 360,
-  marineY: 1145,
+  marineY: 1065,
 };
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
@@ -32,8 +38,7 @@ export class EnemyPressureView {
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private readonly xpText: Phaser.GameObjects.Text;
   private readonly xpFill: Phaser.GameObjects.Rectangle;
-  private readonly moduleText: Phaser.GameObjects.Text;
-  private readonly failure: Phaser.GameObjects.Container;
+  private readonly runText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private readonly debug: Phaser.GameObjects.Container;
   private readonly directorText: Phaser.GameObjects.Text;
@@ -65,31 +70,30 @@ export class EnemyPressureView {
         .setOrigin(0.5);
 
     this.debug.add(text(360, 160, "MARINE · GAUSS RIFLE", 24));
-    this.hpText = text(135, 1215, "", 18);
+    this.hpText = text(165, 1122, "", 21);
     this.hpFill = scene.add
-      .rectangle(24, 1232, 210, 7, 0x77d7a0)
+      .rectangle(35, 1143, 260, 10, 0x77d7a0)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.hpText,
-      scene.add.rectangle(129, 1232, 210, 7, 0x34443d),
+      scene.add.rectangle(165, 1143, 260, 10, 0x263e36),
       this.hpFill,
     ]);
-    this.xpText = text(365, 1215, "", 18);
+    this.xpText = text(465, 1122, "", 21);
     this.xpFill = scene.add
-      .rectangle(250, 1232, 220, 7, 0x9dc7ff)
+      .rectangle(335, 1143, 260, 10, 0x9dc7ff)
       .setOrigin(0, 0.5);
     this.hud.add([
       this.xpText,
-      scene.add.rectangle(360, 1232, 220, 7, 0x263c50),
+      scene.add.rectangle(465, 1143, 260, 10, 0x263c50),
       this.xpFill,
     ]);
 
-    this.moduleText = text(250, 1189, "", 18);
-    this.hud.add(this.moduleText);
-    this.stimText = text(360, 1105, "", 20).setVisible(false);
-    this.hud.add(this.stimText);
-    this.magicText = text(250, 1258, "", 18);
-    this.hud.add(this.magicText);
+    this.runText = text(654, 1131, "5:00", 25);
+    this.hud.add(this.runText);
+    this.stimText = text(360, 1040, "", 20);
+    this.magicText = text(360, 1010, "", 16);
+    this.debug.add([this.stimText, this.magicText]);
     this.gesturePath = scene.add.graphics().setDepth(3).setVisible(false);
     this.gestureText = text(360, 290, "", 18);
     this.debug.add(this.gestureText);
@@ -136,14 +140,15 @@ export class EnemyPressureView {
     const farLabel = text(360, field.farY + 28, "FAR", 20);
     this.debug.add([farGuide, farLabel]);
     const masonry = scene.add.graphics();
-    masonry.fillStyle(0x5c727e).fillRect(0, field.wallY + 14, 720, 106);
-    masonry.fillStyle(0x93a7af).fillRect(0, field.wallY + 14, 720, 8);
+    masonry.fillStyle(0x304650).fillRect(0, field.wallY + 14, 720, 186);
+    masonry.fillStyle(0x93a7af).fillRect(0, field.wallY + 14, 720, 10);
+    masonry.fillStyle(0x1a2e38, 0.5).fillRect(18, 1108, 684, 48);
     masonry.lineStyle(2, 0x344953, 0.8);
-    for (let row = 0; row < 3; row++) {
-      const y = field.wallY + 22 + row * 28;
+    for (let row = 0; row < 4; row++) {
+      const y = field.wallY + 24 + row * 44;
       masonry.lineBetween(0, y, 720, y);
       for (let x = (row % 2) * 45; x < 720; x += 90)
-        masonry.lineBetween(x, y, x, y + 28);
+        masonry.lineBetween(x, y, x, y + 44);
     }
     this.world.add(masonry);
     this.world.add(
@@ -159,22 +164,19 @@ export class EnemyPressureView {
     this.debug.add(
       text(360, 1095, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 22),
     );
-    this.debug.add(text(360, 1130, "두 손가락 탭: STIMPACK", 22));
     this.debug.add(
-      text(360, 1165, "빨간 테두리: 성벽 공격 · 재시작: 새로고침", 20),
+      text(360, 1130, "두 손가락 탭 / 마우스 좌우 동시 클릭: STIMPACK", 22),
+    );
+    this.debug.add(
+      text(360, 1165, "빨간 테두리: 성벽 공격 · 결과창에서 RETRY", 20),
     );
 
-    this.failure = scene.add
-      .container(360, 630, [
-        scene.add.rectangle(0, 0, 500, 110, 0x10151c, 0.9),
-        text(0, -16, "RUN FAILED", 36),
-        text(0, 26, "성벽 파괴 · 새로고침으로 재시작", 20),
-      ])
-      .setVisible(false);
-    this.hud.add(this.failure);
-
     const resize = () => {
-      const layout = battlefieldLayout(scene.scale.width, scene.scale.height);
+      const layout = battlefieldLayout(
+        scene.scale.width,
+        scene.scale.height,
+        readSafeArea(),
+      );
       // Paint the entire viewport; fitted gameplay never creates letterboxing.
       const width = scene.scale.width;
       const height = scene.scale.height;
@@ -223,11 +225,11 @@ export class EnemyPressureView {
     // Separate HUD root leaves room for future safe-area/camera handling.
     scene.game.canvas.setAttribute(
       "aria-label",
-      "세로 전장: 빈 공간 탭 자동 3점사, 적 탭 우선 공격, 두 손가락 탭 Stimpack",
+      display.battlefieldDescription,
     );
   }
 
-  createEnemy(enemy: EnemyState): Phaser.GameObjects.Container {
+  createEnemy(enemy: EnemyState, slowed = false): Phaser.GameObjects.Container {
     const shape = this.scene.add.rectangle(
       0,
       0,
@@ -246,7 +248,7 @@ export class EnemyPressureView {
     if (enemy.elite) {
       visual.add(
         this.scene.add
-          .text(0, -60, "◆ ELITE", {
+          .text(0, -60, `◆ ${display.elite}`, {
             fontFamily: "sans-serif",
             fontSize: "24px",
             color: "#ffe18b",
@@ -261,11 +263,15 @@ export class EnemyPressureView {
       this.attackSlots.delete(enemy.id);
     });
     this.world.add(visual);
-    this.renderEnemy(visual, enemy);
+    this.renderEnemy(visual, enemy, slowed);
     return visual;
   }
 
-  renderEnemy(visual: Phaser.GameObjects.Container, enemy: EnemyState): void {
+  renderEnemy(
+    visual: Phaser.GameObjects.Container,
+    enemy: EnemyState,
+    slowed = false,
+  ): void {
     let x = field.left + laneX(enemy.lane, field.width, enemy.offset01);
     let y = this.farY + (field.wallY - this.farY) * enemy.progress01;
     if (enemy.phase === "attacking") {
@@ -290,15 +296,11 @@ export class EnemyPressureView {
       .setPosition(x, y)
       .setScale(perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1));
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
-      `${enemy.kind[0]!.toUpperCase()} ${enemy.hp} · ${enemy.progress01.toFixed(2)}`,
+      `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
     );
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
       .setFillStyle(
-        enemy.frozenMs > 0
-          ? 0xb2f7ff
-          : enemy.elite
-            ? 0xe8bd50
-            : colors[enemy.kind],
+        slowed ? 0xb2f7ff : enemy.elite ? 0xe8bd50 : colors[enemy.kind],
       )
       .setStrokeStyle(
         enemy.elite ? 5 : enemy.phase === "attacking" ? 4 : 0,
@@ -362,7 +364,7 @@ export class EnemyPressureView {
       crash: "#ff796f",
       recovery: "#ffda82",
     };
-    this.stimText.setText(`${phase.toUpperCase()} · ×${multiplier.toFixed(2)}`);
+    this.stimText.setText(`${stimLabels[phase]} · ×${multiplier.toFixed(2)}`);
     this.stimText.setVisible(phase !== "normal");
     this.debugStim.setText(
       `STIM ${phase.toUpperCase()} ×${multiplier.toFixed(2)}`,
@@ -371,14 +373,22 @@ export class EnemyPressureView {
   }
 
   renderWall(hp: number, maxHp: number): void {
-    this.hpText.setText(`HP ${hp} / ${maxHp}`);
-    this.hpFill.setDisplaySize(210 * (hp / maxHp), 7);
-    this.failure.setVisible(hp <= 0);
+    this.hpText.setText(`${display.wall} ${Math.ceil(hp)} / ${maxHp}`);
+    this.hpFill.setDisplaySize(260 * (hp / maxHp), 10);
+  }
+
+  renderRun(elapsedMs: number, durationMs: number): void {
+    const seconds = Math.max(0, Math.ceil((durationMs - elapsedMs) / 1000));
+    this.runText.setText(
+      `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
+    );
   }
 
   renderProgression(level: number, xp: number, threshold: number): void {
-    this.xpText.setText(`Lv.${level} · XP ${xp}/${threshold}`);
-    this.xpFill.setDisplaySize(220 * Math.min(1, xp / threshold), 7);
+    this.xpText.setText(
+      `${levelLabel(level)} · ${Math.floor(xp)}/${threshold}`,
+    );
+    this.xpFill.setDisplaySize(260 * Math.min(1, xp / threshold), 10);
   }
 
   showPrimary(
@@ -387,10 +397,15 @@ export class EnemyPressureView {
     hitIds: readonly number[],
     evolved = false,
     splashIds: readonly number[] = [],
+    shotTargetIds: readonly number[] = [],
+    criticalIds: readonly number[] = [],
+    explosionIds: readonly number[] = [],
   ): void {
     if (!targets.length) return;
-    this.showShot(targets[0]!);
-    if (targets.length < 2 && !evolved) return;
+    for (const [index, target] of targets.entries()) {
+      if (index === 0 || shotTargetIds.includes(hitIds[index]!))
+        this.showShot(target);
+    }
     const effect = this.scene.add.graphics();
     this.world.add(effect);
     const evolution = evolutionRecipes[0]!;
@@ -414,31 +429,67 @@ export class EnemyPressureView {
         evolved ? evolution.effects.tracerWidth : 3,
         ricochetIds.includes(hitIds[index]!) ? 0xffab6b : 0x85eaff,
       );
-      effect.lineBetween(previous.x, previous.y, target.x, target.y);
+      if (
+        !shotTargetIds.includes(hitIds[index]!) &&
+        !splashIds.includes(hitIds[index]!)
+      )
+        effect.lineBetween(previous.x, previous.y, target.x, target.y);
       effect.strokeCircle(target.x, target.y, 12);
       if (splashIds.includes(hitIds[index]!))
         effect.strokeCircle(target.x, target.y, 28);
       previous = target;
     }
-    this.scene.time.delayedCall(120, () => effect.destroy());
+    for (const [index, target] of targets.entries()) {
+      if (explosionIds.includes(hitIds[index]!)) {
+        effect.lineStyle(4, 0xff9e5f, 0.95);
+        effect.strokeCircle(target.x, target.y, 44 * target.scaleX);
+        effect
+          .fillStyle(0xffb75f, 0.2)
+          .fillCircle(target.x, target.y, 40 * target.scaleX);
+      }
+      if (criticalIds.includes(hitIds[index]!)) {
+        effect.lineStyle(4, 0xfff28d).strokeCircle(target.x, target.y, 18);
+      }
+    }
+    if (criticalIds.length) {
+      const criticalTarget =
+        targets[hitIds.indexOf(criticalIds[0]!)] ?? targets[0]!;
+      const label = this.scene.add
+        .text(criticalTarget.x, criticalTarget.y - 35, display.critical, {
+          fontFamily: "sans-serif",
+          fontSize: "20px",
+          color: "#fff28d",
+        })
+        .setOrigin(0.5);
+      this.world.add(label);
+      this.scene.time.delayedCall(220, () => label.destroy());
+    }
+    this.scene.time.delayedCall(180, () => effect.destroy());
   }
 
-  renderModules(levels: ModuleLevels): void {
-    this.moduleText.setText(
-      Object.entries(levels)
-        .map(
-          ([id, level]) =>
-            `${modules[id as keyof typeof modules].shortLabel} Lv${level}`,
-        )
-        .join("  ·  "),
-    );
+  // BuildBar owns the visible relic inventory; retained until scene integration.
+  showImpacts(
+    kind: "frost" | "lightning",
+    targets: readonly Phaser.GameObjects.Container[],
+  ): void {
+    if (!targets.length) return;
+    const effect = this.scene.add.graphics();
+    this.world.add(effect);
+    effect.lineStyle(5, kind === "frost" ? 0x93eeff : 0xffffbd, 0.9);
+    for (const target of targets) {
+      effect.strokeCircle(target.x, target.y, 70 * target.scaleX);
+      if (kind === "lightning")
+        effect.lineBetween(target.x - 12, target.y - 140, target.x, target.y);
+    }
+    this.scene.time.delayedCall(350, () => effect.destroy());
   }
 
-  showEvolution(title: string): void {
+  showNotice(title: string): void {
     const notice = this.scene.add
-      .text(360, 580, `EVOLUTION\n${title}`, {
+      .text(360, 580, title, {
         fontFamily: "sans-serif",
-        fontSize: "38px",
+        fontSize: "26px",
+        wordWrap: { width: 560 },
         color: "#b9ffff",
         align: "center",
         backgroundColor: "#162b36dd",
@@ -453,12 +504,14 @@ export class EnemyPressureView {
     this.directorText.setText(status);
   }
 
-  renderMagic(frostMs: number, chainMs: number): void {
-    const remaining = (ms: number) =>
-      ms > 0 ? `${(ms / 1000).toFixed(1)}s` : "Ready";
+  renderMagic(frostMs: number, chainMs: number, fieldMs: number): void {
+    const remaining = remainingLabel;
     this.magicText.setText(
-      `○ FROST ${remaining(frostMs)}  ·  Z CHAIN ${remaining(chainMs)}`,
+      fieldMs > 0
+        ? `○ ${display.slow} ${remaining(fieldMs)} · ${display.cooldown} ${Math.ceil(frostMs / 1000)}초 / Z ${remaining(chainMs)}`
+        : `○ ${magicLabels["frost-nova"]} ${remaining(frostMs)} · Z ${magicLabels["chain-lightning"]} ${remaining(chainMs)}`,
     );
+    this.magicText.setColor(fieldMs > 0 ? "#b2f7ff" : "#ffffff");
   }
 
   showMagic(
@@ -516,6 +569,7 @@ export class EnemyPressureView {
   showGesture(
     points: readonly { x: number; y: number }[],
     result: string,
+    rejected = false,
   ): void {
     this.gestureText.setText(result);
     this.gesturePath.clear().lineStyle(3, 0xeeee77, 0.8);
@@ -523,6 +577,29 @@ export class EnemyPressureView {
       const a = points[i - 1]!;
       const b = points[i]!;
       this.gesturePath.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    if (rejected && !this.debugVisible) {
+      const trail = this.scene.add
+        .graphics()
+        .setDepth(3)
+        .lineStyle(2, 0xc0ced3, 0.35);
+      for (let i = 1; i < points.length; i++)
+        trail.lineBetween(
+          points[i - 1]!.x,
+          points[i - 1]!.y,
+          points[i]!.x,
+          points[i]!.y,
+        );
+      let fade = 0;
+      this.scene.time.addEvent({
+        delay: 70,
+        repeat: 3,
+        callback: () => {
+          fade++;
+          if (fade === 4) trail.destroy();
+          else trail.setAlpha(1 - fade / 4);
+        },
+      });
     }
   }
 }

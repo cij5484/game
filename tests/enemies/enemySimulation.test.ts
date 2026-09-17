@@ -8,23 +8,26 @@ describe("enemy simulation", () => {
     const elite = createPrototypeEnemy("grunt", "center", 1, 0.5, true);
     expect(elite.elite).toBe(true);
     expect(elite.hp).toBe(120);
-    expect(advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01).toBe(
-      0.04,
-    );
-  });
-  it("freezes movement and wall attack time, then resumes only after thaw", () => {
-    const enemy = {
-      ...createPrototypeEnemy("grunt", "left", 1),
-      frozenMs: 1500,
-    };
-    expect(advanceEnemy(enemy, 1000, enemyConfigs.grunt).enemy.progress01).toBe(
-      0,
-    );
     expect(
-      advanceEnemy(enemy, 2000, enemyConfigs.grunt).enemy.progress01,
-    ).toBeCloseTo(0.02);
+      advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01,
+    ).toBeCloseTo(0.0208);
+  });
+  it("slows travel only, preserves wall attack time, and counts arrival remainder", () => {
+    const enemy = createPrototypeEnemy("grunt", "left", 1);
+    expect(
+      advanceEnemy(enemy, 1000, enemyConfigs.grunt, 0.5).enemy.progress01,
+    ).toBeCloseTo(enemyConfigs.grunt.progressPerSecond * 0.65 * 0.5, 8);
     const atWall = { ...enemy, progress01: 1 };
-    expect(advanceEnemy(atWall, 2000, enemyConfigs.grunt).wallTimeMs).toBe(500);
+    expect(advanceEnemy(atWall, 2000, enemyConfigs.grunt, 0.5).wallTimeMs).toBe(
+      2000,
+    );
+    const nearWall = {
+      ...enemy,
+      progress01: 1 - enemyConfigs.grunt.progressPerSecond * 0.65 * 0.5,
+    };
+    const arrived = advanceEnemy(nearWall, 2000, enemyConfigs.grunt, 0.5);
+    expect(arrived.enemy.phase).toBe("attacking");
+    expect(arrived.wallTimeMs).toBeCloseTo(1000);
   });
   it.each(["grunt", "runner", "shield"] as const)(
     "moves %s at its configured speed without mutating its spawn",
@@ -32,8 +35,9 @@ describe("enemy simulation", () => {
       const enemy = createPrototypeEnemy(kind, "left", 7);
       expect(enemy).toEqual({
         id: 7,
+        speedMultiplier: 0.65,
         hp: enemyConfigs[kind].hp,
-        frozenMs: 0,
+        maxHp: enemyConfigs[kind].hp,
         kind,
         lane: "left",
         offset01: 0.5,
@@ -42,7 +46,7 @@ describe("enemy simulation", () => {
       });
       const result = advanceEnemy(enemy, 2000, enemyConfigs[kind]);
       expect(result.enemy.progress01).toBeCloseTo(
-        enemyConfigs[kind].progressPerSecond * 2,
+        enemyConfigs[kind].progressPerSecond * 0.65 * 2,
       );
       expect(result.enemy.phase).toBe("moving");
       expect(result.wallTimeMs).toBe(0);
@@ -51,18 +55,21 @@ describe("enemy simulation", () => {
   );
 
   it("clamps at the wall and counts only time after arrival, independent of tick subdivision", () => {
-    const enemy = createPrototypeEnemy("grunt", "right", 8, 0.2);
+    const enemy = {
+      ...createPrototypeEnemy("grunt", "right", 8, 0.2),
+      speedMultiplier: 1,
+    };
     const config = enemyConfigs.grunt;
-    const arrival = advanceEnemy(enemy, 25000, config);
+    const arrival = advanceEnemy(enemy, 31250, config);
     expect(arrival.enemy).toEqual({
       ...enemy,
       progress01: 1,
       phase: "attacking",
     });
     expect(arrival.wallTimeMs).toBe(0);
-    const whole = advanceEnemy(enemy, 30000, config);
+    const whole = advanceEnemy(enemy, 36250, config);
     const before = advanceEnemy(enemy, 20000, config);
-    const after = advanceEnemy(before.enemy, 10000, config);
+    const after = advanceEnemy(before.enemy, 16250, config);
     expect(whole.enemy).toEqual(arrival.enemy);
     expect(whole.wallTimeMs).toBe(5000);
     expect(after.enemy).toEqual(whole.enemy);

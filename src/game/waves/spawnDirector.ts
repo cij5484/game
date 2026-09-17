@@ -53,26 +53,7 @@ export class SpawnDirector {
       (value) => value.atMs <= this.elapsed,
     );
     const values = hordeBalance.stages[stage]!;
-    const phase =
-      this.elapsed % hordeBalance.cycleMs < hordeBalance.pressureMs
-        ? "pressure"
-        : "relief";
-    return {
-      stage,
-      enemyWeights: values.enemyWeights,
-      phase,
-      maxActiveEnemies: values.maxActiveEnemies,
-      spawnIntervalMs:
-        values.spawnIntervalMs *
-        (phase === "relief" ? hordeBalance.reliefIntervalMultiplier : 1),
-      batchSize: Math.max(
-        1,
-        Math.floor(
-          values.batchSize *
-            (phase === "relief" ? hordeBalance.reliefBatchMultiplier : 1),
-        ),
-      ),
-    };
+    return { stage, ...values };
   }
 
   advance(deltaMs: number) {
@@ -108,7 +89,10 @@ export class SpawnDirector {
     );
     this.initial = false;
     // A full battlefield consumes this spawn opportunity; no catch-up backlog.
-    this.nextSpawnAtMs = this.elapsed + settings.spawnIntervalMs;
+    this.nextSpawnAtMs = Math.min(
+      this.elapsed + settings.spawnIntervalMs,
+      hordeBalance.stages[settings.stage + 1]?.atMs ?? Infinity,
+    );
     return [
       ...spawns,
       ...Array.from({ length: count }, () => ({

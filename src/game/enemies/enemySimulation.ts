@@ -3,8 +3,10 @@ import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
 export interface EnemyState {
   id: number;
   elite?: boolean;
+  /** Fixed at spawn; temporary movement effects multiply this value. */
+  speedMultiplier?: number;
   hp: number;
-  frozenMs: number;
+  maxHp?: number;
   kind: EnemyKind;
   lane: LaneId;
   offset01: number;
@@ -16,31 +18,29 @@ export function advanceEnemy(
   enemy: EnemyState,
   deltaMs: number,
   config: EnemyConfig,
+  movementMultiplier = 1,
 ): { enemy: EnemyState; wallTimeMs: number } {
   if (deltaMs <= 0 || enemy.hp <= 0) return { enemy, wallTimeMs: 0 };
-  const frozenTime = Math.min(deltaMs, enemy.frozenMs);
-  enemy = { ...enemy, frozenMs: Math.max(0, enemy.frozenMs - deltaMs) };
-  deltaMs -= frozenTime;
-  if (deltaMs <= 0) return { enemy, wallTimeMs: 0 };
   if (enemy.progress01 >= 1) {
     return {
       enemy: { ...enemy, progress01: 1, phase: "attacking" },
       wallTimeMs: deltaMs,
     };
   }
-  if (config.progressPerSecond <= 0) return { enemy, wallTimeMs: 0 };
+  const progressPerSecond =
+    config.progressPerSecond *
+    (enemy.speedMultiplier ?? 1) *
+    movementMultiplier;
+  if (progressPerSecond <= 0) return { enemy, wallTimeMs: 0 };
 
-  const arrivalMs = ((1 - enemy.progress01) / config.progressPerSecond) * 1000;
+  const arrivalMs = ((1 - enemy.progress01) / progressPerSecond) * 1000;
   const arrived = deltaMs >= arrivalMs;
   return {
     enemy: {
       ...enemy,
       progress01: arrived
         ? 1
-        : Math.min(
-            1,
-            enemy.progress01 + (config.progressPerSecond * deltaMs) / 1000,
-          ),
+        : Math.min(1, enemy.progress01 + (progressPerSecond * deltaMs) / 1000),
       phase: arrived ? "attacking" : "moving",
     },
     wallTimeMs: arrived ? deltaMs - arrivalMs : 0,

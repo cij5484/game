@@ -11,6 +11,7 @@ const nonnegativeFinite = (value: number): number =>
 
 export class Burst {
   private charge = 0;
+  private combatCredit: number = burstBalance.maxCombatCredit;
   private active = false;
   private elapsed = 0;
   private judgments: BurstGrade[] = [];
@@ -44,14 +45,31 @@ export class Burst {
   }
 
   credit(result: BurstCredit): void {
+    if (this.active || this.ready) return;
+    const normalCredit = Math.min(
+      this.combatCredit,
+      nonnegativeFinite(result.hits ?? 0) * burstBalance.charge.hits +
+        nonnegativeFinite(result.kills ?? 0) * burstBalance.charge.kills,
+    );
+    this.combatCredit -= normalCredit;
+    this.charge = Math.min(
+      burstBalance.gaugeMax,
+      this.charge +
+        normalCredit +
+        nonnegativeFinite(result.eliteKills ?? 0) *
+          burstBalance.charge.eliteKills,
+    );
+  }
+
+  /** Refill the credit allowance with simulated combat time, never passive gauge. */
+  advanceCharge(gameplayMs: number): void {
     if (this.active) return;
-    for (const key of ["hits", "kills", "eliteKills"] as const) {
-      this.charge = Math.min(
-        burstBalance.gaugeMax,
-        this.charge +
-          nonnegativeFinite(result[key] ?? 0) * burstBalance.charge[key],
-      );
-    }
+    this.combatCredit = Math.min(
+      burstBalance.maxCombatCredit,
+      this.combatCredit +
+        (nonnegativeFinite(gameplayMs) / 1000) *
+          burstBalance.combatCreditPerSecond,
+    );
   }
 
   activate(): boolean {

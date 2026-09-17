@@ -42,11 +42,11 @@ export interface EnemyConfig {
 
 export interface FrostNovaConfig {
   id: "frost-nova";
-  effect: "freeze";
+  effect: "global-slow";
   cooldownMs: number;
-  /** Radius in logical battlefield pixels, independent of display scaling. */
-  radiusPx: number;
-  freezeDurationMs: number;
+  durationMs: number;
+  /** Global movement only; wall attack cadence is unaffected. */
+  moveSpeedMultiplier: number;
 }
 
 export interface ChainLightningConfig {

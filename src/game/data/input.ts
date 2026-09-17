@@ -6,7 +6,7 @@ export const tapBalance = {
 } as const;
 
 export const drawingInputBalance = {
-  maxDurationMs: 2500,
+  maxDurationMs: 5000,
   maxPoints: 256,
   sampleDistancePx: 3,
 } as const;

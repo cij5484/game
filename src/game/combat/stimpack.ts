@@ -1,18 +1,40 @@
+import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import type { StimpackConfig } from "../model/types";
 
 export type StimpackPhase = "normal" | "boost" | "crash" | "recovery";
 
 export class Stimpack {
-  private readonly config: StimpackConfig;
+  private config: StimpackConfig;
+  private readonly base: StimpackConfig;
   private state: StimpackPhase = "normal";
   private elapsedMs = 0;
 
   constructor(config: StimpackConfig) {
     this.config = config;
+    this.base = config;
+  }
+
+  setUpgrades(ranks: UpgradeRanks): void {
+    const bonus = (id: keyof UpgradeRanks) =>
+      (ranks[id] ?? 0) * upgrades[id].amount;
+    this.config = {
+      ...this.base,
+      boostMs: this.base.boostMs + bonus("stim-duration"),
+      boostAttackSpeedMultiplier:
+        this.base.boostAttackSpeedMultiplier + bonus("stim-speed"),
+      recoveryMs: Math.max(1, this.base.recoveryMs - bonus("stim-recovery")),
+    };
+    this.advance(0);
   }
 
   get phase(): StimpackPhase {
     return this.state;
+  }
+
+  get phaseProgress(): number {
+    if (this.state === "normal") return 1;
+    const duration = this.elapsedMs + this.timeToBoundaryMs;
+    return Math.min(1, this.elapsedMs / Math.max(1, duration));
   }
 
   get canAttack(): boolean {
@@ -35,11 +57,11 @@ export class Stimpack {
   get timeToBoundaryMs(): number {
     switch (this.state) {
       case "boost":
-        return this.config.boostMs - this.elapsedMs;
+        return Math.max(0, this.config.boostMs - this.elapsedMs);
       case "crash":
         return this.config.crashMs - this.elapsedMs;
       case "recovery":
-        return this.config.recoveryMs - this.elapsedMs;
+        return Math.max(0, this.config.recoveryMs - this.elapsedMs);
       case "normal":
         return Infinity;
     }

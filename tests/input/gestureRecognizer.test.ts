@@ -4,6 +4,123 @@ import { TapInput } from "../../src/game/input/tapInput";
 import { Magic } from "../../src/game/combat/magic";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 
+const oval = (radius: number, count: number, turns = 1) =>
+  Array.from({ length: count }, (_, i) => ({
+    x: 200 + radius * Math.cos((i / (count - 1)) * Math.PI * 2 * turns),
+    y: 200 + radius * Math.sin((i / (count - 1)) * Math.PI * 2 * turns),
+  }));
+const tiltedZ = (degrees: number) =>
+  [
+    [0, 0],
+    [120, 0],
+    [0, 120],
+    [120, 120],
+  ].map(([x, y]) => {
+    const radians = (degrees * Math.PI) / 180;
+    return {
+      x: 200 + x! * Math.cos(radians) - y! * Math.sin(radians),
+      y: 200 + x! * Math.sin(radians) + y! * Math.cos(radians),
+    };
+  });
+
+it.each([
+  ["sparse small circle", oval(26, 9), "circle"],
+  ["partly closed circle", oval(65, 13, 0.88), "circle"],
+  ["loosely closed circle", oval(65, 30, 0.82), "circle"],
+  ["large circle", oval(220, 100), "circle"],
+  ["clockwise tilted Z", tiltedZ(20), "z"],
+  ["counterclockwise tilted Z", tiltedZ(-20), "z"],
+  ["sideways Z / N", tiltedZ(90), "unknown"],
+  [
+    "mirrored Z",
+    [
+      { x: 120, y: 0 },
+      { x: 0, y: 0 },
+      { x: 120, y: 120 },
+      { x: 0, y: 120 },
+    ],
+    "unknown",
+  ],
+  [
+    "unfinished Z",
+    [
+      { x: 0, y: 0 },
+      { x: 120, y: 0 },
+      { x: 0, y: 120 },
+    ],
+    "unknown",
+  ],
+  [
+    "L",
+    [
+      { x: 0, y: 0 },
+      { x: 0, y: 120 },
+      { x: 120, y: 120 },
+    ],
+    "unknown",
+  ],
+  [
+    "unequal Z bars",
+    [
+      { x: 0, y: 0 },
+      { x: 90, y: 10 },
+      { x: 20, y: 120 },
+      { x: 150, y: 110 },
+    ],
+    "z",
+  ],
+  ["tap", [{ x: 1, y: 1 }], "unknown"],
+  [
+    "short line",
+    [
+      { x: 0, y: 0 },
+      { x: 12, y: 10 },
+      { x: 22, y: 22 },
+    ],
+    "unknown",
+  ],
+  [
+    "V",
+    [
+      { x: 0, y: 0 },
+      { x: 60, y: 120 },
+      { x: 120, y: 0 },
+    ],
+    "unknown",
+  ],
+  ["C", oval(70, 31, 0.7), "unknown"],
+  ["tiny ring", oval(12, 25), "unknown"],
+  [
+    "diagonal",
+    [
+      { x: 0, y: 0 },
+      { x: 60, y: 60 },
+      { x: 120, y: 120 },
+    ],
+    "unknown",
+  ],
+  ["scribble", [...oval(60, 25), ...oval(60, 25).reverse()], "unknown"],
+] as const)("classifies %s with diagnostic scores", (_name, points, kind) => {
+  const result = recognizeGesture(points);
+  expect(result.kind, JSON.stringify(result)).toBe(kind);
+  expect(result.metrics?.samples).toBe(points.length);
+  expect(result.metrics?.pathLength).toBeGreaterThanOrEqual(0);
+  expect(result.reason).not.toBe("");
+  expect(Number.isFinite(result.circleScore)).toBe(true);
+  expect(Number.isFinite(result.zScore)).toBe(true);
+});
+
+it("reports invalid coordinates separately without nonfinite diagnostics", () => {
+  const result = recognizeGesture([
+    { x: 0, y: 0 },
+    { x: NaN, y: 20 },
+    { x: 50, y: 50 },
+  ]);
+  expect(result.kind).toBe("unknown");
+  expect(result.reason).toBe("invalid coordinates");
+  expect(result.metrics?.pathLength).toBe(0);
+});
+
 it("preserves a full large drawing when pointer samples exceed the storage cap", () => {
   const input = new TapInput();
   input.down(1, 480, 240, 0);
@@ -139,8 +256,7 @@ it("routes completed single-finger drawings to magic effects and denies cooldown
     const enemy = createPrototypeEnemy("shield", "center", 0);
     const cast = magic.cast(id, [enemy])!;
     expect(cast.hitIds).toEqual([enemy.id]);
-    if (id === "frost-nova")
-      expect(cast.enemies[0]!.frozenMs).toBeGreaterThan(0);
+    if (id === "frost-nova") expect(magic.frostRemainingMs).toBeGreaterThan(0);
     else expect(cast.enemies[0]!.hp).toBeLessThan(enemy.hp);
     expect(magic.cast(id, cast.enemies)).toBeNull();
   }

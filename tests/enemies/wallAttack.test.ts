@@ -61,15 +61,16 @@ describe("wall run state", () => {
     const state = createRunState(20);
     expect(applyWallDamage(state, 5)).toEqual({
       wallHp: 15,
+      elapsedMs: 0,
       status: "running",
     });
-    expect(state).toEqual({ wallHp: 20, status: "running" });
+    expect(state).toEqual({ wallHp: 20, status: "running", elapsedMs: 0 });
     expect(applyWallDamage(state, -5)).toEqual(state);
   });
 
   it("clamps lethal damage to zero and never revives a failed run", () => {
     const failed = applyWallDamage(createRunState(20), 25);
-    expect(failed).toEqual({ wallHp: 0, status: "failed" });
+    expect(failed).toEqual({ wallHp: 0, status: "failed", elapsedMs: 0 });
     expect(applyWallDamage(failed, -20)).toEqual(failed);
     expect(applyWallDamage(failed, 10)).toEqual(failed);
     expect(applyWallDamage(createRunState(20), 20)).toEqual(failed);
