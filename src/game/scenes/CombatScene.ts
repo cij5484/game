@@ -1,86 +1,88 @@
 import Phaser from "phaser";
-import { laneCenterX, laneX } from "../battlefield/lanes";
-import { perspectiveScale } from "../battlefield/perspective";
-
-const debugLayout = {
-  farY01: 0.24,
-  nearY01: 0.78,
-  placeholderSize: 40,
-} as const;
+import { EnemyPressureView } from "../battlefield/EnemyPressureView";
+import { enemyPressureBalance } from "../data/balance";
+import { enemyConfigs } from "../data/enemies";
+import { createPrototypeEnemy } from "../enemies/enemyFactory";
+import { advanceEnemy } from "../enemies/enemySimulation";
+import type { EnemyState } from "../enemies/enemySimulation";
+import { advanceWallAttack } from "../enemies/wallAttack";
+import { applyWallDamage, createRunState } from "../model/runState";
 
 export class CombatScene extends Phaser.Scene {
+  private run = createRunState(enemyPressureBalance.wallMaxHp);
+  private view!: EnemyPressureView;
+  private enemies: {
+    state: EnemyState;
+    attackElapsedMs: number;
+    visual: Phaser.GameObjects.Container;
+  }[] = [];
+  private spawnElapsedMs = 0;
+  private wave = 0;
+
   create(): void {
-    const { width, height } = this.scale;
-    const farY = height * debugLayout.farY01;
-    const nearY = height * debugLayout.nearY01;
-    const textStyle = {
-      fontFamily: "sans-serif",
-      fontSize: "22px",
-      color: "#ffffff",
-    };
-    const label = (x: number, y: number, text: string) =>
-      this.add.text(x, y, text, textStyle).setOrigin(0.5);
+    this.run = createRunState(enemyPressureBalance.wallMaxHp);
+    this.enemies = [];
+    this.spawnElapsedMs = 0;
+    this.wave = 0;
+    this.view = new EnemyPressureView(this);
+    this.spawnWave();
+    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+  }
 
-    label(width / 2, 32, "SOFT LANES / 원근 표현 확인");
-    label(width / 2, 65, "정적 샘플 · 좌표와 시각 크기는 독립");
-
-    for (const [lane, title, color] of [
-      ["left", "좌 / LEFT", 0x5c9ed6],
-      ["center", "중 / CENTER", 0x72baa5],
-      ["right", "우 / RIGHT", 0xd7ab65],
-    ] as const) {
-      const centerX = laneCenterX(lane, width);
-      this.add.rectangle(
-        centerX,
-        (farY + nearY) / 2,
-        width / 3 - 16,
-        nearY - farY + 60,
-        color,
-        0.12,
+  private spawnWave(): void {
+    const lanes = ["left", "center", "right"] as const;
+    for (const [index, kind] of (
+      ["grunt", "runner", "shield"] as const
+    ).entries()) {
+      const lane = lanes[(index + this.wave) % lanes.length]!;
+      const state = createPrototypeEnemy(
+        kind,
+        lane,
+        this.enemies.length,
+        0.25 + (this.wave % 5) * 0.125,
       );
-      this.add.rectangle(
-        centerX,
-        (farY + nearY) / 2,
-        1,
-        nearY - farY,
-        color,
-        0.4,
-      );
-      label(centerX, 112, title);
+      this.enemies.push({
+        state,
+        attackElapsedMs: 0,
+        visual: this.view.createEnemy(state),
+      });
+    }
+    this.wave++;
+  }
 
-      for (const [progress, offset] of [
-        [0, 0.3],
-        [0.5, 0.5],
-        [1, 0.7],
-      ] as const) {
-        // Position uses logical coordinates only; scale affects the shape alone.
-        const x = laneX(lane, width, offset);
-        const y = farY + (nearY - farY) * progress;
-        const scale = perspectiveScale(progress);
-        this.add
-          .rectangle(
-            x,
-            y,
-            debugLayout.placeholderSize,
-            debugLayout.placeholderSize,
-            color,
-          )
-          .setScale(scale);
-        this.add.circle(x, y, 3, 0xffffff);
-        label(
-          centerX,
-          y + 43,
-          `진행 ${progress} · 가로 ${offset} · 크기 ${scale.toFixed(2)}`,
+  update(_time: number, deltaMs: number): void {
+    if (this.run.status === "failed") return;
+    // New enemies receive only time after their spawn boundary.
+    let remaining = Math.max(0, deltaMs);
+    while (remaining > 0 && this.run.status === "running") {
+      const step = Math.min(
+        remaining,
+        enemyPressureBalance.spawnIntervalMs - this.spawnElapsedMs,
+      );
+      for (const entry of this.enemies) {
+        const config = enemyConfigs[entry.state.kind];
+        const movement = advanceEnemy(entry.state, step, config);
+        entry.state = movement.enemy;
+        const attack = advanceWallAttack(
+          entry.attackElapsedMs,
+          movement.wallTimeMs,
+          config,
         );
+        entry.attackElapsedMs = attack.elapsedMs;
+        this.run = applyWallDamage(this.run, attack.damage);
+        this.view.renderEnemy(entry.visual, entry.state);
+        if (this.run.status === "failed") break;
+      }
+      this.spawnElapsedMs += step;
+      remaining -= step;
+      if (
+        this.run.status === "running" &&
+        this.spawnElapsedMs >= enemyPressureBalance.spawnIntervalMs
+      ) {
+        this.spawnElapsedMs = 0;
+        this.spawnWave();
       }
     }
-
-    for (const [y, title] of [
-      [farY - 38, "FAR · 원거리 / 진행 0"],
-      [nearY + 85, "NEAR · 성벽 쪽 / 진행 1"],
-    ] as const) {
-      this.add.rectangle(width / 2, y, width, 2, 0xffffff, 0.25);
-      label(width / 2, y + 18, title);
-    }
+    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
   }
 }

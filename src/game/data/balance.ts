@@ -3,6 +3,12 @@ import type { MarineConfig, StimpackConfig } from "../model/types";
 // Keep weapon tuning in one place while preserving the planned balance imports.
 export { gaussRifleBalance } from "./weapons";
 
+// Prototype tuning values for the enemy-pressure-only milestone.
+export const enemyPressureBalance = {
+  wallMaxHp: 500,
+  spawnIntervalMs: 10000,
+} as const;
+
 export const marineConfig = {
   id: "marine",
   primaryAttackId: "gauss-rifle",
