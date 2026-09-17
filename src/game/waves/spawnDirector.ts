@@ -59,6 +59,7 @@ export class SpawnDirector {
         : "relief";
     return {
       stage,
+      enemyWeights: values.enemyWeights,
       phase,
       maxActiveEnemies: values.maxActiveEnemies,
       spawnIntervalMs:
@@ -111,14 +112,20 @@ export class SpawnDirector {
     return [
       ...spawns,
       ...Array.from({ length: count }, () => ({
-        kind: weightedChoice(hordeBalance.enemyWeights, this.random()),
+        kind: weightedChoice(
+          initial ? hordeBalance.initialEnemyWeights : settings.enemyWeights,
+          this.random(),
+        ),
         lane: weightedChoice(hordeBalance.laneWeights, this.random()),
         offset01:
           hordeBalance.lateralMin01 +
           this.random() *
             (hordeBalance.lateralMax01 - hordeBalance.lateralMin01),
         progress01: initial
-          ? this.random() * hordeBalance.initialMaxProgress01
+          ? hordeBalance.initialMinProgress01 +
+            this.random() *
+              (hordeBalance.initialMaxProgress01 -
+                hordeBalance.initialMinProgress01)
           : 0,
       })),
     ];

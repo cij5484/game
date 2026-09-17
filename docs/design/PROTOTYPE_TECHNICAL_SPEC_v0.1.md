@@ -254,6 +254,8 @@ Suggested prototype roles:
 
 Cooldown values belong in balance data.
 
+Milestone 11 tuning: Primary is sustained firepower; Magic is a long-cooldown tactical intervention. Frost Nova: 20000ms cooldown, logical radius550, freeze3500ms. Chain Lightning: 14000ms cooldown, damage50, 12 distinct targets, logical hop radius300. Upgrade ranks preserve running cooldowns; Frost adds radius60/duration500ms, Lightning adds targets3/damage15 per rank.
+
 ---
 
 ## 12. Enemy Types
@@ -394,9 +396,13 @@ Requirements:
 
 Do not build a full music-synced rhythm engine.
 
+Milestone 11 implementation: gauge100, credit0.2 per confirmed hit/1 per kill/+8 per Elite kill. Manual READY activation only. Rhythm uses real time3000ms, beats at500/1000/1500/2000/2500ms, PERFECT within70ms and GOOD within150ms. Battlefield simulation uses timeScale0.08; rhythm time is independent. Every tap consumes one beat, and omitted beats become MISS. Score scales a single Marine barrage from24 to60 targets and60 to140 damage; even all MISS retains the minimum. Keep its gauge/button within the integrated lower-wall HUD.
+
 ---
 
 ## 20. Horde Stress Test
+
+Milestone 11 normal-run tuning (not a stress test): initial30 Grunts distributed over progress0.08–0.45. Stages at0/30/60/120s use caps50/60/70/80 with one reserved Elite slot. Enemy weights evolve from90/10/0 to75/20/5 to60/25/15; first Elite60s, then25s intervals. All values live in horde/elite data. Screen ratio must not change these logical pacing values.
 
 This is a separate prototype test mode or debug mode.
 

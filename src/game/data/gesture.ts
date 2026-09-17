@@ -3,7 +3,7 @@ export const gestureBalance = {
   minDimensionPx: 45,
   minAspectRatio: 0.3,
   sampleCount: 32,
-  circleMaxClosure: 0.28,
+  circleMaxClosureRatio: 0.14,
   circleMaxRadialError: 0.14,
   circleMinWinding: 0.8,
   circleMaxWinding: 1.2,
