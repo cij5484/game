@@ -1,5 +1,5 @@
 import { combatPosition } from "../battlefield/combatGeometry";
-import { magicConfigs } from "../data/magic";
+import { magicConfigs, magicBehaviorBalance } from "../data/magic";
 import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { selectAutoTarget } from "./targeting";
@@ -55,10 +55,12 @@ export class Magic {
             ...base,
             maxTargets: base.maxTargets + bonus("chain-targets"),
             damagePerTarget: base.damagePerTarget + bonus("chain-damage"),
+            chainRadiusPx: base.chainRadiusPx + bonus("chain-radius"),
           };
     this.cooldowns[id] = config.cooldownMs;
     const start = selectAutoTarget(enemies);
     const hits: EnemyState[] = [];
+    const forkIds: number[] = [];
     if (start && config.effect === "freeze") {
       hits.push(
         ...enemies.filter(
@@ -85,6 +87,24 @@ export class Magic {
         hits.push(next);
       }
     }
+    if (config.effect === "chain-damage" && bonus("storm-fork") > 0) {
+      const anchors = [...hits];
+      const forks = enemies
+        .filter(
+          (enemy) => enemy.hp > 0 && !hits.some((hit) => hit.id === enemy.id),
+        )
+        .map((enemy) => ({
+          enemy,
+          gap: Math.min(...anchors.map((anchor) => distance(anchor, enemy))),
+        }))
+        .filter((entry) => entry.gap <= config.chainRadiusPx)
+        .sort((a, b) => a.gap - b.gap || a.enemy.id - b.enemy.id)
+        .slice(0, bonus("storm-fork"));
+      for (const { enemy } of forks) {
+        hits.push(enemy);
+        forkIds.push(enemy.id);
+      }
+    }
     const hitIds = hits.map((enemy) => enemy.id);
     return {
       hitIds,
@@ -93,9 +113,20 @@ export class Magic {
         return config.effect === "freeze"
           ? {
               ...enemy,
+              hp: Math.max(0, enemy.hp - bonus("frost-shatter")),
               frozenMs: Math.max(enemy.frozenMs, config.freezeDurationMs),
             }
-          : { ...enemy, hp: Math.max(0, enemy.hp - config.damagePerTarget) };
+          : {
+              ...enemy,
+              hp: Math.max(
+                0,
+                enemy.hp -
+                  config.damagePerTarget *
+                    (forkIds.includes(enemy.id)
+                      ? magicBehaviorBalance.forkDamageFactor
+                      : 1),
+              ),
+            };
       }),
     };
   }

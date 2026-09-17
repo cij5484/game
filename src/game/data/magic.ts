@@ -18,3 +18,5 @@ export const magicConfigs = {
     chainRadiusPx: 300,
   },
 } as const satisfies Record<MagicConfig["id"], MagicConfig>;
+
+export const magicBehaviorBalance = { forkDamageFactor: 0.6 } as const;

@@ -5,5 +5,5 @@ export const eliteBalance = {
   kind: "grunt" as EnemyKind,
   hpMultiplier: 4,
   firstSpawnMs: 60000,
-  spawnIntervalMs: 25000,
+  spawnIntervalMs: 40000,
 } as const;

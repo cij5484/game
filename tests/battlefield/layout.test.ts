@@ -1,7 +1,27 @@
 import { expect, it } from "vitest";
-import { battlefieldLayout, battlefieldReference } from "../../src/game/battlefield/layout";
+import {
+  battlefieldLayout,
+  battlefieldReference,
+} from "../../src/game/battlefield/layout";
 
-it.each([[720, 1280], [720, 1560], [720, 1600], [768, 1024]])(
+it("fits the wall above mobile home indicators without changing logical reference", () => {
+  const layout = battlefieldLayout(390, 844, {
+    top: 47,
+    bottom: 34,
+    left: 0,
+    right: 0,
+  });
+  expect(layout.y + 1280 * layout.scale).toBeCloseTo(810);
+  expect(layout.y).toBeGreaterThanOrEqual(47);
+  expect(layout.x + 720 * layout.scale).toBeLessThanOrEqual(390);
+});
+
+it.each([
+  [720, 1280],
+  [720, 1560],
+  [720, 1600],
+  [768, 1024],
+])(
   "keeps portrait gameplay visible and wall bottom-anchored at %s x %s",
   (width, height) => {
     const layout = battlefieldLayout(width, height);

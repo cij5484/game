@@ -2,15 +2,17 @@ import type { EnemyKind, LaneId } from "../model/types";
 
 interface HordeStage {
   atMs: number;
+  name: string;
+  phase: "pressure" | "relief";
   spawnIntervalMs: number;
   batchSize: number;
   maxActiveEnemies: number;
   enemyWeights: Record<EnemyKind, number>;
 }
 
-// Prototype tuning only: density targets, not final difficulty balance.
+// Prototype five-minute encounters: caps control density, intervals control replacement pressure.
 export const hordeBalance = {
-  initialBatchSize: 30,
+  initialBatchSize: 45,
   initialEnemyWeights: { grunt: 1, runner: 0, shield: 0 } satisfies Record<
     EnemyKind,
     number
@@ -23,38 +25,114 @@ export const hordeBalance = {
     LaneId,
     number
   >,
-  cycleMs: 30000,
-  pressureMs: 20000,
-  reliefIntervalMultiplier: 1.8,
-  reliefBatchMultiplier: 0.5,
   stages: [
     {
       atMs: 0,
-      spawnIntervalMs: 2000,
-      batchSize: 4,
-      maxActiveEnemies: 50,
-      enemyWeights: { grunt: 90, runner: 10, shield: 0 },
+      name: "GRUNT FLOOD",
+      phase: "pressure",
+      spawnIntervalMs: 1500,
+      batchSize: 6,
+      maxActiveEnemies: 80,
+      enemyWeights: { grunt: 95, runner: 5, shield: 0 },
     },
     {
       atMs: 30000,
-      spawnIntervalMs: 1800,
-      batchSize: 5,
-      maxActiveEnemies: 60,
-      enemyWeights: { grunt: 75, runner: 20, shield: 5 },
+      name: "BREATHING ROOM",
+      phase: "relief",
+      spawnIntervalMs: 2200,
+      batchSize: 3,
+      maxActiveEnemies: 80,
+      enemyWeights: { grunt: 90, runner: 10, shield: 0 },
+    },
+    {
+      atMs: 45000,
+      name: "RUNNER RUSH",
+      phase: "pressure",
+      spawnIntervalMs: 1400,
+      batchSize: 7,
+      maxActiveEnemies: 90,
+      enemyWeights: { grunt: 65, runner: 30, shield: 5 },
     },
     {
       atMs: 60000,
-      spawnIntervalMs: 1600,
-      batchSize: 6,
-      maxActiveEnemies: 70,
-      enemyWeights: { grunt: 60, runner: 25, shield: 15 },
+      name: "ARMORED HORDE",
+      phase: "pressure",
+      spawnIntervalMs: 1200,
+      batchSize: 8,
+      maxActiveEnemies: 95,
+      enemyWeights: { grunt: 60, runner: 20, shield: 20 },
     },
     {
-      atMs: 120000,
-      spawnIntervalMs: 1400,
-      batchSize: 7,
-      maxActiveEnemies: 80,
-      enemyWeights: { grunt: 60, runner: 25, shield: 15 },
+      atMs: 90000,
+      name: "REGROUP",
+      phase: "relief",
+      spawnIntervalMs: 2200,
+      batchSize: 3,
+      maxActiveEnemies: 95,
+      enemyWeights: { grunt: 85, runner: 10, shield: 5 },
+    },
+    {
+      atMs: 105000,
+      name: "SHIELD ADVANCE",
+      phase: "pressure",
+      spawnIntervalMs: 1200,
+      batchSize: 9,
+      maxActiveEnemies: 100,
+      enemyWeights: { grunt: 50, runner: 15, shield: 35 },
+    },
+    {
+      atMs: 135000,
+      name: "MIXED ONSLAUGHT",
+      phase: "pressure",
+      spawnIntervalMs: 1100,
+      batchSize: 10,
+      maxActiveEnemies: 110,
+      enemyWeights: { grunt: 50, runner: 30, shield: 20 },
+    },
+    {
+      atMs: 165000,
+      name: "COUNTERATTACK WINDOW",
+      phase: "relief",
+      spawnIntervalMs: 2200,
+      batchSize: 4,
+      maxActiveEnemies: 110,
+      enemyWeights: { grunt: 80, runner: 15, shield: 5 },
+    },
+    {
+      atMs: 180000,
+      name: "BREAK THE LINE",
+      phase: "pressure",
+      spawnIntervalMs: 1000,
+      batchSize: 10,
+      maxActiveEnemies: 115,
+      enemyWeights: { grunt: 45, runner: 30, shield: 25 },
+    },
+    {
+      atMs: 210000,
+      name: "LAST BREATHER",
+      phase: "relief",
+      spawnIntervalMs: 2000,
+      batchSize: 4,
+      maxActiveEnemies: 115,
+      enemyWeights: { grunt: 75, runner: 15, shield: 10 },
+    },
+    {
+      atMs: 225000,
+      name: "SIEGE",
+      phase: "pressure",
+      spawnIntervalMs: 1000,
+      batchSize: 11,
+      maxActiveEnemies: 120,
+      enemyWeights: { grunt: 45, runner: 25, shield: 30 },
+    },
+    {
+      atMs: 255000,
+      name: "FINAL PRESSURE",
+      phase: "pressure",
+      spawnIntervalMs: 900,
+      batchSize: 12,
+      maxActiveEnemies: 120,
+      enemyWeights: { grunt: 40, runner: 30, shield: 30 },
     },
   ] satisfies HordeStage[],
 } as const;

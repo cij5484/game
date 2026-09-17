@@ -76,11 +76,11 @@ it("grows frost radius and duration without resetting a running cooldown", () =>
   const result = magic.cast("frost-nova", enemies)!;
   expect(result.hitIds).toEqual([0, 1]);
   expect(result.enemies.map((enemy) => enemy.frozenMs)).toEqual([
-    4500, 4500, 0,
+    4300, 4300, 0,
   ]);
 });
 
-it("grows lightning to 18 targets and 80 damage without cooldown reset", () => {
+it("grows lightning to 16 targets and 74 damage without cooldown reset", () => {
   const enemies = Array.from({ length: 20 }, (_, id) => ({
     ...createPrototypeEnemy("shield", "center", id),
     hp: 100,
@@ -89,14 +89,31 @@ it("grows lightning to 18 targets and 80 damage without cooldown reset", () => {
   const magic = new Magic();
   magic.setUpgrades({ "chain-targets": 2, "chain-damage": 2 });
   const result = magic.cast("chain-lightning", enemies)!;
-  expect(new Set(result.hitIds).size).toBe(18);
-  expect(result.enemies.slice(0, 18).every((enemy) => enemy.hp === 20)).toBe(
+  expect(new Set(result.hitIds).size).toBe(16);
+  expect(result.enemies.slice(0, 16).every((enemy) => enemy.hp === 26)).toBe(
     true,
   );
-  expect(result.enemies.slice(18).every((enemy) => enemy.hp === 100)).toBe(
+  expect(result.enemies.slice(16).every((enemy) => enemy.hp === 100)).toBe(
     true,
   );
   magic.setUpgrades({ "chain-targets": 3, "chain-damage": 3 });
   expect(magic.remaining("chain-lightning")).toBe(14000);
   expect(magic.cast("chain-lightning", enemies)).toBeNull();
+});
+
+it("advanced frost deals damage and storm forks to distinct targets", () => {
+  const pack = Array.from({ length: 24 }, (_, id) => ({
+    ...createPrototypeEnemy("grunt", "center", id),
+    hp: 100,
+    progress01: 0.9 - id * 0.02,
+  }));
+  const frost = new Magic();
+  frost.setUpgrades({ "frost-shatter": 1 });
+  expect(frost.cast("frost-nova", pack)!.enemies[0]!.hp).toBe(70);
+  const chain = new Magic();
+  chain.setUpgrades({ "storm-fork": 1 });
+  const result = chain.cast("chain-lightning", pack)!;
+  expect(result.hitIds).toHaveLength(15);
+  expect(new Set(result.hitIds).size).toBe(15);
+  expect(result.enemies.filter((enemy) => enemy.hp === 70)).toHaveLength(3);
 });

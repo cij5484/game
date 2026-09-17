@@ -1,5 +1,16 @@
 # GAME GDD v0.1
 
+## Milestone 12 current prototype scope
+
+The current playable prototype is a **five-minute simulation-time Run**, separate from the future production goal of approximately 15 minutes and resume support elsewhere in this document. Level/Module selection pauses do not consume Run time; Rhythm Burst slows Run time with the battlefield to 0.08x. At 300 seconds the run clears; Wall HP 0 fails. Prototype Wall HP is 12,000. Result/Retry shows time, kills, Level, Wall HP, Primary/Stim/Magic upgrades, Modules and Evolution; no persistent rewards are implemented.
+
+Named data-driven encounters begin with 45 Grunts, target early capacity 80 and late capacity 120, include four 15-second relief windows, and end with 45 seconds of maximum pressure. Spawns blocked by capacity are dropped rather than accumulated. Elite begins at 60 seconds, then every 40 seconds when capacity permits.
+
+The current upgrade pool has 21 types / 73 ranks, equipped-ability filtering, tag prerequisites and one build-related candidate slot. XP requirement is `8 + 6n + 2n²` where `n = current Level - 1`; 1,000–2,500 earned XP gives approximately 10–14 choices mathematically, not a verified playtest outcome. Advanced Primary/Magic effects unlock after six ranks in their tag. Crash stays at one second. Frost/Lightning cooldowns remain 20/14 seconds; their crowd control and burst damage should counter pressure without a mandatory hard counter.
+
+Mobile Portrait / Full-Bleed and the lower-wall HUD remain required. `viewport-fit=cover` and `env(safe-area-inset-*)` inset the bounded playfield/HUD while the environment fills the viewport. Gameplay coordinates remain independent of device pixels. Real-device gesture reliability, safe-area fit, 120-enemy performance and combat balance still require user playtesting. Current tuning is documented in README and `src/game/data/`; later production features in the original design remain future scope.
+
+
 > Status: **Pre-production / Prototype planning**
 >
 > This document is the current **source of truth** for the game concept discussed in ChatGPT.

@@ -19,6 +19,7 @@ export class Progression {
     random = Math.random,
     availableAbilities: readonly UpgradeAbility[] = [
       "gauss-rifle",
+      "stimpack",
       "frost-nova",
       "chain-lightning",
     ],
@@ -30,7 +31,8 @@ export class Progression {
   get threshold(): number {
     return (
       progressionBalance.initialXp +
-      (this.level - 1) * progressionBalance.xpPerLevel
+      (this.level - 1) * progressionBalance.xpPerLevel +
+      (this.level - 1) ** 2 * progressionBalance.xpQuadratic
     );
   }
 
@@ -51,17 +53,24 @@ export class Progression {
     const pool = this.eligible();
     const choices: UpgradeDefinition[] = [];
     while (pool.length > 0 && choices.length < progressionBalance.choiceCount) {
+      // One build-related slot; remaining slots stay open to hybrid directions.
+      const invested =
+        choices.length === 0
+          ? pool.filter((card) => this.tagRanks(card.tag) > 0)
+          : [];
+      const candidates = invested.length > 0 ? invested : pool;
       let roll =
-        this.random() * pool.reduce((sum, card) => sum + card.weight, 0);
-      let index = pool.length - 1;
-      for (let i = 0; i < pool.length; i++) {
-        roll -= pool[i]!.weight;
+        this.random() * candidates.reduce((sum, card) => sum + card.weight, 0);
+      let selected = candidates[candidates.length - 1]!;
+      for (const card of candidates) {
+        roll -= card.weight;
         if (roll < 0) {
-          index = i;
+          selected = card;
           break;
         }
       }
-      choices.push(pool.splice(index, 1)[0]!);
+      choices.push(selected);
+      pool.splice(pool.indexOf(selected), 1);
     }
     this.choices = choices;
     if (choices.length === 0) this.pendingChoices = 0;
@@ -77,12 +86,21 @@ export class Progression {
     return true;
   }
 
+  private tagRanks(tag: UpgradeDefinition["tag"]): number {
+    return Object.values(upgrades).reduce(
+      (sum, card) => sum + (card.tag === tag ? (this.ranks[card.id] ?? 0) : 0),
+      0,
+    );
+  }
+
   private eligible(): UpgradeDefinition[] {
     return Object.values(upgrades).filter(
       (card) =>
         card.weight > 0 &&
         this.availableAbilities.includes(card.ability) &&
-        (this.ranks[card.id] ?? 0) < card.maxRank,
+        (this.ranks[card.id] ?? 0) < card.maxRank &&
+        (!card.requires ||
+          this.tagRanks(card.requires.tag) >= card.requires.ranks),
     );
   }
 

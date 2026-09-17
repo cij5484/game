@@ -45,3 +45,18 @@ describe("Stimpack", () => {
     expect(stim.timeToBoundaryMs).toBe(1000);
   });
 });
+
+it("upgrades stim without resetting its phase or allowing negative boundaries", () => {
+  const stim = new Stimpack(stimpackBalance);
+  stim.activate();
+  stim.advance(2000);
+  stim.setUpgrades({ "stim-duration": 2, "stim-speed": 2 });
+  expect(stim.timeToBoundaryMs).toBe(4000);
+  expect(stim.attackSpeedMultiplier).toBeCloseTo(1.7);
+  stim.advance(4000);
+  expect(stim.timeToBoundaryMs).toBe(1000);
+  stim.advance(2800);
+  stim.setUpgrades({ "stim-recovery": 2 });
+  expect(stim.phase).toBe("normal");
+  expect(stim.timeToBoundaryMs).toBe(Infinity);
+});

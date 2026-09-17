@@ -20,8 +20,8 @@ export const evolutionRecipes: readonly EvolutionRecipe[] = [
     title: "HYPER GAUSS",
     requires: { upgrades: { penetration: 2 }, modules: { penetration: 3 } },
     effects: {
-      penetrationBonus: 4,
-      penetrationWidthMultiplier: 2,
+      penetrationBonus: 3,
+      penetrationWidthMultiplier: 1.6,
       tracerColor: 0x55ffff,
       tracerWidth: 8,
     },

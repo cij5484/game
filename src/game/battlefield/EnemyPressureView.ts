@@ -3,7 +3,7 @@ import type { EnemyState } from "../enemies/enemySimulation";
 import type { EnemyKind } from "../model/types";
 import { laneCenterX, laneX } from "./lanes";
 import { perspectiveScale } from "./perspective";
-import { battlefieldLayout } from "./layout";
+import { battlefieldLayout, readSafeArea } from "./layout";
 import { attackSlotPosition } from "./crowdSpacing";
 import { modules, type ModuleLevels } from "../data/modules";
 import { evolutionRecipes } from "../data/evolutions";
@@ -33,7 +33,7 @@ export class EnemyPressureView {
   private readonly xpText: Phaser.GameObjects.Text;
   private readonly xpFill: Phaser.GameObjects.Rectangle;
   private readonly moduleText: Phaser.GameObjects.Text;
-  private readonly failure: Phaser.GameObjects.Container;
+  private readonly runText: Phaser.GameObjects.Text;
   private readonly scene: Phaser.Scene;
   private readonly debug: Phaser.GameObjects.Container;
   private readonly directorText: Phaser.GameObjects.Text;
@@ -84,8 +84,10 @@ export class EnemyPressureView {
       this.xpFill,
     ]);
 
-    this.moduleText = text(250, 1189, "", 18);
+    this.moduleText = text(310, 1189, "", 17);
     this.hud.add(this.moduleText);
+    this.runText = text(75, 1189, "5:00", 18);
+    this.hud.add(this.runText);
     this.stimText = text(360, 1105, "", 20).setVisible(false);
     this.hud.add(this.stimText);
     this.magicText = text(250, 1258, "", 18);
@@ -161,20 +163,15 @@ export class EnemyPressureView {
     );
     this.debug.add(text(360, 1130, "두 손가락 탭: STIMPACK", 22));
     this.debug.add(
-      text(360, 1165, "빨간 테두리: 성벽 공격 · 재시작: 새로고침", 20),
+      text(360, 1165, "빨간 테두리: 성벽 공격 · 결과창에서 RETRY", 20),
     );
 
-    this.failure = scene.add
-      .container(360, 630, [
-        scene.add.rectangle(0, 0, 500, 110, 0x10151c, 0.9),
-        text(0, -16, "RUN FAILED", 36),
-        text(0, 26, "성벽 파괴 · 새로고침으로 재시작", 20),
-      ])
-      .setVisible(false);
-    this.hud.add(this.failure);
-
     const resize = () => {
-      const layout = battlefieldLayout(scene.scale.width, scene.scale.height);
+      const layout = battlefieldLayout(
+        scene.scale.width,
+        scene.scale.height,
+        readSafeArea(),
+      );
       // Paint the entire viewport; fitted gameplay never creates letterboxing.
       const width = scene.scale.width;
       const height = scene.scale.height;
@@ -373,7 +370,13 @@ export class EnemyPressureView {
   renderWall(hp: number, maxHp: number): void {
     this.hpText.setText(`HP ${hp} / ${maxHp}`);
     this.hpFill.setDisplaySize(210 * (hp / maxHp), 7);
-    this.failure.setVisible(hp <= 0);
+  }
+
+  renderRun(elapsedMs: number, durationMs: number): void {
+    const seconds = Math.max(0, Math.ceil((durationMs - elapsedMs) / 1000));
+    this.runText.setText(
+      `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
+    );
   }
 
   renderProgression(level: number, xp: number, threshold: number): void {

@@ -1,4 +1,4 @@
-import { battlefieldLayout } from "../battlefield/layout";
+import { battlefieldLayout, readSafeArea } from "../battlefield/layout";
 import { burstBalance } from "../data/burst";
 import type { Burst } from "../combat/burst";
 
@@ -36,7 +36,7 @@ export class BurstView {
   }
 
   resize(width: number, height: number): void {
-    const layout = battlefieldLayout(width, height);
+    const layout = battlefieldLayout(width, height, readSafeArea());
     this.root.style.left = `${layout.x}px`;
     this.root.style.top = `${layout.y}px`;
     this.root.style.transform = `scale(${layout.scale})`;

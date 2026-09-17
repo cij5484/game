@@ -1,7 +1,6 @@
 import Phaser from "phaser";
 import { EnemyPressureView } from "../battlefield/EnemyPressureView";
 import {
-  enemyPressureBalance,
   marineConfig,
   gaussRifleBalance,
   stimpackBalance,
@@ -23,14 +22,19 @@ import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { advanceWallAttack } from "../enemies/wallAttack";
-import { applyWallDamage, createRunState } from "../model/runState";
+import { advanceRun, applyWallDamage, createRunState } from "../model/runState";
 import { Burst } from "../combat/burst";
 import { suppressiveBarrage } from "../combat/barrage";
 import { burstBalance } from "../data/burst";
 import { BurstView } from "../ui/BurstView";
+import { ResultView } from "../ui/ResultView";
+import { runBalance } from "../data/run";
 
 export class CombatScene extends Phaser.Scene {
-  private run = createRunState(enemyPressureBalance.wallMaxHp);
+  private run = createRunState(runBalance.wallMaxHp);
+  private result!: ResultView;
+  private resultShown = false;
+  private kills = 0;
   private view!: EnemyPressureView;
   private enemies: {
     state: EnemyState;
@@ -58,7 +62,13 @@ export class CombatScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.run = createRunState(enemyPressureBalance.wallMaxHp);
+    this.run = createRunState(runBalance.wallMaxHp);
+    this.kills = 0;
+    this.resultShown = false;
+    this.result = new ResultView();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.result.destroy(),
+    );
     this.enemies = [];
     this.director = new SpawnDirector();
     this.nextEnemyId = 0;
@@ -81,7 +91,7 @@ export class CombatScene extends Phaser.Scene {
     this.burstUi = new BurstView(
       () => {
         if (
-          this.run.status === "failed" ||
+          this.run.status !== "running" ||
           this.choosing ||
           this.ultimateRemainingMs > 0
         )
@@ -100,11 +110,11 @@ export class CombatScene extends Phaser.Scene {
       this.burstUi.destroy();
     });
     this.spawnBatch();
-    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
     const unbindInput = bindTapInput(
       this.game.canvas,
       (kind, x, y) => {
-        if (this.run.status === "failed" || this.choosing) return;
+        if (this.run.status !== "running" || this.choosing) return;
         if (this.burst.phase === "rhythm") {
           if (kind === "primary") this.rhythmTap();
           return;
@@ -119,7 +129,7 @@ export class CombatScene extends Phaser.Scene {
       },
       (points, displayPoints) => {
         if (
-          this.run.status === "failed" ||
+          this.run.status !== "running" ||
           this.choosing ||
           this.burst.phase === "rhythm" ||
           this.ultimateRemainingMs > 0
@@ -158,7 +168,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private rhythmTap(): void {
-    if (this.run.status === "failed" || this.choosing) return;
+    if (this.run.status !== "running" || this.choosing) return;
     this.burst.tap();
     this.renderBurst();
   }
@@ -166,7 +176,7 @@ export class CombatScene extends Phaser.Scene {
   private renderBurst(): void {
     this.burstUi.render(
       this.burst,
-      this.run.status === "failed" || this.choosing,
+      this.run.status !== "running" || this.choosing,
       this.ultimateRemainingMs > 0,
     );
   }
@@ -192,7 +202,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    if (this.run.status === "failed" || this.choosing) return;
+    if (this.run.status !== "running" || this.choosing) return;
     if (this.burst.phase === "rhythm") {
       const step = Math.min(
         Math.max(0, deltaMs),
@@ -241,16 +251,18 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private renderCombat(): void {
+    this.finishRun();
     this.renderBurst();
     this.view.renderStimpack(
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
     );
-    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
     this.renderMagic();
+    this.view.renderRun(this.run.elapsedMs, runBalance.durationMs);
     const settings = this.director.settings;
     this.view.renderDirector(
-      `DIRECTOR ${Math.floor(this.director.elapsedMs / 1000)}s · ${settings.phase} · stage ${settings.stage + 1}\nACTIVE ${this.enemies.length}/${settings.maxActiveEnemies} · batch ${settings.batchSize} / ${settings.spawnIntervalMs}ms`,
+      `${settings.name} · ${Math.floor(this.director.elapsedMs / 1000)}s · ${settings.phase}\nACTIVE ${this.enemies.length}/${settings.maxActiveEnemies} · batch ${settings.batchSize} / ${settings.spawnIntervalMs}ms`,
     );
   }
 
@@ -258,6 +270,27 @@ export class CombatScene extends Phaser.Scene {
     this.view.renderMagic(
       this.magic.remaining("frost-nova"),
       this.magic.remaining("chain-lightning"),
+    );
+  }
+
+  private finishRun(): void {
+    if (this.run.status === "running" || this.resultShown) return;
+    this.resultShown = true;
+    this.time.timeScale = 1;
+    this.time.paused = true;
+    this.choices.hide();
+    this.result.show(
+      {
+        status: this.run.status,
+        elapsedMs: this.run.elapsedMs,
+        kills: this.kills,
+        level: this.progression.level,
+        wallHp: this.run.wallHp,
+        ranks: this.progression.ranks,
+        modules: this.modules.levels,
+        evolutions: this.evolutions,
+      },
+      () => this.scene.restart(),
     );
   }
 
@@ -269,7 +302,7 @@ export class CombatScene extends Phaser.Scene {
         const offsetMs = this.stimpack.realTimeFor(weaponOffsetMs);
         this.advanceWorld(offsetMs - elapsed);
         elapsed = offsetMs;
-        if (this.run.status === "failed") return false;
+        if (this.run.status !== "running") return false;
         const target = resolveAttackTarget(
           command.manualTargetId,
           this.enemies.map((entry) => entry.state),
@@ -303,10 +336,10 @@ export class CombatScene extends Phaser.Scene {
         deltaMs === this.stimpack.timeToBoundaryMs
       ),
     );
-    if (this.choosing || this.run.status === "failed") return elapsed;
+    if (this.choosing || this.run.status !== "running") return elapsed;
     if (this.run.status === "running")
       this.advanceWorld(Math.max(0, deltaMs) - elapsed);
-    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
     return deltaMs;
   }
 
@@ -333,6 +366,7 @@ export class CombatScene extends Phaser.Scene {
       } else this.view.renderEnemy(entry.visual, entry.state);
     }
     this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    this.kills += kills;
     this.progression.gainXp(xp);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
     this.renderProgression();
@@ -386,6 +420,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
     this.magic.setUpgrades(this.progression.ranks);
+    this.stimpack.setUpgrades(this.progression.ranks);
     this.renderProgression();
     this.showChoices();
   }
@@ -394,7 +429,11 @@ export class CombatScene extends Phaser.Scene {
     // New enemies receive only time after their spawn boundary.
     let remaining = Math.max(0, deltaMs);
     while (remaining > 0 && this.run.status === "running") {
-      const step = Math.min(remaining, this.director.timeToSpawnMs);
+      const step = Math.min(
+        remaining,
+        this.director.timeToSpawnMs,
+        runBalance.durationMs - this.run.elapsedMs,
+      );
       for (const entry of this.enemies) {
         const config = enemyConfigs[entry.state.kind];
         const movement = advanceEnemy(entry.state, step, config);
@@ -407,15 +446,16 @@ export class CombatScene extends Phaser.Scene {
         entry.attackElapsedMs = attack.elapsedMs;
         this.run = applyWallDamage(this.run, attack.damage);
         this.view.renderEnemy(entry.visual, entry.state);
-        if (this.run.status === "failed") break;
+        if (this.run.status !== "running") break;
       }
       this.director.advance(step);
       this.magic.advance(step);
+      this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
         this.spawnBatch();
       }
     }
-    this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
   }
 }
