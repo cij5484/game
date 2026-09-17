@@ -8,6 +8,7 @@ import {
 } from "../data/balance";
 import { GaussRifle } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
+import { SpawnDirector } from "../waves/spawnDirector";
 import { bindTapInput } from "../input/tapInput";
 import { resolveAttackTarget } from "../combat/targeting";
 import { applyPrimaryDamage } from "../combat/damage";
@@ -26,8 +27,7 @@ export class CombatScene extends Phaser.Scene {
     attackElapsedMs: number;
     visual: Phaser.GameObjects.Container;
   }[] = [];
-  private spawnElapsedMs = 0;
-  private wave = 0;
+  private director = new SpawnDirector();
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
@@ -35,13 +35,12 @@ export class CombatScene extends Phaser.Scene {
   create(): void {
     this.run = createRunState(enemyPressureBalance.wallMaxHp);
     this.enemies = [];
-    this.spawnElapsedMs = 0;
-    this.wave = 0;
+    this.director = new SpawnDirector();
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
     this.view = new EnemyPressureView(this);
-    this.spawnWave();
+    this.spawnBatch();
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
     const unbindInput = bindTapInput(this.game.canvas, (kind, x, y) => {
       if (this.run.status === "failed") return;
@@ -59,25 +58,23 @@ export class CombatScene extends Phaser.Scene {
     );
   }
 
-  private spawnWave(): void {
-    const lanes = ["left", "center", "right"] as const;
-    for (const [index, kind] of (
-      ["grunt", "runner", "shield"] as const
-    ).entries()) {
-      const lane = lanes[(index + this.wave) % lanes.length]!;
-      const state = createPrototypeEnemy(
-        kind,
-        lane,
-        this.nextEnemyId++,
-        0.25 + (this.wave % 5) * 0.125,
-      );
+  private spawnBatch(): void {
+    for (const spawn of this.director.spawn(this.enemies.length)) {
+      const state = {
+        ...createPrototypeEnemy(
+          spawn.kind,
+          spawn.lane,
+          this.nextEnemyId++,
+          spawn.offset01,
+        ),
+        progress01: spawn.progress01,
+      };
       this.enemies.push({
         state,
         attackElapsedMs: 0,
         visual: this.view.createEnemy(state),
       });
     }
-    this.wave++;
   }
 
   update(_time: number, deltaMs: number): void {
@@ -95,6 +92,10 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.attackSpeedMultiplier,
     );
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
+    const settings = this.director.settings;
+    this.view.renderDirector(
+      `DIRECTOR ${Math.floor(this.director.elapsedMs / 1000)}s · ${settings.phase} · stage ${settings.stage + 1}\nACTIVE ${this.enemies.length}/${settings.maxActiveEnemies} · batch ${settings.batchSize} / ${settings.spawnIntervalMs}ms`,
+    );
   }
 
   private advanceCombat(deltaMs: number): void {
@@ -140,10 +141,7 @@ export class CombatScene extends Phaser.Scene {
     // New enemies receive only time after their spawn boundary.
     let remaining = Math.max(0, deltaMs);
     while (remaining > 0 && this.run.status === "running") {
-      const step = Math.min(
-        remaining,
-        enemyPressureBalance.spawnIntervalMs - this.spawnElapsedMs,
-      );
+      const step = Math.min(remaining, this.director.timeToSpawnMs);
       for (const entry of this.enemies) {
         const config = enemyConfigs[entry.state.kind];
         const movement = advanceEnemy(entry.state, step, config);
@@ -158,14 +156,10 @@ export class CombatScene extends Phaser.Scene {
         this.view.renderEnemy(entry.visual, entry.state);
         if (this.run.status === "failed") break;
       }
-      this.spawnElapsedMs += step;
+      this.director.advance(step);
       remaining -= step;
-      if (
-        this.run.status === "running" &&
-        this.spawnElapsedMs >= enemyPressureBalance.spawnIntervalMs
-      ) {
-        this.spawnElapsedMs = 0;
-        this.spawnWave();
+      if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
+        this.spawnBatch();
       }
     }
     this.view.renderWall(this.run.wallHp, enemyPressureBalance.wallMaxHp);
