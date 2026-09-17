@@ -2,7 +2,7 @@
 
 ## Current implementation — Growth / HUD / Horde pass
 
-Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md). GDD v0.1 remains preserved. Five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Eight weapon traits, eight relics, five rare run-only cores. Initial100 enemies, thirteen encounters, cap130→300; spawn-time HP×1→1.15 and speed×1→1.05. Values are prototype tuning, not mobile performance guarantees.
+Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md). GDD v0.1 remains preserved. Five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Eight weapon traits, eight relics, five rare run-only cores. Initial100 enemies, thirteen encounters, cap130→300; spawn-time HP×1→1.10 and speed×1→1.02. Values are prototype tuning, not mobile performance guarantees.
 
 Traits have three slots, expandable to four, and Lv1–5. Upgrade kind and rarity are independent: 기본 강화/무기 특성/마법 강화/보조 기술 강화 versus 일반/희귀/유니크/전설. Only 무기 특성 consumes weapon-trait slots. Rapid is removed; COMMON 기본 강화 attack-speed shortens round/recovery intervals while preserving three-round bursts. Base crit chance5%/multiplier1.75 are independent of the critical trait. Every trait level stores its own rarity: RARE at1/2/4 and EPIC at3/5. Korean rarity labels are 일반/희귀/유니크/전설; investment affects weights, without a guaranteed invested candidate slot.
 
@@ -453,7 +453,7 @@ Current implementation: gauge100, credit0.02 per confirmed hit/0.08 per kill/+6 
 
 ## 20. Horde Stress Test
 
-Current normal-run tuning: initial100 Grunts at progress.08–.45. Thirteen encounter starts0/30/38/60/90/98/135/165/173/210/218/255/285seconds. Caps130/130/150/170/180/200/220/230/250/260/270/280/300. Interval(ms)/batch:700/20,850/16,650/22,600/24,800/20,575/26,550/28,750/22,500/30,700/24,475/32,450/36,380/40. Relief windows last8seconds; retain one Elite slot and discard blocked-spawn backlog. Elite first60s/then40s. Spawn-time linear growth ends at HP×1.15/speed×1.05 at300s; factory stores maxHp and speedMultiplier. Frost multiplies the stored speed and does not reset growth. Base Grunt/Runner/Shield progress/s .032/.08/.025. Mobile300-enemy performance remains unmeasured.
+Current normal-run tuning: initial18 Grunts at progress.08–.30. Thirteen encounter starts0/30/38/60/90/98/135/165/173/210/218/255/285seconds. Caps36/40/48/60/72/85/105/115/130/140/150/170/180. Interval(ms)/batch:1800/3,2000/3,1700/4,1600/5,1800/5,1500/7,1350/9,1550/8,1200/12,1400/10,1050/16,850/20,800/24. Relief windows last8seconds; retain one Elite slot and discard blocked-spawn backlog. Elite first60s/then40s. Spawn-time linear growth ends at HP×1.10/speed×1.02 at300s; factory stores maxHp and speedMultiplier. Frost multiplies the stored speed and does not reset growth. Base Grunt/Runner/Shield progress/s .032/.08/.025. Mobile180-enemy performance remains unmeasured.
 
 This is a separate prototype test mode or debug mode.
 
@@ -786,6 +786,13 @@ When implementation begins:
 
 ## Status
 
-Current pass verification: `npm.cmd run check` passes29files/143tests, TypeScript and Vite production build. Focused gesture checks pass38/38. Existing500kB bundle warning remains (1291.06kB, gzip348.35kB). These checks do not establish real-device gesture reliability or300-enemy mobile performance.
+Current pass verification: `npm.cmd run check` passes29files/143tests, TypeScript and Vite production build. Focused gesture checks pass38/38. Existing500kB bundle warning remains (1291.06kB, gzip348.35kB). These checks do not establish real-device gesture reliability or180-enemy mobile performance.
 
 Current implementation follows GDD v0.2; user playtest determines fun, readability and mobile viability before merge.
+
+
+### 추가 플레이테스트 조정
+
+초기 18마리로 시작하고 스폰 상한은 36→180마리로 점진 증가합니다. 체력은 5분간 최대 +10%, 속도는 +2%만 선형 증가합니다. 일시정지의 `다시 시작하기`는 현재 런을 초기화합니다. ○ 제스처는 열린 끝점 비율 0.14→0.22, 반지름 오차 0.14→0.18로 완화했으며 크기·회전량·방향 일관성과 Z 기준은 유지합니다. 기존 Gesture 테스트에 약 82%만 그린 원을 추가했습니다. 실제 기기 인식률과 밸런스는 재평가 대상입니다.
+
+추가 조정 검증: `npm.cmd run check` 29개 파일 / 144개 테스트 및 TypeScript·빌드 통과. 브라우저에서 일시정지 → 다시 시작하기 후 5:00 / 1레벨 / 성벽 12000 초기화를 확인했습니다. 기존 번들 크기 경고는 유지됩니다.

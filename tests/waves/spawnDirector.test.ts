@@ -4,10 +4,10 @@ import { hordeBalance } from "../../src/game/data/horde";
 import { runBalance } from "../../src/game/data/run";
 
 describe("five-minute encounter director", () => {
-  it("starts with 100 visible grunts and fills the early horde while reserving an elite slot", () => {
+  it("starts with 18 visible grunts and fills the early horde while reserving an elite slot", () => {
     const director = new SpawnDirector(() => 0.5);
     const initial = director.spawn(0);
-    expect(initial).toHaveLength(100);
+    expect(initial).toHaveLength(18);
     expect(
       initial.every(
         (enemy) =>
@@ -21,7 +21,7 @@ describe("five-minute encounter director", () => {
       director.advance(director.timeToSpawnMs);
       active += director.spawn(active).length;
     }
-    expect(active).toBe(129);
+    expect(active).toBe(35);
     expect(director.spawn(0)).toEqual([]);
   });
 
@@ -35,11 +35,11 @@ describe("five-minute encounter director", () => {
     expect(director.settings).toMatchObject({
       phase: "relief",
       name: "BREATHING ROOM",
-      batchSize: 16,
+      batchSize: 3,
     });
     expect(director.spawn(130)).toEqual([]);
     director.advance(director.timeToSpawnMs);
-    expect(director.spawn(0)).toHaveLength(16);
+    expect(director.spawn(0)).toHaveLength(3);
     expect(director.spawn(0)).toEqual([]);
   });
 
@@ -47,9 +47,9 @@ describe("five-minute encounter director", () => {
     const director = new SpawnDirector(() => 0.5);
     director.spawn(0);
     director.advance(59000);
-    expect(director.spawn(149).some((enemy) => enemy.elite)).toBe(false);
+    expect(director.spawn(47).some((enemy) => enemy.elite)).toBe(false);
     director.advance(1000);
-    const first = director.spawn(169);
+    const first = director.spawn(59);
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({
       kind: "grunt",
@@ -57,10 +57,10 @@ describe("five-minute encounter director", () => {
       progress01: 0,
     });
     director.advance(40000);
-    expect(director.spawn(200)).toEqual([]);
+    expect(director.spawn(85)).toEqual([]);
     expect(director.timeToSpawnMs).toBeGreaterThan(0);
     director.advance(director.timeToSpawnMs);
-    expect(director.spawn(199).filter((enemy) => enemy.elite)).toHaveLength(1);
+    expect(director.spawn(84).filter((enemy) => enemy.elite)).toHaveLength(1);
   });
 
   it("keeps raising late-run capacity and replacement pressure through the last 15 seconds", () => {
@@ -75,17 +75,17 @@ describe("five-minute encounter director", () => {
     expect(director.settings).toMatchObject({
       name: "FINAL PRESSURE",
       phase: "pressure",
-      maxActiveEnemies: 280,
-      batchSize: 36,
-      spawnIntervalMs: 450,
+      maxActiveEnemies: 170,
+      batchSize: 20,
+      spawnIntervalMs: 850,
     });
     director.advance(30000);
-    expect(director.settings.maxActiveEnemies).toBe(300);
-    const final = director.spawn(275);
-    expect(final).toHaveLength(24);
+    expect(director.settings.maxActiveEnemies).toBe(180);
+    const final = director.spawn(165);
+    expect(final).toHaveLength(14);
     director.advance(director.timeToSpawnMs);
-    expect(director.spawn(0)).toHaveLength(40);
-    expect(director.timeToSpawnMs).toBe(380);
+    expect(director.spawn(0)).toHaveLength(24);
+    expect(director.timeToSpawnMs).toBe(800);
     expect(
       hordeBalance.stages.every((stage) => stage.atMs < runBalance.durationMs),
     ).toBe(true);
@@ -97,7 +97,7 @@ describe("five-minute encounter director", () => {
     for (const atMs of [30000, 90000, 165000, 210000]) {
       director.advance(atMs - director.elapsedMs);
       expect(director.settings.phase).toBe("relief");
-      expect(director.spawn(0).length).toBeGreaterThanOrEqual(16);
+      expect(director.spawn(0).length).toBeGreaterThanOrEqual(3);
       director.advance(8000);
       expect(director.settings.phase).toBe("pressure");
     }

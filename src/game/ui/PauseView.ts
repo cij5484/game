@@ -10,7 +10,7 @@ export class PauseView {
   private readonly keydown: (event: KeyboardEvent) => void;
   private readonly change: (paused: boolean) => void;
 
-  constructor(change: (paused: boolean) => void) {
+  constructor(change: (paused: boolean) => void, restart: () => void) {
     this.change = change;
     this.button.className = "pause-button";
     this.button.type = "button";
@@ -31,8 +31,13 @@ export class PauseView {
     resume.type = "button";
     resume.textContent = display.resume;
     resume.addEventListener("click", () => this.toggle());
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = display.restart;
+    retry.title = "현재 런을 초기화하고 처음부터 시작합니다.";
+    retry.addEventListener("click", restart);
     this.details.className = "pause-build";
-    this.dialog.append(title, note, resume, this.details);
+    this.dialog.append(title, note, resume, retry, this.details);
     this.dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       this.toggle();
@@ -68,7 +73,7 @@ export class PauseView {
     this.details.replaceChildren();
     for (const entry of entries) {
       const title = document.createElement("dt");
-      title.textContent = `${entry.symbol} ${entry.title}${entry.level ? ` · ${entry.level}` : ""}`;
+      title.textContent = `${entry.symbol} ${entry.title}${entry.level ? ` 쨌 ${entry.level}` : ""}`;
       const detail = document.createElement("dd");
       detail.textContent = entry.detail;
       this.details.append(title, detail);

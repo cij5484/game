@@ -64,6 +64,7 @@ export const display = {
   expansionDetail: "무기 특성 한도 3 → 4",
   pause: "일시정지",
   resume: "계속하기",
+  restart: "다시 시작하기",
   pauseDetail: "전투와 모든 재사용 대기시간이 멈췄습니다.",
   battlefieldDescription:
     "세로 전장: 빈 곳 탭 자동 점사, 적 탭 우선 공격, 두 손가락 탭 또는 마우스 좌우 동시 클릭 전투 스팀팩, 원 서리장, Z 연쇄 번개",

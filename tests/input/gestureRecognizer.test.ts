@@ -26,6 +26,7 @@ const tiltedZ = (degrees: number) =>
 it.each([
   ["sparse small circle", oval(26, 9), "circle"],
   ["partly closed circle", oval(65, 13, 0.88), "circle"],
+  ["loosely closed circle", oval(65, 30, 0.82), "circle"],
   ["large circle", oval(220, 100), "circle"],
   ["clockwise tilted Z", tiltedZ(20), "z"],
   ["counterclockwise tilted Z", tiltedZ(-20), "z"],

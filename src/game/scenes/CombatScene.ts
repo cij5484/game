@@ -124,12 +124,15 @@ export class CombatScene extends Phaser.Scene {
       },
       () => this.rhythmTap(),
     );
-    this.pauseUi = new PauseView((paused) => {
-      this.manualPaused = paused;
-      this.cancelInput();
-      this.time.paused = paused;
-      this.renderBurst();
-    });
+    this.pauseUi = new PauseView(
+      (paused) => {
+        this.manualPaused = paused;
+        this.cancelInput();
+        this.time.paused = paused;
+        this.renderBurst();
+      },
+      () => this.scene.restart(),
+    );
     const resizeBurst = () => {
       this.burstUi.resize(this.scale.width, this.scale.height);
       this.pauseUi.resize(this.scale.width, this.scale.height);

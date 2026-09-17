@@ -7,9 +7,9 @@ describe("spawn-time enemy growth", () => {
   it.each([
     [-1000, 30, 0.032],
     [0, 30, 0.032],
-    [150000, 32.25, 0.0328],
-    [300000, 34.5, 0.0336],
-    [600000, 34.5, 0.0336],
+    [150000, 31.5, 0.03232],
+    [300000, 33, 0.03264],
+    [600000, 33, 0.03264],
   ])("gently scales a grunt spawned at %i ms", (elapsedMs, hp, speed) => {
     const enemy = createPrototypeEnemy(
       "grunt",
@@ -36,7 +36,7 @@ describe("spawn-time enemy growth", () => {
       false,
       300000,
     );
-    const nearWall = { ...enemy, progress01: 1 - 0.0168 };
+    const nearWall = { ...enemy, progress01: 1 - 0.01632 };
     const whole = advanceEnemy(nearWall, 2000, enemyConfigs.grunt, 0.5);
     const first = advanceEnemy(nearWall, 500, enemyConfigs.grunt, 0.5);
     const second = advanceEnemy(first.enemy, 1500, enemyConfigs.grunt, 0.5);
@@ -67,17 +67,17 @@ describe("spawn-time enemy growth", () => {
       300000,
     );
     const elite = createPrototypeEnemy("grunt", "center", 3, 0.5, true, 300000);
-    expect(runner.hp).toBeCloseTo(23);
-    expect(shield.hp).toBeCloseTo(69);
-    expect(elite.hp).toBeCloseTo(138);
-    expect(elite.maxHp).toBeCloseTo(138);
+    expect(runner.hp).toBeCloseTo(22);
+    expect(shield.hp).toBeCloseTo(66);
+    expect(elite.hp).toBeCloseTo(132);
+    expect(elite.maxHp).toBeCloseTo(132);
     expect(elite.elite).toBe(true);
     expect(
       advanceEnemy(runner, 1000, enemyConfigs.runner).enemy.progress01,
-    ).toBeCloseTo(0.084);
+    ).toBeCloseTo(0.0816);
     expect(
       advanceEnemy(shield, 1000, enemyConfigs.shield).enemy.progress01,
-    ).toBeCloseTo(0.02625);
+    ).toBeCloseTo(0.0255);
     expect(createPrototypeEnemy("grunt", "left", 4).hp).toBe(30);
     expect(enemyConfigs.grunt.progressPerSecond).toBe(0.032);
   });
