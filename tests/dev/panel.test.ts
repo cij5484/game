@@ -8,6 +8,9 @@ const state = vi.hoisted(() => ({
     "rarity.a": 0.78,
     "rarity.b": 0.22,
     "special.grenade.cycleMs": 7800,
+    "special.missile.cycleMs": 4500,
+    "special.missileBehavior.salvoIntervalMs": 270,
+    "special.missileLifetimeMs": 6000,
   } as Record<string, number | boolean>,
   overrides: {} as Record<string, number | boolean>,
   listeners: new Set<() => void>(),
@@ -74,6 +77,18 @@ vi.mock("../../src/game/dev/balanceFields", () => ({
       apply: "다음 공격부터",
       unit: "ms",
     },
+    ...[
+      "special.missile.cycleMs",
+      "special.missileBehavior.salvoIntervalMs",
+      "special.missileLifetimeMs",
+    ].map((id) => ({
+      id,
+      label: "미사일 시간",
+      group: "특수무기 · 미사일",
+      description: "일제사격 시간 설정입니다.",
+      apply: "다음 공격부터",
+      unit: "전투 ms",
+    })),
     ...["a", "b"].map((id) => ({
       id: `rarity.${id}`,
       label: `희귀도 ${id}`,
@@ -319,4 +334,26 @@ it("edits real X1 cycle seconds while storing internal milliseconds and rejects 
   change("balance-run.combatTempo", "");
   expect(state.overrides["run.combatTempo"]).toBe(2);
   expect(byId("balance-notice").textContent).toContain("유효한 숫자");
+});
+
+it("shows missile salvo interval, cycle and lifetime in X1 seconds and keeps raw JSON", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  const interval = "balance-special.missileBehavior.salvoIntervalMs";
+  expect(byId(interval).value).toBe("0.18");
+  expect(byId("balance-special.missile.cycleMs").value).toBe("3");
+  expect(byId("balance-special.missileLifetimeMs").value).toBe("4");
+  expect(byId(interval).title).toContain("X1");
+  change(interval, "0.2");
+  expect(state.overrides["special.missileBehavior.salvoIntervalMs"]).toBe(300);
+  change("balance-special.missileLifetimeMs", "5");
+  expect(state.overrides["special.missileLifetimeMs"]).toBe(7500);
+  change("balance-run.combatTempo", "3");
+  expect(byId(interval).value).toBe("0.1");
+  expect(byId("balance-special.missile.cycleMs").value).toBe("1.5");
+  expect(byId("balance-special.missileLifetimeMs").value).toBe("2.5");
+  button("JSON 내보내기").click();
+  expect(JSON.parse(byId("balance-json").value).overrides).toMatchObject({
+    "special.missileBehavior.salvoIntervalMs": 300,
+    "special.missileLifetimeMs": 7500,
+  });
 });

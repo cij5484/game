@@ -1,12 +1,12 @@
 # Mac handoff — 2026-09-18
 
-M8 `1719e74694e4cdf10211f3d04d1c976221223032` is merged via [PR23](https://github.com/cij5484/game/pull/23), main `7d1cae9`. M9 uses `codex/prototype-m9-horde-performance`: **commit/push only, no M9 main merge or automatic next milestone**.
+M9 `2b889434b162e01c222c2f42077cb8b2f852687d` is merged via [PR24](https://github.com/cij5484/game/pull/24), main `0bcc4fb`. M10 uses `codex/prototype-m10-missile-salvo`: **commit/push only, no M10 main merge or automatic next milestone**.
 
 ## Setup
 
 ```sh
 git fetch origin
-git switch codex/prototype-m9-horde-performance
+git switch codex/prototype-m10-missile-salvo
 git pull --ff-only
 npm ci
 npm run dev -- --host 0.0.0.0
@@ -16,11 +16,19 @@ Preserve uncommitted work before switching/pulling. Never reset or force-push to
 
 ## Current implementation / design
 
-Current Source of Truth: [GAME_GDD_v0.13.md](docs/design/GAME_GDD_v0.13.md). It inherits the complete v0.12 design/defaults/developer tools/future pools; v0.12 remains unchanged. Read [M9 implementation](docs/prototype-m9-horde-performance.md). This adds Prototype Technical Requirements, not gameplay balance changes.
+Current Source of Truth: [GAME_GDD_v0.14.md](docs/design/GAME_GDD_v0.14.md). It inherits full v0.13, which remains unchanged. Read [M10 implementation](docs/prototype-m10-missile-salvo.md) for missile-only changes and current verification; other weapon/Horde tuning stays unchanged.
+
+- Missile base: 3-round timed salvo, 90 damage/round, speed680, raw270ms interval and4500ms cycle (X1 .18s/3s attempo1.5), lifetime6000ms, one baseline retarget. All values are Prototype Tuning.
+- Flight damage reservations prevent obvious overkill; high-HP targets may receive multiple missiles. Saturation/Hunter/Tracking and existing Lv10/15/20 behaviors build on the new salvo. No new content or assets.
+- Keep M9 rendering/allocation/VFX limits; candidate scans are launch/retarget events only. User playtest judges missile feel, not automated DPS or clear simulations.
+
+- M10 `npm run check`: **52 files/390 tests, TypeScript and Vite build passed**; existing Phaser chunk warning remains. Browser verified17missile fields/X1 units; existing7user overrides preserved. Old `saturation.count.*` preset keys are rejected; re-save with additive `additionalCount.*` values. No long run/DPS/balance analysis.
+
+### Preserved M9 performance
 
 - M9 separates simulation substeps from the once-per-frame enemy transform pass; damage updates changed state without rendering, and focus updates the old/new target only. Reuse readonly snapshots, validated missile indices and lane shield candidates; preserve input ownership and gameplay ordering.
 - Transient combat VFX: 16 objects/frame, 64 active including critical labels, 96 impact targets/frame; reuse hidden Graphics with existing timers. Damage is unaffected. No enemy-wide pool. `/dev` read-only metrics: FPS, enemies, visible special units, active transient VFX groups/labels, frame simulation substeps; DEV-only status broadcast about once/second.
-- **M9 npm run check: 51 files/373 tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** A one-frame 700-enemy/X4/64ms functional fixture reduced transform calls 17,500→700; this is not an FPS benchmark. Browser checked all five metrics and paused substeps 0 with zero runtime overrides. Keep cap 700, movement, HP, damage, timing, growth and all gameplay defaults. Real smoothness remains user playtest.
+- **Historical M9 npm run check: 51 files/373 tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** A one-frame 700-enemy/X4/64ms functional fixture reduced transform calls 17,500→700; this is not an FPS benchmark. Browser checked all five metrics and paused substeps 0 with zero runtime overrides. M9 kept cap700 and gameplay defaults; M10 changes only missile tuning. Real smoothness remains user playtest.
 
 ### Preserved M8 developer panel
 
@@ -55,4 +63,4 @@ Current Source of Truth: [GAME_GDD_v0.13.md](docs/design/GAME_GDD_v0.13.md). It 
 - Circle tolerances: closure0.22, radial error0.18. Z alignment and negative fixtures retained. Real-device gesture reliability needs playtesting.
 - Desktop secondary input: simultaneous left/right mouse buttons. Mobile: two-finger tap. Pause icon top right; restart resets the run.
 
-Current design source: docs/design/GAME_GDD_v0.13.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.
+Current design source: docs/design/GAME_GDD_v0.14.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.

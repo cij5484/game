@@ -21,6 +21,7 @@ function graphics() {
 function harness() {
   const callbacks: (() => void)[] = [];
   const addGraphics = vi.fn(graphics);
+  const specialGraphics = graphics();
   const view = Object.assign(Object.create(EnemyPressureView.prototype), {
     scene: {
       add: { graphics: addGraphics },
@@ -30,6 +31,7 @@ function harness() {
       },
     },
     world: { add: vi.fn(), bringToTop: vi.fn() },
+    specialGraphics,
     flashPool: [],
     activeFlashes: 0,
     frameFlashes: 0,
@@ -41,7 +43,7 @@ function harness() {
     debugVisible: false,
     focusId: null,
   }) as EnemyPressureView;
-  return { view, addGraphics, callbacks };
+  return { view, addGraphics, callbacks, specialGraphics };
 }
 const target = { x: 100, y: 200, scaleX: 1 } as Phaser.GameObjects.Container;
 
@@ -178,4 +180,24 @@ it("keeps attack slots stable for effect snapshots and releases them on lane cha
   expect(view.enemyVisualPoint({ ...first, id: 3 }).x).toBe(279);
   view.enemyVisualPoint({ ...second, phase: "moving", progress01: 0.5 });
   expect(view.enemyVisualPoint({ ...first, id: 4 }).x).toBe(333);
+});
+
+it("draws a larger missile and longer trail on the existing shared Graphics", () => {
+  const { view, specialGraphics, addGraphics } = harness();
+  view.renderSpecialWeapons([{ id: 1, kind: "grenade", x: 360, y: 600 }]);
+  const grenadeRadius = specialGraphics.fillCircle.mock.calls[0]![2] as number;
+  specialGraphics.fillCircle.mockClear();
+  view.renderSpecialWeapons([{ id: 2, kind: "missile", x: 360, y: 600 }]);
+  const [x, y, missileRadius] = specialGraphics.fillCircle.mock
+    .calls[0]! as number[];
+  expect(missileRadius).toBeCloseTo(grenadeRadius * 1.4);
+  expect(specialGraphics.lineStyle).toHaveBeenLastCalledWith(4, 0xff7d7d, 0.65);
+  expect(specialGraphics.lineBetween).toHaveBeenCalledWith(
+    x,
+    y! + (missileRadius! / 0.55) * 3,
+    x,
+    y,
+  );
+  expect(addGraphics).not.toHaveBeenCalled();
+  expect(view.combatVfxCount).toBe(0);
 });

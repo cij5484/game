@@ -152,7 +152,9 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   };
   const drafts = new Map<string, number | boolean>();
   const cycleSeconds = (id: string) =>
-    /^special\.(grenade|missile|drone)\.cycleMs$/.test(id);
+    /^special\.(grenade|missile|drone)\.cycleMs$/.test(id) ||
+    id === "special.missileBehavior.salvoIntervalMs" ||
+    id === "special.missileLifetimeMs";
   const displayNumber = (id: string, value: number, defaults = false) =>
     cycleSeconds(id)
       ? Number(

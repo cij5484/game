@@ -62,6 +62,22 @@ interface Missile extends SpecialVisual {
   retargets: number;
   chains: number;
   hits: Set<number>;
+  reservedDamage: number;
+  maxLifetime: number;
+  recoveries: number;
+  speedBoostMs: number;
+  rearmMs: number;
+  hitsLeft: number;
+}
+interface MissileSalvo {
+  weapon: SpecialWeaponState;
+  stats: Stats;
+  damageMultiplier: number;
+  count: number;
+  launched: number;
+  interval: number;
+  delay: number;
+  assigned: Set<number> | undefined;
 }
 interface Drone extends SpecialVisual {
   kind: "drone";
@@ -106,6 +122,8 @@ export class SpecialWeapons {
   private serial = 0;
   private grenades: Grenade[] = [];
   private missiles: Missile[] = [];
+  private salvo: MissileSalvo | undefined;
+  private reservations = new Map<number, number>();
   private drones: Drone[] = [];
   private areas: Area[] = [];
   private cooldown = { grenade: 0, missile: 0 };
@@ -178,6 +196,7 @@ export class SpecialWeapons {
           );
           if (
             this.cooldown[weapon.id] === 0 &&
+            (weapon.id !== "missile" || !this.salvo) &&
             result.enemies.some((e) => e.hp > 0)
           ) {
             const stats = getSpecialWeaponStats(weapon, context.growth);
@@ -189,8 +208,7 @@ export class SpecialWeapons {
       }
       this.advanceAreas(step, context, result);
       this.advanceGrenades(step, context, result);
-      if (this.missiles.length)
-        this.advanceMissiles(step, context, result, enemyIndex);
+      this.advanceMissileSalvo(step, context, result, enemyIndex);
       remaining -= step;
     } while (remaining > 0);
     return result;
@@ -649,73 +667,266 @@ export class SpecialWeapons {
     context: SpecialContext,
     result: SpecialResult,
   ) {
-    const saturation = weapon.tree === "saturation",
-      network = weapon.overclock === "network";
-    const spread = network || (saturation && weapon.branch !== "b");
+    const saturation = weapon.tree === "saturation";
+    const network = weapon.overclock === "network";
     const count =
-      (network
-        ? missileTune.network.count
-        : saturation
-          ? missileTune.saturation.count[
-              complete(weapon) ? 2 : weapon.branch ? 1 : 0
-            ]
-          : 1) +
+      missileTune.baseSalvoCount +
+      (saturation
+        ? missileTune.saturation.additionalCount[
+            complete(weapon) ? 2 : weapon.branch ? 1 : 0
+          ]!
+        : 0) +
+      (network ? missileTune.network.additionalCount : 0) +
       (branch(weapon, "saturation", "a") && complete(weapon)
         ? (context.synergy?.missileExtraCount ?? 0)
         : 0);
     const action = startAction(context.relics ?? noRelics, context.random);
-    const excluded = new Set<number>();
-    for (let i = 0; i < count; i++) {
-      const target = this.target(
-        result.enemies,
-        context.focusId ?? context.synergy?.focusId ?? null,
-        excluded,
-      );
-      if (!target) break;
-      if (spread) excluded.add(target.id);
-      this.missiles.push({
+    this.salvo = {
+      weapon: { ...weapon },
+      stats,
+      count,
+      launched: 0,
+      damageMultiplier:
+        action.damageMultiplier *
+        (network ? missileTune.network.damage : 1) *
+        (saturation ? missileTune.saturation.damage : 1),
+      interval: missileTune.salvoIntervalMs,
+      delay: 0,
+      assigned:
+        network || (saturation && weapon.branch !== "b")
+          ? new Set()
+          : undefined,
+    };
+    // A single pending salvo bounds the queue even below its firing duration.
+    this.cooldown.missile = Math.max(
+      stats.cycleMs * this.cycleMultiplier(context),
+      (count - 1) * this.salvo.interval,
+    );
+    this.launchSalvoRound(context, result);
+  }
+
+  private missileThreat(enemy: EnemyState) {
+    return (
+      !!enemy.boss ||
+      !!enemy.elite ||
+      enemy.kind !== "grunt" ||
+      enemy.progress01 >= tune.targeting.wallProgress
+    );
+  }
+
+  private missileTarget(
+    enemies: readonly EnemyState[],
+    weapon: SpecialWeaponState,
+    context: SpecialContext,
+    from: Point,
+    assigned?: ReadonlySet<number>,
+  ) {
+    let best: EnemyState | undefined, fallback: EnemyState | undefined;
+    let bestScore = -Infinity,
+      fallbackScore = -Infinity;
+    const focus = context.focusId ?? context.synergy?.focusId ?? null;
+    for (const enemy of enemies) {
+      if (
+        enemy.hp <= 0 ||
+        (missileTune.damageReservation &&
+          enemy.hp + (enemy.shieldHp ?? 0) <=
+            (this.reservations.get(enemy.id) ?? 0))
+      )
+        continue;
+      const score =
+        danger(enemy) +
+        (enemy.boss ? missileTune.bossPriority : 0) +
+        (weapon.tree === "hunter" && this.missileThreat(enemy)
+          ? missileTune.hunter.threatPriority
+          : 0) +
+        (enemy.id === focus ? tune.targeting.focus : 0) -
+        distance(from, combatPosition(enemy)) * tune.targeting.distance;
+      if (score > fallbackScore) {
+        fallbackScore = score;
+        fallback = enemy;
+      }
+      if (!assigned?.has(enemy.id) && score > bestScore) {
+        bestScore = score;
+        best = enemy;
+      }
+    }
+    // Spread first, then reuse a high-HP target that still needs damage.
+    return best ?? fallback;
+  }
+
+  private missileDamage(
+    missile: Missile,
+    target: EnemyState,
+    consecutive: number,
+  ) {
+    const w = missile.weapon;
+    let damage = missile.damage;
+    if (w.tree === "hunter")
+      damage *= this.missileThreat(target)
+        ? missileTune.hunter.threatDamage
+        : missileTune.hunter.gruntDamage;
+    if (branch(w, "hunter", "b"))
+      damage *=
+        1 + consecutive * missileTune.hunter.pressure[Number(complete(w))]!;
+    if (w.transcendence === "weakpoint-lock")
+      damage *= 1 + consecutive * missileTune.weakpointPressure;
+    if (w.overclock === "hunting" && this.missileThreat(target))
+      damage *=
+        missileTune.hunting.damage + consecutive * missileTune.hunting.pressure;
+    return damage;
+  }
+
+  private reserveMissile(
+    missile: Missile,
+    target: EnemyState,
+    context: SpecialContext,
+  ) {
+    missile.targetId = target.id;
+    missile.reservedDamage =
+      this.missileDamage(
+        missile,
+        target,
+        Math.min(
+          missileTune.pressureCap,
+          this.missilePressure.targetId === target.id
+            ? this.missilePressure.hits
+            : 0,
+        ),
+      ) *
+      (context.synergy?.huntDamageMultiplier(target) ?? 1) *
+      (target.incomingDamageMultiplier ?? 1);
+    this.reservations.set(
+      target.id,
+      (this.reservations.get(target.id) ?? 0) + missile.reservedDamage,
+    );
+  }
+
+  private releaseMissile(missile: Missile) {
+    const remaining =
+      (this.reservations.get(missile.targetId) ?? 0) - missile.reservedDamage;
+    if (remaining > 1e-8) this.reservations.set(missile.targetId, remaining);
+    else this.reservations.delete(missile.targetId);
+    missile.reservedDamage = 0;
+  }
+
+  private redirectMissile(
+    missile: Missile,
+    target: EnemyState,
+    context: SpecialContext,
+  ) {
+    this.reserveMissile(missile, target, context);
+    if (missile.weapon.transcendence === "emergency-retarget") {
+      missile.speedBoostMs = missileTune.emergencySpeedMs;
+      if (missile.recoveries > 0) {
+        missile.recoveries--;
+        missile.lifetime = Math.min(
+          missile.maxLifetime,
+          missile.lifetime + missileTune.emergencyLifetimeRecoveryMs,
+        );
+      }
+    }
+  }
+
+  private launchSalvoRound(context: SpecialContext, result: SpecialResult) {
+    const salvo = this.salvo!;
+    const w = salvo.weapon;
+    const target = this.missileTarget(
+      result.enemies,
+      w,
+      context,
+      origin,
+      salvo.assigned,
+    );
+    const i = salvo.launched++;
+    if (target) {
+      salvo.assigned?.add(target.id);
+      const immortal = w.overclock === "immortal";
+      const phoenix = branch(w, "tracking", "b");
+      const done = Number(complete(w));
+      const lifetime =
+        tune.missileLifetimeMs *
+        Math.max(
+          w.tree === "tracking" ? missileTune.tracking.lifetimeMultiplier : 1,
+          immortal ? missileTune.immortal.lifetimeMultiplier : 1,
+        );
+      const chains = immortal
+        ? missileTune.immortal.chains
+        : branch(w, "tracking", "a")
+          ? missileTune.tracking.chains[done]!
+          : branch(w, "hunter", "a")
+            ? missileTune.hunter.chains[done]!
+            : 0;
+      const missile: Missile = {
         id: ++this.serial,
         kind: "missile",
-        x: origin.x + (i - (count - 1) / 2) * 14,
+        weapon: w,
+        x: origin.x + ((i % 3) - 1) * 14,
         y: origin.y,
         targetId: target.id,
-        weapon: { ...weapon },
         damage:
-          stats.damage *
-          action.damageMultiplier *
-          this.critical(stats, context) *
-          (network
-            ? missileTune.network.damage
-            : saturation
-              ? missileTune.saturation.damage
-              : 1),
-        lifetime: tune.missileLifetimeMs,
+          salvo.stats.damage *
+          salvo.damageMultiplier *
+          this.critical(salvo.stats, context),
+        lifetime,
+        maxLifetime: lifetime,
         retargets:
-          (weapon.transcendence === "emergency-retarget"
+          missileTune.baseRetargets +
+          (w.tree === "tracking"
+            ? phoenix
+              ? missileTune.tracking.phoenixRetargets[done]!
+              : missileTune.tracking.retargets
+            : 0) +
+          (w.transcendence === "emergency-retarget"
             ? missileTune.emergencyRetargets
             : 0) +
-          (weapon.overclock === "immortal"
+          (immortal
             ? missileTune.immortal.retargets
-            : weapon.tree === "tracking"
-              ? weapon.branch === "b"
-                ? missileTune.tracking.phoenixRetargets[
-                    Number(complete(weapon))
-                  ]!
-                : missileTune.tracking.retargets
+            : w.overclock === "hunting"
+              ? missileTune.hunting.retargets
               : 0),
-        chains:
-          weapon.overclock === "immortal"
-            ? missileTune.immortal.chains
-            : branch(weapon, "tracking", "a")
-              ? missileTune.tracking.chains[Number(complete(weapon))]!
-              : branch(weapon, "hunter", "a")
-                ? missileTune.hunter.chains[Number(complete(weapon))]!
-                : 0,
+        chains,
         hits: new Set(),
-        size: weapon.overclock === "hunting" ? 1.4 : 1,
-      });
+        reservedDamage: 0,
+        hitsLeft: immortal
+          ? missileTune.immortal.maxHits
+          : phoenix
+            ? missileTune.tracking.phoenixMaxHits[done]!
+            : chains + 1,
+        recoveries:
+          w.transcendence === "emergency-retarget"
+            ? missileTune.emergencyRetargets
+            : 0,
+        speedBoostMs: 0,
+        rearmMs: 0,
+        size: w.overclock === "hunting" ? 1.5 : 1.15,
+      };
+      this.reserveMissile(missile, target, context);
+      this.missiles.push(missile);
     }
-    this.cooldown.missile = stats.cycleMs * this.cycleMultiplier(context);
+    salvo.delay = salvo.interval;
+    if (salvo.launched >= salvo.count) this.salvo = undefined;
+  }
+
+  private advanceMissileSalvo(
+    delta: number,
+    context: SpecialContext,
+    result: SpecialResult,
+    enemyIndex: (id: number) => number | undefined,
+  ) {
+    // Split only missile flight at launch boundaries; other weapon substeps stay unchanged.
+    let remaining = delta;
+    do {
+      const step = this.salvo
+        ? Math.min(remaining, Math.max(0, this.salvo.delay))
+        : remaining;
+      if (this.missiles.length)
+        this.advanceMissiles(step, context, result, enemyIndex);
+      remaining -= step;
+      if (this.salvo) {
+        this.salvo.delay -= step;
+        if (this.salvo.delay <= 0) this.launchSalvoRound(context, result);
+      }
+    } while (remaining > 0);
   }
 
   private advanceMissiles(
@@ -726,22 +937,42 @@ export class SpecialWeapons {
   ) {
     this.missiles = this.missiles.filter((missile) => {
       missile.lifetime -= delta;
-      if (missile.lifetime <= 0) return false;
+      if (missile.lifetime <= 0) {
+        this.releaseMissile(missile);
+        return false;
+      }
       let target = result.enemies[enemyIndex(missile.targetId) ?? -1];
       if (!target || target.hp <= 0) {
+        this.releaseMissile(missile);
         if (missile.retargets <= 0) return false;
-        target = this.target(
+        target = this.missileTarget(
           result.enemies,
-          context.focusId ?? context.synergy?.focusId ?? null,
+          missile.weapon,
+          context,
+          missile,
           missile.hits,
         );
         if (!target) return false;
-        missile.targetId = target.id;
         missile.retargets--;
+        this.redirectMissile(missile, target, context);
       }
+      const wait = Math.min(delta, missile.rearmMs);
+      missile.rearmMs -= wait;
+      missile.speedBoostMs = Math.max(0, missile.speedBoostMs - wait);
+      const flightDelta = delta - wait;
+      if (missile.rearmMs > 0 || (wait > 0 && flightDelta === 0)) return true;
       const point = combatPosition(target),
         gap = distance(missile, point);
-      const step = (tune.missileSpeed * delta) / 1000;
+      const boosted = Math.min(flightDelta, missile.speedBoostMs);
+      missile.speedBoostMs = Math.max(0, missile.speedBoostMs - flightDelta);
+      const step =
+        ((tune.missileSpeed *
+          (flightDelta +
+            boosted * (missileTune.emergencySpeedMultiplier - 1))) /
+          1000) *
+        (missile.weapon.overclock === "hunting"
+          ? missileTune.hunting.speedMultiplier
+          : 1);
       if (gap > Math.max(8, step)) {
         missile.x += ((point.x - missile.x) * step) / gap;
         missile.y += ((point.y - missile.y) * step) / gap;
@@ -755,26 +986,8 @@ export class SpecialWeapons {
         missileTune.pressureCap,
         this.missilePressure.hits - 1,
       );
-      let damage = missile.damage;
-      if (w.tree === "hunter")
-        damage *=
-          target.elite || target.kind !== "grunt"
-            ? missileTune.hunter.threatDamage
-            : missileTune.hunter.gruntDamage;
-      if (branch(w, "hunter", "b"))
-        damage *=
-          1 + consecutive * missileTune.hunter.pressure[Number(complete(w))]!;
-      if (w.transcendence === "weakpoint-lock")
-        damage *= 1 + consecutive * missileTune.weakpointPressure;
-      if (
-        w.overclock === "hunting" &&
-        (target.elite ||
-          target.kind !== "grunt" ||
-          target.progress01 >= tune.targeting.wallProgress)
-      )
-        damage *=
-          missileTune.hunting.damage +
-          consecutive * missileTune.hunting.pressure;
+      const damage = this.missileDamage(missile, target, consecutive);
+      this.releaseMissile(missile);
       const next = this.hit(
         target,
         damage,
@@ -790,44 +1003,62 @@ export class SpecialWeapons {
         radius: 28,
       });
       missile.hits.add(target.id);
+      missile.hitsLeft--;
+      missile.x = point.x;
+      missile.y = point.y;
       if (
         next.hp <= 0 &&
         w.transcendence === "threat-relay" &&
-        (target.elite ||
-          target.kind !== "grunt" ||
-          target.progress01 >= tune.targeting.wallProgress)
+        this.missileThreat(target)
       )
         this.cooldown.missile = Math.max(
           0,
           this.cooldown.missile - missileTune.relayMs,
         );
-      if (
-        branch(w, "tracking", "b") &&
-        complete(w) &&
-        missile.retargets > 0 &&
-        next.hp > 0
-      ) {
-        missile.retargets--;
-        missile.x = Math.max(0, point.x - missileTune.tracking.phoenixOffset.x);
-        missile.y = Math.max(0, point.y - missileTune.tracking.phoenixOffset.y);
-        missile.damage *= missileTune.tracking.phoenixDamage;
-        return true;
-      }
+      if (missile.hitsLeft <= 0) return false;
       if (next.hp <= 0 && missile.chains > 0) {
-        const nextTarget = this.target(
+        const nextTarget = this.missileTarget(
           result.enemies,
-          context.focusId ?? context.synergy?.focusId ?? null,
+          w,
+          context,
+          missile,
           missile.hits,
         );
         if (nextTarget) {
-          missile.targetId = nextTarget.id;
           missile.chains--;
           const replacement =
             branch(w, "hunter", "a") && w.overclock !== "immortal";
           // Hunter launches a replacement attack; tracking/immortal continue the same projectile.
-          if (replacement) missile.id = ++this.serial;
-          missile.x = replacement ? origin.x : point.x;
-          missile.y = replacement ? origin.y : point.y;
+          if (replacement) {
+            missile.id = ++this.serial;
+            missile.x = origin.x;
+            missile.y = origin.y;
+            missile.damage *=
+              missileTune.hunter.killChainDamage[Number(complete(w))]!;
+          } else if (branch(w, "tracking", "a"))
+            missile.damage *=
+              missileTune.tracking.chainDamage[Number(complete(w))]!;
+          this.redirectMissile(missile, nextTarget, context);
+          return true;
+        }
+      }
+      if (
+        missile.retargets > 0 &&
+        (branch(w, "tracking", "b") || w.overclock === "immortal")
+      ) {
+        const nextTarget = this.missileTarget(
+          result.enemies,
+          w,
+          context,
+          missile,
+          missile.hits,
+        );
+        if (nextTarget) {
+          missile.retargets--;
+          if (w.overclock !== "immortal")
+            missile.damage *= missileTune.tracking.phoenixDamage;
+          missile.rearmMs = missileTune.tracking.phoenixRearmMs;
+          this.redirectMissile(missile, nextTarget, context);
           return true;
         }
       }

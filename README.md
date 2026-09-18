@@ -1,10 +1,12 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.13 — 대규모 Horde 성능](docs/design/GAME_GDD_v0.13.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.13.md#5-current-implementation-gap)으로 구분합니다. [v0.12](docs/design/GAME_GDD_v0.12.md)와 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.14 — 미사일 일제사격](docs/design/GAME_GDD_v0.14.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.14.md#5-current-implementation-gap)으로 구분합니다. [v0.13](docs/design/GAME_GDD_v0.13.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
-최신 작업은 [Prototype M9](docs/prototype-m9-horde-performance.md)입니다. M8 `1719e74694e4cdf10211f3d04d1c976221223032`를 [PR23](https://github.com/cij5484/game/pull/23)로 main `7d1cae9`에 병합한 뒤 `codex/prototype-m9-horde-performance`에서 진행합니다. M9는 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+최신 작업은 [Prototype M10](docs/prototype-m10-missile-salvo.md)입니다. M9 `2b889434b162e01c222c2f42077cb8b2f852687d`를 [PR24](https://github.com/cij5484/game/pull/24)로 main `0bcc4fb`에 병합한 뒤 `codex/prototype-m10-missile-salvo`에서 진행합니다. M10은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
 
-M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID 색인을 재사용합니다. Damage/Focus의 전체 redraw를 제거하고 순간 VFX를 제한·재사용합니다. `/dev`의 읽기 전용 **성능**에서 FPS·적 수·특수 유닛 수·전투 효과 수·Frame simulation 단계 수를 확인합니다. **Horde cap 700과 Gameplay Balance는 그대로입니다. M9 통합 `npm run check`: 51파일/373테스트·TypeScript·Vite build 통과.** 기존 Phaser chunk 경고는 남으며 실제 끊김은 사용자 Playtest로 판단합니다.
+M10은 미사일을 기본 3발 시간차 일제사격으로 변경합니다. Prototype 기본값은 발당90, 속도680, raw 발사간격270ms/주기4500ms(X1 약0.18초/3초), 기본 재유도1회입니다. 비행 중 예상 피해 예약으로 약한 적의 과잉 피해를 줄이고 강적에는 여러 발을 집중합니다. 세 성장 계열과 `/dev` 미사일 설정도 연결합니다. 다른 무기·Horde 밸런스와 M9 성능 구조는 유지합니다. M10 `npm run check`: **52파일/390테스트·TypeScript·Vite build 통과**. 상세는 M10 기록을 따릅니다.
+
+M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID 색인을 재사용합니다. Damage/Focus의 전체 redraw를 제거하고 순간 VFX를 제한·재사용합니다. `/dev`의 읽기 전용 **성능**에서 FPS·적 수·특수 유닛 수·전투 효과 수·Frame simulation 단계 수를 확인합니다. **Horde cap 700은 유지합니다. 역사 기록 — M9 통합 `npm run check`: 51파일/373테스트·TypeScript·Vite build 통과.** 기존 Phaser chunk 경고는 남으며 실제 끊김은 사용자 Playtest로 판단합니다.
 
 개발 서버의 게임 `/`와 한국어 패널 **`/dev`**를 같은 브라우저·같은 origin의 별도 창에서 엽니다. 한국어 검색/분류/Tooltip, 현재·기본값, 적용 시점, 개별/전체 Reset, Preset, JSON Import/Export를 제공합니다. 기본 설정→중앙RuntimeStore→실제게임 흐름이며 BroadcastChannel로 새로고침 없이 전달하고 개발용 localStorage에 Override를 저장합니다. 수류탄·미사일·드론 주기는 X1 실제 초로 입력합니다.
 
