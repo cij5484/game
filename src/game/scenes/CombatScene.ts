@@ -15,20 +15,18 @@ import { recognizeUltimateGesture } from "../input/ultimateGesture";
 import type { Point } from "../input/gestureRecognizer";
 import { bindTapInput } from "../input/tapInput";
 import { resolveAttackTarget, TargetFocus } from "../combat/targeting";
-import { deriveWeaponConfig, primaryAttack } from "../combat/primaryAttack";
-import { Progression } from "../progression/progression";
+import { primaryAttack } from "../combat/primaryAttack";
+import { MarineProgression } from "../progression/marineProgression";
+import { getMarineStats, deriveMarineWeaponConfig } from "../data/marineGrowth";
 import { LevelUpView } from "../ui/LevelUpView";
 import { Relics } from "../progression/relics";
 import { Cores } from "../progression/cores";
 import { coreEffects } from "../data/cores";
 import { BuildBar } from "../ui/BuildBar";
-import { buildSummary } from "../ui/buildSummary";
+import { marineBuildSummary } from "../ui/buildSummary";
 import { relicBalance } from "../data/relics";
 import { RelicCombat, type EchoVolley } from "../combat/relicCombat";
-import { activeSynergies } from "../progression/synergy";
-import { display } from "../data/display";
 import { PauseView } from "../ui/PauseView";
-import { eligibleEvolutions } from "../progression/evolution";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
@@ -57,19 +55,15 @@ export class CombatScene extends Phaser.Scene {
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
-  private progression = new Progression(Math.random, [
-    "gauss-rifle",
-    "stimpack",
-  ]);
+  private progression = new MarineProgression();
   private choices!: LevelUpView;
   private relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
   private relicCombat = new RelicCombat();
-  private cores = new Cores();
+  private cores = new Cores(["tactical-expansion", "resonance"]);
   private buildBar!: BuildBar;
   private shotIndex = 0;
   private focus = new TargetFocus();
   private echoRounds: { dueMs: number; volley: EchoVolley }[] = [];
-  private synergies = new Set<string>();
   private pauseUi!: PauseView;
   private manualPaused = false;
   private cancelInput = () => {};
@@ -98,17 +92,13 @@ export class CombatScene extends Phaser.Scene {
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
-    this.progression = new Progression(Math.random, [
-      "gauss-rifle",
-      "stimpack",
-    ]);
+    this.progression = new MarineProgression();
     this.relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
     this.relicCombat = new RelicCombat();
-    this.cores = new Cores();
+    this.cores = new Cores(["tactical-expansion", "resonance"]);
     this.shotIndex = 0;
     this.focus = new TargetFocus();
     this.echoRounds = [];
-    this.synergies = new Set();
     this.manualPaused = false;
     this.evolutions = new Set();
     this.notices = [];
@@ -340,6 +330,7 @@ export class CombatScene extends Phaser.Scene {
         level: this.progression.level,
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
+        growth: this.progression.growth,
         branches: this.progression.branches,
         activeSynergyIds: this.progression.activeSynergyIds,
         relics: this.relics.levels,
@@ -357,7 +348,7 @@ export class CombatScene extends Phaser.Scene {
       this.rifle.timeToEventMs === 0 &&
       !this.focus.resolve(
         this.enemies.map((entry) => entry.state),
-        marineConfig.primaryMinProgress01,
+        getMarineStats(this.progression.growth).minTargetProgress01,
       )
     )
       return this.advanceWorld(deltaMs);
@@ -390,7 +381,7 @@ export class CombatScene extends Phaser.Scene {
       if (
         this.focus.resolve(
           this.enemies.map((entry) => entry.state),
-          marineConfig.primaryMinProgress01,
+          getMarineStats(this.progression.growth).minTargetProgress01,
         )
       )
         this.rifle.advance(0, () => this.firePrimary());
@@ -409,7 +400,7 @@ export class CombatScene extends Phaser.Scene {
     this.refreshProtection();
     const target = this.focus.resolve(
       this.enemies.map((entry) => entry.state),
-      marineConfig.primaryMinProgress01,
+      getMarineStats(this.progression.growth).minTargetProgress01,
     );
     this.view.setFocus(this.focus.targetId);
     if (target) {
@@ -418,6 +409,7 @@ export class CombatScene extends Phaser.Scene {
         this.relicCombat.onVolley({
           targetId: target.id,
           ranks: this.progression.ranks,
+          growth: this.progression.growth,
           branches: this.progression.branches,
           activeSynergyIds: this.progression.activeSynergyIds,
           baseDamage:
@@ -438,9 +430,11 @@ export class CombatScene extends Phaser.Scene {
         ),
         [...this.evolutions],
         {
+          growth: this.progression.growth,
           branches: this.progression.branches,
           activeSynergyIds: this.progression.activeSynergyIds,
-          minTargetProgress01: marineConfig.primaryMinProgress01,
+          minTargetProgress01: getMarineStats(this.progression.growth)
+            .minTargetProgress01,
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -452,7 +446,8 @@ export class CombatScene extends Phaser.Scene {
         ),
         result.ricochetIds,
         [...result.hitIds, ...result.splashIds],
-        this.evolutions.size > 0,
+        this.progression.legendary.has("penetration") ||
+          (this.progression.ranks.heavy ?? 0) > 0,
         result.splashIds,
         result.shotTargetIds,
         result.criticalIds,
@@ -508,8 +503,6 @@ export class CombatScene extends Phaser.Scene {
         if (entry.state.elite) {
           const core = this.cores.tryDrop();
           if (core) {
-            if (core.id === "tactical-expansion")
-              this.progression.expandTraitLimit();
             if (core.id === "relic-expansion") {
               this.relics.expandCapacity();
               this.relics.reward();
@@ -586,12 +579,16 @@ export class CombatScene extends Phaser.Scene {
       return;
     }
     this.time.paused = true;
-    this.choices.show(
+    this.choices.showMarine(
       this.progression.level,
       offered,
       this.progression.ranks,
       (id) => {
         if (!this.progression.choose(id)) return;
+        if (this.progression.lastSelection?.greatSuccess)
+          this.notices.push(
+            `대성공! · +${this.progression.lastSelection.levels}레벨${this.progression.lastSelection.levels < 2 ? " (최대 레벨 도달)" : ""}`,
+          );
         this.applyBuildChoice();
       },
       this.progression.traitLimit,
@@ -611,39 +608,17 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private refreshBuild(): void {
-    for (const recipe of eligibleEvolutions(
-      this.progression.traitLevels,
-      this.relics.levels,
-      this.evolutions,
-      this.progression.ranks,
-    )) {
-      this.evolutions.add(recipe.id);
-      this.notices.push(`${display.evolution}\n${recipe.title}`);
-    }
-    for (const recipe of activeSynergies(
-      this.progression.ranks,
-      this.progression.activeSynergyIds,
-    )) {
-      if (!this.synergies.has(recipe.id))
-        this.notices.push(
-          `${display.synergy} 활성화 · ${recipe.symbol} ${recipe.title}`,
-        );
-      this.synergies.add(recipe.id);
-    }
     this.relicCombat.setLevels(this.relics.levels);
-    this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
+    this.rifle.setConfig(deriveMarineWeaponConfig(this.progression.growth));
 
     this.stimpack.setUpgrades(
       this.progression.ranks,
       this.progression.branches,
     );
-    const summary = buildSummary(
-      this.progression.ranks,
+    const summary = marineBuildSummary(
+      this.progression.growth,
       this.relics.levels,
       this.cores.owned,
-      this.evolutions,
-      this.progression.branches,
-      this.progression.activeSynergyIds,
     );
     this.buildBar.render(summary);
     this.burstUi.renderBuild(summary);
@@ -722,7 +697,7 @@ export class CombatScene extends Phaser.Scene {
       const target = resolveAttackTarget(
         null,
         candidates,
-        marineConfig.primaryMinProgress01,
+        getMarineStats(this.progression.growth).minTargetProgress01,
       );
       if (!target) continue;
       const result = primaryAttack(
@@ -733,9 +708,15 @@ export class CombatScene extends Phaser.Scene {
         { damageMultiplier: pending.volley.damageMultiplier },
         [],
         {
+          growth: pending.volley.growth ?? {
+            ranks: pending.volley.ranks,
+            quality: {},
+            legendary: new Set(),
+          },
           branches: pending.volley.branches ?? {},
           activeSynergyIds: pending.volley.activeSynergyIds ?? new Set(),
-          minTargetProgress01: marineConfig.primaryMinProgress01,
+          minTargetProgress01: getMarineStats(this.progression.growth)
+            .minTargetProgress01,
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,

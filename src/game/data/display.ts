@@ -64,7 +64,7 @@ export const display = {
   restart: "다시 시작하기",
   pauseDetail: "전투와 모든 재사용 대기시간이 멈췄습니다.",
   battlefieldDescription:
-    "자동 공격 · 적 탭 집중 타겟 / 빈 전장 탭 해제 · 두 손가락 또는 아이콘 스팀팩 · 원 또는 아이콘 서리장 · Z 또는 아이콘 번개 · 준비 완료 시 V 필살기",
+    "자동 공격 · 적 탭 집중 타겟 / 빈 전장 탭 해제 · 두 손가락 또는 아이콘 스팀팩 · 준비 완료 시 V 필살기",
 } as const;
 export const levelLabel = (level: number) => `${level}레벨`;
 export const levelChange = (current: number, max: number) =>

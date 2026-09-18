@@ -1,3 +1,8 @@
+import {
+  getMarineStats,
+  getMarineTraitEffects,
+  type MarineGrowthState,
+} from "../data/marineGrowth";
 import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
 import { primaryAttackBalance } from "../data/primaryAttack";
 import { getTraitEffects } from "../data/traits";
@@ -32,6 +37,7 @@ export function primaryAttack(
   } = {},
   evolutionIds: readonly string[] = [],
   context: {
+    growth?: MarineGrowthState;
     minTargetProgress01?: number;
     shotIndex: number;
     random: () => number;
@@ -52,13 +58,19 @@ export function primaryAttack(
   explosionIds: number[];
   executionIds: number[];
 } {
-  const traits = getTraitEffects(ranks, context.branches);
-  const stats = getGeneralStats(ranks);
+  const traits = context.growth
+    ? getMarineTraitEffects(context.growth)
+    : getTraitEffects(ranks, context.branches);
+  const stats = context.growth
+    ? getMarineStats(context.growth)
+    : getGeneralStats(ranks);
   const synergyMultiplier = Math.max(
     1,
     Math.min(2, context.synergyMultiplier ?? 1),
   );
-  const synergies = activeSynergies(ranks, context.activeSynergyIds);
+  const synergies = context.growth
+    ? []
+    : activeSynergies(ranks, context.activeSynergyIds);
   const hasSynergy = (id: string) =>
     synergies.some((synergy) => synergy.id === id);
   const deepBlast = synergies.some((s) => s.effects.pierceExplosion);
@@ -68,8 +80,8 @@ export function primaryAttack(
     !!storm?.everyRounds &&
     context.shotIndex > 0 &&
     context.shotIndex % storm.everyRounds === 0;
-  const evolutions = evolutionRecipes.filter((recipe) =>
-    evolutionIds.includes(recipe.id),
+  const evolutions = evolutionRecipes.filter(
+    (recipe) => !context.growth && evolutionIds.includes(recipe.id),
   );
   const living = enemies.filter((enemy) => enemy.hp > 0);
   const points = new Map(
@@ -294,8 +306,11 @@ export function primaryAttack(
     for (const enemy of pierced) {
       claimed.add(enemy.id);
       criticalHit(enemy, rootFactor * pierceRetention, "direct", critical);
-      if (deepBlast)
-        explosion(enemy, rootFactor * pierceRetention * synergyMultiplier);
+      if (context.growth || deepBlast)
+        explosion(
+          enemy,
+          rootFactor * pierceRetention * (deepBlast ? synergyMultiplier : 1),
+        );
     }
     let last = pierced.at(-1) ?? root;
     if (pierced.length)
@@ -325,6 +340,12 @@ export function primaryAttack(
         "bounce",
         critical && !!lethal?.propagateCritical,
       );
+      if (context.growth)
+        explosion(
+          next,
+          rootFactor *
+            (traits.bounceDamageRetention + i * traits.bounceDamageGrowth),
+        );
       last = next;
       didBounce = true;
     }

@@ -16,7 +16,10 @@ export interface MarineConfig {
 
 export interface GaussRifleConfig {
   id: "gauss-rifle";
+  /** Full attack cycle, measured from the first round to the next first round. */
   shotIntervalMs: number;
+  burstRounds?: number;
+  roundIntervalMs?: number;
   damagePerRound: number;
 }
 

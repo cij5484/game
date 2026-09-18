@@ -1,3 +1,4 @@
+import { marineTraitIds, type MarineGrowthState } from "../data/marineGrowth";
 import { applyEffectDamage } from "./damage";
 import { combatPosition } from "../battlefield/combatGeometry";
 import { relicBalance, type RelicLevels } from "../data/relics";
@@ -13,6 +14,7 @@ export interface VolleySnapshot {
   /** Original target; the caller retargets the echo to a different living enemy. */
   targetId: number;
   ranks: UpgradeRanks;
+  growth?: MarineGrowthState;
   branches?: GrowthBranches;
   activeSynergyIds?: ReadonlySet<string>;
   baseDamage: number;
@@ -144,10 +146,36 @@ export class RelicCombat {
       else if (ranks[id])
         ranks[id] = Math.min(ranks[id]!, this.effects.echoTraitLevel);
     }
+    const growth: MarineGrowthState | undefined = snapshot.growth
+      ? {
+          ranks: { ...snapshot.growth.ranks },
+          quality: { ...snapshot.growth.quality },
+          legendary: new Set(snapshot.growth.legendary),
+        }
+      : undefined;
+    if (growth && this.effects.echoTraitLevel < 5) {
+      for (const id of marineTraitIds) {
+        const level = growth.ranks[id] ?? 0;
+        const inherited =
+          this.effects.echoTraitLevel > 0 &&
+          ["penetration", "ricochet", "multishot"].includes(id);
+        if (!inherited) {
+          delete growth.ranks[id];
+          delete growth.quality[id];
+        } else if (level > 0) {
+          const limited = Math.min(level, this.effects.echoTraitLevel);
+          growth.ranks[id] = limited;
+          growth.quality[id] =
+            ((growth.quality[id] ?? level) * limited) / level;
+        }
+      }
+      growth.legendary = new Set();
+    }
     this.echoes.push({
       dueMs: this.clockMs + relicBalance.echoDelayMs,
       volley: {
         ...snapshot,
+        ...(growth ? { growth } : {}),
         ranks,
         branches,
         activeSynergyIds: new Set(snapshot.activeSynergyIds ?? []),

@@ -196,7 +196,7 @@ export class BurstView {
           state: "equipped",
           title: "가우스",
           symbol: "⌁",
-          detail: "중거리 단발 자동사격 · 현재 장착한 강화는 아래 표시",
+          detail: "중거리 자동사격 · 개조/사거리 성장은 아래 표시",
           upgrades: entries.filter((e) => e.owner === "basicWeapon"),
         },
         this.inspect,
