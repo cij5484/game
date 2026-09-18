@@ -1,5 +1,8 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import type { EnemyKind, LaneId } from "../model/types";
 import { runBalance } from "./run";
+// Capture the authored combat-clock scale before development overrides load.
+export const hordeTimelineTempo = runBalance.combatTempo;
 interface HordeStage {
   atMs: number;
   name: string;
@@ -11,7 +14,7 @@ interface HordeStage {
 }
 // M6 follow-up: fewer starting enemies, continuously growing supply. Batch means vary ±2.
 // Director uses combat time; phase timestamps preserve the intended X1 stage-minute ramp.
-export const hordeBalance = {
+export const hordeBalance = runtimeObject("horde", {
   initialBatchSize: 36,
   initialVanguardCount: 3,
   initialVanguardMinProgress01: 0.43,
@@ -131,4 +134,4 @@ export const hordeBalance = {
       enemyWeights: { grunt: 92, runner: 6, shield: 2 },
     },
   ] satisfies HordeStage[],
-} as const;
+} as const);

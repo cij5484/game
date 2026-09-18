@@ -1,8 +1,16 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.11 — Boss / Random Acquisition](docs/design/GAME_GDD_v0.11.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.11.md#5-current-implementation-gap)으로 구분합니다. [v0.10](docs/design/GAME_GDD_v0.10.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.12 — 실시간 개발자 밸런스 패널](docs/design/GAME_GDD_v0.12.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.12.md#5-current-implementation-gap)으로 구분합니다. [v0.11](docs/design/GAME_GDD_v0.11.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
-최신 작업은 [Prototype M7](docs/prototype-m7-boss-acquisition.md)입니다. M6 `4b06c39e82683cd809fbb2bec544424cd5aa1187`을 [PR21](https://github.com/cij5484/game/pull/21)로 main `544aa1f`에 병합한 뒤 `codex/prototype-m7-boss-acquisition`에서 진행합니다. M7은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+최신 작업은 [Prototype M8](docs/prototype-m8-dev-balance-panel.md)입니다. M7 `60f19c02dceceaa1009562f866024632f5b29e8d`을 [PR22](https://github.com/cij5484/game/pull/22)로 main `9fa09f4`에 병합한 뒤 `codex/prototype-m8-dev-balance-panel`에서 진행합니다. M8은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+
+개발 서버의 게임 `/`와 한국어 패널 **`/dev`**를 같은 브라우저·같은 origin의 별도 창에서 엽니다. 한국어 검색/분류/Tooltip, 현재·기본값, 적용 시점, 개별/전체 Reset, Preset, JSON Import/Export를 제공합니다. 기본 설정→중앙RuntimeStore→실제게임 흐름이며 BroadcastChannel로 새로고침 없이 전달하고 개발용 localStorage에 Override를 저장합니다. 수류탄·미사일·드론 주기는 X1 실제 초로 입력합니다.
+
+적HP는 다음 생성부터, 카드/XP는 다음Offer/Level부터, 보유한도·초기조건은 다음Run부터 적용합니다. 현재 적HP와 열린 카드는 보존합니다. **Production에서는/dev·통신·Override 로딩이 비활성화됩니다.** 이 패널은 Prototype Development Tool / Not Final Game Feature이며 Override가 코드 기본값이나 GDD를 바꾸지 않습니다.
+
+**M8 통합 `npm run check`:50파일/358테스트·TypeScript·Vite build 통과.** 기존 Phaser500kB 초과 경고는 유지합니다. 브라우저에서243개 항목·게임 연결·실시간 전달·Reset/Preset·새로고침 유지·JSON 검증·검색/Tooltip·X1초 표시와 Production `/dev` 차단을 확인했습니다. 적용 경계는 기능 테스트로 확인했으며 자동 밸런스 판단은 하지 않았습니다. M7의 과거 검증 숫자를 M8 결과로 재사용하지 않습니다.
+
+아래 M7 게임 규칙과 기본 수치는 그대로 유지합니다. 개발 패널은 새 콘텐츠나 기본 밸런스 변경이 아닙니다.
 
 - 특수무기 Lv5/Lv10 고정 지급을 제거했습니다. 일반 Level-Up3장에 첫 무기는 **Lv8부터 Category weight0.30**, 두 번째는 **Lv14+첫 무기 보유 시0.20**으로 등장합니다. 한 Offer 최대1장, 일반 선택1회 소비, 항상 Weapon Lv1, 희귀도/대성공/품질 개방 미적용입니다. 기본2종·무장 Core3종이며 Hard Pity/획득 보장은 없습니다.
 - 기본 개조는 **신규 Category0.45 / 보유 성장0.35**, 한 Offer 합계 최대1장입니다. 개조 내부 Investment Bias는 최대×1.4, 기본3종·Core4종입니다. Range의 희소성과 별도 슬롯 규칙, 보유 특수무기의 기존 성장 빈도는 유지합니다. 숫자는 고정 등장 확률이 아닌 상대 weight입니다.
@@ -11,7 +19,7 @@
 - M6 초기Horde36/cap700/CombatTempo1.5/기존Enemy속도/생성HP/XP/Grenade/Relic6·Core3·Synergy3를 유지합니다. Boss 경고부터 일반 공급은8/1400combat ms, 최후 돌진은32/700ms이며 새 Elite를 억제합니다. 상세 수치는 M7 기록을 따릅니다.
 - Header는 공용 강화·Relic·Core·Synergy, Bottom은 기본무기/개조·특수무기 성장·Stimpack·Ultimate를 소유합니다. Special Slot은 시작 시 Unlocked/Empty이며 무기 획득 순서대로 채웁니다. Boss HP/상태/약점/충전 예고는 최소 UI로 표시합니다.
 
-**M7 통합 `npm.cmd run check`:46파일/342테스트·TypeScript·Vite build 통과.** 기존500kB 초과 bundle 경고는 유지합니다.390×844의 짧은 UI fixture로 Boss Charge 표시·Lv8 획득 카드·시작 Empty Slot을 확인했습니다. 전체 Boss Run Playtest와는 구분합니다. M6의43파일/323테스트와 이전 브라우저 확인은 [M6 역사 기록](docs/prototype-m6-highroll-tempo.md)에 남기며 M7 검증으로 재사용하지 않습니다. 장시간 자동 Run/밸런스/최종Level/평균DPS/자동Clear 분석은 하지 않습니다. 난이도·재미·획득시점·성장감·실기기 성능은 사용자 직접 Playtest 영역입니다.
+**역사 기록 — M7 통합 `npm.cmd run check`:46파일/342테스트·TypeScript·Vite build 통과.** 기존500kB 초과 bundle 경고는 유지합니다.390×844의 짧은 UI fixture로 Boss Charge 표시·Lv8 획득 카드·시작 Empty Slot을 확인했습니다. 전체 Boss Run Playtest와는 구분합니다. M6의43파일/323테스트와 이전 브라우저 확인은 [M6 역사 기록](docs/prototype-m6-highroll-tempo.md)에 남기며 M7 검증으로 재사용하지 않습니다. 장시간 자동 Run/밸런스/최종Level/평균DPS/자동Clear 분석은 하지 않습니다. 난이도·재미·획득시점·성장감·실기기 성능은 사용자 직접 Playtest 영역입니다.
 
 Gold/Credits/작전기록/영구보상/점진Unlock/Challenge/Endless/Stage2+/신규Character/Awakening/FinalArt/전체 추가 Pool은 구현 범위 밖입니다.
 
@@ -127,4 +135,4 @@ npm run check
 
 `check`는 테스트 후 TypeScript 검사와 프로덕션 빌드를 실행합니다.
 
-현재 작업은 `codex/prototype-m7-boss-acquisition`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.
+현재 작업은 `codex/prototype-m8-dev-balance-panel`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.

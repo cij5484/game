@@ -1,5 +1,6 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 // Stage 1 prototype values: independent elite stats, never Grunt HP multipliers.
-export const eliteBalance = {
+export const eliteBalance = runtimeObject("elite", {
   runner: {
     hp: 80,
     progressPerSecond: 0.075,
@@ -25,4 +26,4 @@ export const eliteBalance = {
     [945000, 975000],
     [1080000, 1125000],
   ],
-} as const;
+} as const);

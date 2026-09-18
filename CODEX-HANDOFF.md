@@ -1,12 +1,12 @@
 # Mac handoff — 2026-09-18
 
-M6 `4b06c39e82683cd809fbb2bec544424cd5aa1187` is merged via [PR21](https://github.com/cij5484/game/pull/21), main `544aa1f`. M7 uses `codex/prototype-m7-boss-acquisition`: **commit/push only, no M7 main merge or automatic next milestone**.
+M7 `60f19c02dceceaa1009562f866024632f5b29e8d` is merged via [PR22](https://github.com/cij5484/game/pull/22), main `9fa09f4`. M8 uses `codex/prototype-m8-dev-balance-panel`: **commit/push only, no M8 main merge or automatic next milestone**.
 
 ## Setup
 
 ```sh
 git fetch origin
-git switch codex/prototype-m7-boss-acquisition
+git switch codex/prototype-m8-dev-balance-panel
 git pull --ff-only
 npm ci
 npm run dev -- --host 0.0.0.0
@@ -16,7 +16,16 @@ Preserve uncommitted work before switching/pulling. Never reset or force-push to
 
 ## Current implementation / design
 
-Current Source of Truth: [GAME_GDD_v0.11.md](docs/design/GAME_GDD_v0.11.md). It inherits the complete v0.10 design and future pools, and replaces fixed acquisition and timed clear rules. v0.10 remains unchanged. Read [M7 implementation/tuning](docs/prototype-m7-boss-acquisition.md) for exact values and verification status.
+Current Source of Truth: [GAME_GDD_v0.12.md](docs/design/GAME_GDD_v0.12.md). It inherits the complete v0.11 game design/defaults/future pools; v0.11 remains unchanged. Read [M8 implementation](docs/prototype-m8-dev-balance-panel.md).
+
+- Open game `/` and panel `/dev` in separate windows of the same browser/profile/origin. Korean fields/search/categories/tooltips/default/current/changed/apply timing, individual/all reset, named presets, validated JSON import/export. The panel is a Prototype Development Tool / Not Final Game Feature.
+- Existing data defaults register stable runtime objects; central numeric/boolean overrides reach gameplay through BroadcastChannel `game.prototype.balance.v1`. Developer localStorage persists overrides across reloads. Presets use a separate key and survive reset. No backend/server/new dependencies.
+- Damage/cycles and live movement/supply read updated values. Spawn intervals/batches take effect on the next Spawn calculation; already scheduled timers remain intact. Spawn HP/shields/scaling preserve existing enemies. Current Level XP threshold and already-open offers (candidates, growth amounts and Great Success chance) stay frozen; new Level/offer reads new values. Starting caps/wallHP/initial enemies/elite windows apply next Run.
+- Special cycle UI is X1 real seconds at current combatTempo; JSON stores combat ms. Rarity uses1000‰ weights with percent display and sum validation. Single core structure stays0~1; no new multi-core rule.
+- Production `import.meta.env.DEV` gate removes panel/bridge imports and never loads local overrides. Runtime override does not change code defaults/GDD; a separate user instruction is required to promote a JSON as new defaults.
+- **M8 integrated npm run check:50files/358tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** Browser checked243fields, connected game X1/X4/Level/override acknowledgment, Grunt HP8→12/reset, presets/reload persistence, JSON valid/unknown-field rejection, search/tooltips/grenade5.2 X1seconds. Test overrides reset and test preset deleted. Production preview `/dev` shows unavailable and production build contains no Panel/Bridge assets. Integration tests cover next-spawn HP, frozen offer amount/Great Success/currentXP, zero batch/Stage clock and production guard. No automatic balance judgment or long simulations.
+
+### Preserved M7 game baseline
 
 - No Lv5/Lv10 special weapon grants. Normal Level-Up offers can include one acquisition card: first Lv8+ with Category weight.30; later Lv14+ with one weapon owned, weight.20. Base capacity2/Core3, no pity, consumes one normal choice, always Weapon Lv1, no rarity/Great Success/quality promotion.
 - New basic modification Category.45 and owned-growth Category.35; at most one combined modification card per offer. Internal investment bias cap1.4. Mod slots3/Core4. Range remains separate/Rare+/max5/weight.25. Existing special growth weights and milestone Queue remain.
@@ -27,7 +36,7 @@ Current Source of Truth: [GAME_GDD_v0.11.md](docs/design/GAME_GDD_v0.11.md). It 
 - Header owns common growth/Relic/Core/Synergy; Bottom owns Gauss/mods/special growth/Stimpack/Ultimate. Special slots start Unlocked/Empty, fill in acquisition order; armament opens slot3. Primitive Boss silhouette/HP/phase/weakpoint/telegraph/stagger only, no new art.
 - No Gold/Credits/operation records/progressive unlock/Challenge/Endless/Stage2+/new characters/Awakening/Final Art or additional Relic/Core/Synergy pool expansion.
 
-**M7 integrated `npm.cmd run check`:46files/342tests, TypeScript and Vite build passed.** Existing >500kB bundle warning remains. A390×844 short isolated UI fixture checked actual Boss Charge rendering, Lv8 acquisition without rarity, and actual game empty slots; no browser errors, temporary preview removed. This is not a full Boss run/playtest. Do not report M6's43files/323tests or old browser checks as M7 verification. No long automatic balance runs, final-level/DPS/survival/auto-clear conclusions. User playtest owns difficulty, acquisition timing, growth feel, Boss HP/length and real-device performance.
+**Historical M7 integrated `npm.cmd run check`:46files/342tests, TypeScript and Vite build passed.** Existing >500kB bundle warning remains. A390×844 short isolated UI fixture checked actual Boss Charge rendering, Lv8 acquisition without rarity, and actual game empty slots; no browser errors, temporary preview removed. This is not a full Boss run/playtest. Do not report M6's43files/323tests or old browser checks as M7 verification. No long automatic balance runs, final-level/DPS/survival/auto-clear conclusions. User playtest owns difficulty, acquisition timing, growth feel, Boss HP/length and real-device performance.
 
 ## Historical Milestone 12 snapshot (not current gameplay)
 
@@ -40,4 +49,4 @@ Current Source of Truth: [GAME_GDD_v0.11.md](docs/design/GAME_GDD_v0.11.md). It 
 - Circle tolerances: closure0.22, radial error0.18. Z alignment and negative fixtures retained. Real-device gesture reliability needs playtesting.
 - Desktop secondary input: simultaneous left/right mouse buttons. Mobile: two-finger tap. Pause icon top right; restart resets the run.
 
-Current design source: docs/design/GAME_GDD_v0.11.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.
+Current design source: docs/design/GAME_GDD_v0.12.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.

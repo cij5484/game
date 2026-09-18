@@ -800,7 +800,7 @@ export class SpecialWeapons {
       ? 0
       : weapon.tree === "squadron"
         ? droneTune.squadron.count[complete(weapon) ? 2 : weapon.branch ? 1 : 0]
-        : 1;
+        : tune.droneBaseCount;
     if (weapon?.overclock === "army") count += droneTune.army.extraCount;
     if (weapon?.overclock === "cruiser") count = 1;
     this.drones.length = Math.min(this.drones.length, count);

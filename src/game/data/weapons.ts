@@ -1,10 +1,11 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import type { GaussRifleConfig } from "../model/types";
 
-export const gaussRifleBalance = {
+export const gaussRifleBalance = runtimeObject("gauss", {
   id: "gauss-rifle",
   shotIntervalMs: 800, // prototype M1: slow autonomous single shots
   damagePerRound: 10, // prototype tuning value
-} as const satisfies GaussRifleConfig;
+} as const satisfies GaussRifleConfig);
 
 // Safety ceiling includes the M6 saturation bonus above the eight-round growth cap.
 export const gaussActionRoundLimit = 10;

@@ -8,6 +8,7 @@ import {
 } from "../data/highroll";
 
 export class PrototypeRelics {
+  private readonly capacity = highrollBalance.relicCapacity;
   readonly owned = new Set<PrototypeRelicId>();
   pendingRewards = 0;
   pendingReplacement: PrototypeRelicId | null = null;
@@ -23,7 +24,10 @@ export class PrototypeRelics {
   }
 
   onElite(): boolean {
-    if (this.elites++ > 0 && this.random() >= highrollBalance.relicDropChance)
+    if (
+      !(this.elites++ === 0 && highrollBalance.firstRelicGuaranteed) &&
+      this.random() >= highrollBalance.relicDropChance
+    )
       return false;
     this.pendingRewards++;
     return true;
@@ -51,8 +55,7 @@ export class PrototypeRelics {
   choose(id: PrototypeRelicId): boolean {
     if (!this.offer().some((r) => r.id === id) || this.owned.has(id))
       return false;
-    if (this.owned.size >= highrollBalance.relicCapacity)
-      this.pendingReplacement = id;
+    if (this.owned.size >= this.capacity) this.pendingReplacement = id;
     else {
       this.owned.add(id);
       this.finishReward();
@@ -86,8 +89,9 @@ export class PrototypeCores {
 
   tryDrop(validIds: readonly PrototypeCoreId[], random = Math.random) {
     if (this.owned.size >= highrollBalance.maxCores) return null;
-    const pool = [...new Set(validIds)].filter((id) =>
-      Object.hasOwn(prototypeCores, id),
+    const pool = [...new Set(validIds)].filter(
+      (id) =>
+        Object.hasOwn(prototypeCores, id) && highrollBalance.coreEnabled[id],
     );
     if (!pool.length || random() >= highrollBalance.coreDropChance) return null;
     const id =

@@ -1,7 +1,9 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import { getTraitEffects, type TraitEffects } from "./traits";
 import type { UpgradeRanks, UpgradeRarity } from "./upgrades";
 import type { GaussRifleConfig } from "../model/types";
 import { gaussRifleBalance } from "./weapons";
+import { marineConfig } from "./balance";
 
 export const marineTraitIds = [
   "penetration",
@@ -85,7 +87,10 @@ export const marineUpgrades: Record<MarineUpgradeId, MarineUpgradeDefinition> =
       maxRank: 5,
     },
   };
-export const marineGrowthBalance = {
+export const marineGrowthBalance = runtimeObject("marineGrowth", {
+  specialCapacity: 2,
+  baseCritChance: 0.05,
+  criticalMultiplier: 1.75,
   initialXp: 8,
   xpPerLevel: 5,
   xpQuadratic: 0.5,
@@ -107,7 +112,7 @@ export const marineGrowthBalance = {
   maxBounceCount: 6,
   maxMultishotTargets: 5,
   maxExplosionRadius: 130,
-} as const;
+} as const);
 const increments = (
   COMMON: number,
   RARE: number,
@@ -119,18 +124,18 @@ const traitQuality = increments(1, 1.6, 2.4, 3.2);
 export const marineQualityIncrements: Record<
   MarineUpgradeId,
   Record<UpgradeRarity, number>
-> = {
+> = runtimeObject("marineQuality", {
   "primary-damage": increments(0.18, 0.3, 0.46, 0.66),
   "attack-speed": increments(0.08, 0.125, 0.18, 0.24),
   "crit-chance": increments(0.055, 0.09, 0.14, 0.2),
-  penetration: traitQuality,
-  ricochet: traitQuality,
-  burst: traitQuality,
-  multishot: traitQuality,
-  explosive: traitQuality,
-  heavy: traitQuality,
+  penetration: { ...traitQuality },
+  ricochet: { ...traitQuality },
+  burst: { ...traitQuality },
+  multishot: { ...traitQuality },
+  explosive: { ...traitQuality },
+  heavy: { ...traitQuality },
   range: increments(0, 0.03, 0.045, 0.06),
-};
+});
 const positive = (value: number) =>
   Number.isFinite(value) ? Math.max(0, value) : 0;
 export function marineStrength(
@@ -159,26 +164,59 @@ export function marineUpgradeWeight(
     )
   );
 }
+
+export const marineRarityBalance = runtimeObject("marineRarity", {
+  bands: [
+    { weights: [780, 200, 19, 1] },
+    { weights: [680, 270, 47, 3] },
+    { weights: [580, 330, 84, 6] },
+    { weights: [500, 360, 130, 10] },
+  ],
+} as const);
+
+export const marineModBalance = runtimeObject("marineMods", {
+  heavyDamagePerQuality: 0.45,
+  burstDamagePerQuality: 0.035,
+  burstIntervalMs: 155,
+  burstSpeedPerQuality: 0.055,
+  penetrationCountPerLevel: 0.7,
+  penetrationBaseRetention: 0.6,
+  ricochetBaseRetention: 0.6,
+  ricochetRadiusPerQuality: 7,
+  ricochetDamageGrowth: 0.01,
+  multishotBaseDamage: 0.5,
+  multishotDamagePerQuality: 0.065,
+  explosionBaseRadius: 60,
+  explosionRadiusPerQuality: 6,
+  explosionBaseDamage: 0.35,
+  explosionDamagePerQuality: 0.075,
+} as const);
+
+export function marineRarityWeights(
+  level: number,
+  minRare = false,
+  excludeLegendary = false,
+) {
+  const band = level < 10 ? 0 : level < 20 ? 1 : level < 30 ? 2 : 3;
+  const weights = [...marineRarityBalance.bands[band]!.weights];
+  if (minRare) weights[0] = 0;
+  if (excludeLegendary) weights[3] = 0;
+  return weights;
+}
 export function rollMarineRarity(
   level: number,
   random = Math.random,
   minRare = false,
   excludeLegendary = false,
-): UpgradeRarity {
-  const weights =
-    level < 10
-      ? [780, 200, 19, 1]
-      : level < 20
-        ? [680, 270, 47, 3]
-        : level < 30
-          ? [580, 330, 84, 6]
-          : [500, 360, 130, 10];
-  if (minRare) weights[0] = 0;
-  if (excludeLegendary) weights[3] = 0;
+): UpgradeRarity | null {
+  const weights = marineRarityWeights(level, minRare, excludeLegendary);
+  const lastEligible = weights.findLastIndex((weight) => weight > 0);
+  if (lastEligible < 0) return null;
   let roll = random() * weights.reduce((sum, weight) => sum + weight, 0);
   const rarities = ["COMMON", "RARE", "EPIC", "LEGENDARY"] as const;
   return (
-    rarities.find((_, index) => (roll -= weights[index]!) < 0) ?? "LEGENDARY"
+    rarities.find((_, index) => (roll -= weights[index]!) < 0) ??
+    rarities[lastEligible]!
   );
 }
 export function getMarineStats(state: MarineGrowthState) {
@@ -187,15 +225,19 @@ export function getMarineStats(state: MarineGrowthState) {
   return {
     primaryDamageMultiplier:
       (1 + strength("primary-damage")) *
-      (1 + 0.45 * strength("heavy")) *
-      (1 + 0.035 * strength("burst")),
+      (1 + marineModBalance.heavyDamagePerQuality * strength("heavy")) *
+      (1 + marineModBalance.burstDamagePerQuality * strength("burst")),
     attackSpeedMultiplier: 1 + strength("attack-speed"),
     criticalChance: Math.min(
       1 - Number.EPSILON,
-      0.05 + (0.95 * crit) / (1 + crit),
+      marineGrowthBalance.baseCritChance +
+        ((1 - marineGrowthBalance.baseCritChance) * crit) / (1 + crit),
     ),
-    criticalMultiplier: 1.75,
-    minTargetProgress01: Math.max(0.25, 0.55 - strength("range")),
+    criticalMultiplier: marineGrowthBalance.criticalMultiplier,
+    minTargetProgress01: Math.max(
+      0.25,
+      marineConfig.primaryMinProgress01 - strength("range"),
+    ),
   };
 }
 export function deriveMarineWeaponConfig(
@@ -211,7 +253,11 @@ export function deriveMarineWeaponConfig(
           2 + Math.floor((state.ranks.burst! - 1) / 2),
         ) + (state.legendary.has("burst") ? 1 : 0)
       : 1;
-  const roundIntervalMs = Math.max(55, 155 / (1 + 0.055 * burst));
+  const roundIntervalMs = Math.max(
+    55,
+    marineModBalance.burstIntervalMs /
+      (1 + marineModBalance.burstSpeedPerQuality * burst),
+  );
   const heavyPenalty = heavy > 0 ? 1.2 + 0.15 / (1 + 0.15 * heavy) : 1;
   return {
     ...gaussRifleBalance,
@@ -234,9 +280,14 @@ export function getMarineTraitEffects(state: MarineGrowthState): TraitEffects {
     const strength = q("penetration");
     effects.pierceCount = Math.min(
       marineGrowthBalance.maxPierceCount,
-      1 + Math.floor((rank("penetration") - 1) * 0.7),
+      1 +
+        Math.floor(
+          (rank("penetration") - 1) * marineModBalance.penetrationCountPerLevel,
+        ),
     );
-    effects.pierceDamageRetention = 0.6 + (0.35 * strength) / (strength + 5);
+    effects.pierceDamageRetention =
+      marineModBalance.penetrationBaseRetention +
+      (0.35 * strength) / (strength + 5);
     effects.shieldBypass = (0.5 * strength) / (strength + 12);
     if (state.legendary.has("penetration")) {
       effects.pierceShockwaveRadius = 100;
@@ -249,9 +300,15 @@ export function getMarineTraitEffects(state: MarineGrowthState): TraitEffects {
       marineGrowthBalance.maxBounceCount,
       1 + Math.floor((rank("ricochet") - 1) / 2),
     );
-    effects.bounceRadiusBonus = Math.min(90, strength * 7);
-    effects.bounceDamageRetention = 0.6 + (0.35 * strength) / (strength + 5);
-    effects.bounceDamageGrowth = 0.01 * strength;
+    effects.bounceRadiusBonus = Math.min(
+      90,
+      strength * marineModBalance.ricochetRadiusPerQuality,
+    );
+    effects.bounceDamageRetention =
+      marineModBalance.ricochetBaseRetention +
+      (0.35 * strength) / (strength + 5);
+    effects.bounceDamageGrowth =
+      marineModBalance.ricochetDamageGrowth * strength;
   }
   if (q("multishot") > 0) {
     const strength = q("multishot");
@@ -259,16 +316,21 @@ export function getMarineTraitEffects(state: MarineGrowthState): TraitEffects {
       marineGrowthBalance.maxMultishotTargets,
       1 + Math.floor((rank("multishot") - 1) / 2),
     );
-    effects.multishotDamageFactor = 0.5 + 0.065 * strength;
+    effects.multishotDamageFactor =
+      marineModBalance.multishotBaseDamage +
+      marineModBalance.multishotDamagePerQuality * strength;
     effects.multishotSpreadRadians = Math.min(1.3, 0.65 + 0.04 * strength);
   }
   if (q("explosive") > 0) {
     const strength = q("explosive");
     effects.explosionRadius = Math.min(
       marineGrowthBalance.maxExplosionRadius,
-      60 + strength * 6,
+      marineModBalance.explosionBaseRadius +
+        strength * marineModBalance.explosionRadiusPerQuality,
     );
-    effects.explosionDamageFactor = 0.35 + 0.075 * strength;
+    effects.explosionDamageFactor =
+      marineModBalance.explosionBaseDamage +
+      marineModBalance.explosionDamagePerQuality * strength;
     if (state.legendary.has("explosive")) {
       effects.explosionChainTargets = 2;
       effects.explosionSecondaryRadius = 75;
@@ -291,7 +353,7 @@ export function describeMarineUpgrade(
     case "attack-speed":
       return `공격속도 +${percent(stats.attackSpeedMultiplier - 1)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
     case "crit-chance":
-      return `치명타 확률 ${percent(stats.criticalChance)} · 피해 ×1.75`;
+      return `치명타 확률 ${percent(stats.criticalChance)} · 피해 ×${stats.criticalMultiplier}`;
     case "range":
       return `진행도 ${percent(stats.minTargetProgress01)}부터 조준 · 개조 슬롯 미사용`;
     case "penetration":
@@ -299,12 +361,12 @@ export function describeMarineUpgrade(
     case "ricochet":
       return `${effects.bounceCount}회 도탄 · 후속 피해 ${percent(effects.bounceDamageRetention)} · 탐색 +${Math.round(effects.bounceRadiusBonus)}`;
     case "burst":
-      return `${weapon.burstRounds}연발 · 간격 ${Math.round(weapon.roundIntervalMs!)}ms · 숙련 피해 +${percent(0.035 * marineStrength(state, id))}${state.legendary.has(id) ? " · 추가 마무리탄" : ""}`;
+      return `${weapon.burstRounds}연발 · 간격 ${Math.round(weapon.roundIntervalMs!)}ms · 숙련 피해 +${percent(marineModBalance.burstDamagePerQuality * marineStrength(state, id))}${state.legendary.has(id) ? " · 추가 마무리탄" : ""}`;
     case "multishot":
       return `보조탄 ${effects.multishotTargets}발 동시 발사 · 피해 ${percent(effects.multishotDamageFactor)}`;
     case "explosive":
       return `반경 ${Math.round(effects.explosionRadius)} · 피해 ${percent(effects.explosionDamageFactor)}${state.legendary.has(id) ? " · 처치 2명 1회 재폭발" : ""}`;
     case "heavy":
-      return `개별 탄환 피해 ×${(1 + 0.45 * marineStrength(state, id)).toFixed(2)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
+      return `개별 탄환 피해 ×${(1 + marineModBalance.heavyDamagePerQuality * marineStrength(state, id)).toFixed(2)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
   }
 }

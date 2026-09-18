@@ -82,7 +82,7 @@ export class PrototypeSynergies {
       if (this.now - time > tune.saturation.windowMs)
         this.recentHits.delete(id);
     this.zones = this.zones.filter((zone) => (zone.remainingMs -= deltaMs) > 0);
-    if (this.active.has("hunt"))
+    if (this.active.has("hunt") && tune.enabled.hunt)
       this.huntTarget =
         enemies.find(
           (enemy) => enemy.id === this.huntTarget?.id && enemy.hp > 0,
@@ -90,7 +90,7 @@ export class PrototypeSynergies {
   }
 
   registerHits(ids: Iterable<number>): void {
-    if (!this.active.has("saturation") || this.saturation) return;
+    if (!tune.enabled.saturation || !this.active.has("saturation") || this.saturation) return;
     for (const id of ids)
       if (Number.isSafeInteger(id)) this.recentHits.set(id, this.now);
     if (this.recentHits.size >= tune.saturation.distinctHits) {
@@ -100,7 +100,7 @@ export class PrototypeSynergies {
   }
 
   get saturation(): boolean {
-    return this.now < this.saturationUntil;
+    return tune.enabled.saturation && this.now < this.saturationUntil;
   }
   get extraBurstRounds(): number {
     return this.saturation ? tune.saturation.extraBurstRounds : 0;
@@ -112,12 +112,12 @@ export class PrototypeSynergies {
     return this.saturation ? tune.saturation.extraMissiles : 0;
   }
   get focusId(): number | null {
-    return this.huntTarget?.id ?? null;
+    return tune.enabled.hunt ? this.huntTarget?.id ?? null : null;
   }
 
   addZone(x: number, y: number, radius: number, durationMs: number): void {
     if (
-      !this.active.has("kill-zone") ||
+      !tune.enabled["kill-zone"] || !this.active.has("kill-zone") ||
       ![x, y, radius, durationMs].every(Number.isFinite) ||
       radius <= 0 ||
       durationMs <= 0
@@ -129,7 +129,7 @@ export class PrototypeSynergies {
   inKillZone(enemy: EnemyState): boolean {
     const point = combatPosition(enemy);
     return (
-      enemy.hp > 0 &&
+      tune.enabled["kill-zone"] && enemy.hp > 0 &&
       this.zones.some(
         (zone) => Math.hypot(point.x - zone.x, point.y - zone.y) <= zone.radius,
       )
@@ -158,11 +158,11 @@ export class PrototypeSynergies {
   }
 
   get visuals(): SynergyVisual[] {
-    const visuals: SynergyVisual[] = this.zones.map((zone) => ({
+    const visuals: SynergyVisual[] = (tune.enabled["kill-zone"] ? this.zones : []).map((zone) => ({
       ...zone,
       kind: "zone",
     }));
-    if (this.huntTarget)
+    if (this.huntTarget && tune.enabled.hunt)
       visuals.push({
         kind: "hunt",
         ...combatPosition(this.huntTarget),

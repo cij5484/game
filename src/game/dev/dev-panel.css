@@ -1,0 +1,257 @@
+.dev-balance-panel {
+  box-sizing: border-box;
+  height: 100dvh;
+  overflow: auto;
+  background: #111820;
+  color: #eaf1f7;
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+  padding: 24px max(20px, calc((100vw - 1160px) / 2));
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  color-scheme: dark;
+}
+.dev-balance-panel *,
+.dev-balance-panel *::before,
+.dev-balance-panel *::after {
+  box-sizing: border-box;
+}
+.dev-balance-panel [hidden] {
+  display: none !important;
+}
+.dev-balance-panel h1 {
+  font-size: clamp(24px, 3vw, 36px);
+  margin: 4px 0 12px;
+}
+.dev-balance-panel p {
+  margin: 8px 0;
+}
+.balance-eyebrow,
+.balance-description,
+.balance-values,
+.balance-game-state {
+  color: #b7c7d5;
+}
+.balance-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.balance-connection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.balance-connection {
+  color: #eac47d;
+}
+.balance-connection[data-connected="true"] {
+  color: #88e2b5;
+}
+.dev-balance-panel a {
+  color: #9ecfff;
+  text-underline-offset: 3px;
+}
+.balance-sticky {
+  position: sticky;
+  top: -24px;
+  z-index: 2;
+  background: #111820f5;
+  padding: 16px 0 10px;
+  border-bottom: 1px solid #40505d;
+}
+.balance-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.balance-toolbar input {
+  flex: 1;
+  min-width: 160px;
+}
+.dev-balance-panel input,
+.dev-balance-panel select,
+.dev-balance-panel textarea,
+.dev-balance-panel button {
+  min-height: 40px;
+  border: 1px solid #536475;
+  border-radius: 6px;
+  background: #1e2b38;
+  color: inherit;
+  padding: 8px 12px;
+  font: inherit;
+}
+.dev-balance-panel button {
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dev-balance-panel button:hover:not(:disabled) {
+  background: #314658;
+}
+.dev-balance-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dev-balance-panel :focus-visible {
+  outline: 2px solid #a0d5ff;
+  outline-offset: 3px;
+}
+.balance-notice {
+  font-size: 13px;
+  color: #a4d5c0;
+  min-height: 20px;
+}
+.balance-notice[data-error="true"] {
+  color: #ffb4a7;
+}
+.balance-hp-examples {
+  padding: 12px 0;
+  color: #b9cddb;
+  font-size: 13px;
+}
+.balance-group {
+  border: 1px solid #344858;
+  border-radius: 8px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+.balance-group summary {
+  font-size: 17px;
+  font-weight: 650;
+  padding: 16px;
+  background: #1b2834;
+  cursor: pointer;
+}
+.balance-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 8px 24px;
+  padding: 16px 20px;
+  border-top: 1px solid #2c3d4b;
+}
+.balance-field[data-changed="true"] {
+  border-left: 3px solid #8bbdf5;
+  padding-left: 17px;
+}
+.balance-identity label {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: help;
+}
+.balance-description {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.balance-identity code {
+  display: block;
+  margin-top: 4px;
+  color: #93a7b8;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.balance-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.balance-control input[type="number"] {
+  width: 145px;
+  max-width: 100%;
+}
+.balance-control input[type="checkbox"] {
+  width: 24px;
+  min-height: 24px;
+  accent-color: #83bdf9;
+  cursor: pointer;
+}
+.balance-control span {
+  font-size: 12px;
+}
+.balance-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.balance-meta button {
+  margin-left: auto;
+  font-size: 12px;
+  min-height: 30px;
+  padding: 4px 10px;
+}
+.balance-timing {
+  border: 1px solid #42566a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #bcd9f2;
+}
+.balance-changed {
+  color: #add0fa;
+}
+.balance-storage {
+  margin: 24px 0 40px;
+}
+.balance-storage-body {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+}
+.balance-storage-body label {
+  font-weight: 650;
+}
+.balance-storage-body p {
+  font-size: 13px;
+  color: #b7c7d5;
+}
+.balance-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dev-balance-panel textarea {
+  width: 100%;
+  resize: vertical;
+  font:
+    13px/1.6 ui-monospace,
+    monospace;
+}
+@media (max-width: 600px) {
+  .dev-balance-panel {
+    padding: 16px 12px;
+  }
+  .balance-sticky {
+    top: -16px;
+  }
+  .balance-toolbar {
+    gap: 8px;
+  }
+  .balance-toolbar label {
+    width: 100%;
+  }
+  .balance-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+  .balance-field[data-changed="true"] {
+    padding-left: 13px;
+  }
+  .balance-control {
+    justify-content: flex-start;
+  }
+  .balance-control input[type="number"] {
+    width: 180px;
+  }
+  .balance-meta button {
+    margin-left: 0;
+  }
+}
