@@ -354,9 +354,9 @@ it("renders Korean tooltips, searches fields, applies values and releases subscr
     new ElementStub() as unknown as HTMLElement,
   );
   expect(byId("balance-run.combatTempo").title).toContain("높이면");
-  state.status({ connected: true, speed: 4, level: 20 });
+  state.status({ connected: true, speed: 8, level: 20 });
   expect(byId("balance-connection").textContent).toBe("게임 연결됨");
-  expect(byId("balance-game-state").textContent).toContain("X4");
+  expect(byId("balance-game-state").textContent).toContain("X8");
   change("balance-run.combatTempo", "2");
   expect(state.overrides["run.combatTempo"]).toBe(2);
   const search = byId("balance-search");
@@ -499,8 +499,9 @@ it("validates performance messages and keeps the one-second bridge cadence", asy
     expect.objectContaining({ performance }),
   );
   channel.onmessage({
-    data: { type: "status", speed: 4, level: 4, telemetry: telemetryReport() },
+    data: { type: "status", speed: 8, level: 4, telemetry: telemetryReport() },
   });
+  expect(onStatus.mock.lastCall?.[0].speed).toBe(8);
   expect(onStatus.mock.lastCall?.[0].telemetry).toEqual(telemetryReport());
   channel.onmessage({
     data: {

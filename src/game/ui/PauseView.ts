@@ -11,13 +11,13 @@ export class PauseView {
   private entries: readonly BuildIcon[] = [];
   private readonly keydown: (event: KeyboardEvent) => void;
   private readonly change: (paused: boolean) => void;
-  private speed: 1 | 2 | 4 = 1;
+  private speed: 1 | 2 | 4 | 8 = 1;
   private readonly cycleSpeed: () => void;
 
   constructor(
     change: (paused: boolean) => void,
     restart: () => void,
-    changeSpeed?: (speed: 1 | 2 | 4) => void,
+    changeSpeed?: (speed: 1 | 2 | 4 | 8) => void,
   ) {
     this.change = change;
     this.button.className = "pause-button";
@@ -34,7 +34,8 @@ export class PauseView {
     this.renderSpeed();
     this.cycleSpeed = () => {
       if (this.speedButton.disabled) return;
-      this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1;
+      this.speed =
+        this.speed === 1 ? 2 : this.speed === 2 ? 4 : this.speed === 4 ? 8 : 1;
       this.renderSpeed();
       changeSpeed?.(this.speed);
     };

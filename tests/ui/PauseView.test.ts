@@ -32,7 +32,7 @@ it("cycles native DevSpeed input, blocks it and cleans up at shutdown", () => {
     element.className.includes("dev-speed"),
   )!;
   expect(speed.textContent).toBe("X1");
-  for (const value of [2, 4, 1]) {
+  for (const value of [2, 4, 8, 1]) {
     speed.dispatchEvent(new Event("click"));
     expect(speed.textContent).toBe(`X${value}`);
     expect(changeSpeed).toHaveBeenLastCalledWith(value);
@@ -42,10 +42,10 @@ it("cycles native DevSpeed input, blocks it and cleans up at shutdown", () => {
   view.setBlocked(true);
   expect(speed.disabled).toBe(true);
   speed.dispatchEvent(new Event("click"));
-  expect(changeSpeed).toHaveBeenCalledTimes(3);
+  expect(changeSpeed).toHaveBeenCalledTimes(4);
   view.setBlocked(false);
   view.destroy();
   expect(speed.remove).toHaveBeenCalledOnce();
   speed.dispatchEvent(new Event("click"));
-  expect(changeSpeed).toHaveBeenCalledTimes(3);
+  expect(changeSpeed).toHaveBeenCalledTimes(4);
 });

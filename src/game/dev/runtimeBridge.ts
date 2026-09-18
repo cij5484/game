@@ -158,7 +158,7 @@ export function startBalanceBridge(
     if (
       message.type === "status" &&
       role === "panel" &&
-      [1, 2, 4].includes(Number(message.speed)) &&
+      [1, 2, 4, 8].includes(Number(message.speed)) &&
       typeof message.level === "number"
     ) {
       lastSeen = Date.now();

@@ -38,7 +38,7 @@ import { siegeBossBalance } from "../../src/game/data/boss";
 
 interface SceneHarness {
   telemetry: BalanceTelemetry;
-  gameSpeed: 1 | 2 | 4;
+  gameSpeed: 1 | 2 | 4 | 8;
   spawnBatch(): void;
   rifle: GaussRifle;
   synergies: PrototypeSynergies;
@@ -484,20 +484,27 @@ it("Marine Scene applies range, burst and quality while old evolution/synergy st
 it("scales gameplay once at update entry while pause and focus input remain unscaled", () => {
   const normal = scene(),
     fast = scene();
-  Object.assign(fast, { gameSpeed: 4 });
+  Object.assign(fast, { gameSpeed: 8 });
+  const startProgress = fast.enemies[0]!.state.progress01;
   normal.update(0, 800);
-  fast.update(0, 200);
+  fast.update(0, 100);
   expect(fast.run.elapsedMs).toBe(normal.run.elapsedMs);
   expect(fast.enemies.map((e) => e.state)).toEqual(
     normal.enemies.map((e) => e.state),
   );
   expect(fast.shotIndex).toBe(normal.shotIndex);
+  expect(fast.shotIndex).toBeGreaterThan(0);
+  expect(fast.enemies[0]!.state.progress01).toBeGreaterThan(startProgress);
   expect(fast.director.elapsedMs).toBe(normal.director.elapsedMs);
+  const pausedShots = fast.shotIndex;
+  const pausedEnemies = fast.enemies.map((e) => ({ ...e.state }));
   fast.manualPaused = true;
   fast.update(0, 1000);
   fast.focusAt(1, 0);
   expect(fast.run.elapsedMs).toBeCloseTo(800);
   expect(fast.focus.targetId).toBeNull();
+  expect(fast.shotIndex).toBe(pausedShots);
+  expect(fast.enemies.map((e) => e.state)).toEqual(pausedEnemies);
 });
 
 it("owned special kills credit XP once", () => {
@@ -1052,16 +1059,16 @@ it("M12 primary action snapshots mod branches for the entire burst", () => {
   expect(started.growth.branches).toEqual({ burst: "a" });
 });
 
-it("telemetry observes actual Gauss loss once and X4 uses the same Stage clock", () => {
+it("telemetry observes actual Gauss loss once and X8 uses the same Stage clock", () => {
   const normal = scene(),
     fast = scene();
-  fast.gameSpeed = 4;
+  fast.gameSpeed = 8;
   const startHp = normal.enemies.reduce(
     (sum, entry) => sum + entry.state.hp,
     0,
   );
   normal.update(0, 1000);
-  fast.update(0, 250);
+  fast.update(0, 125);
   const a = normal.telemetry.report()!,
     b = fast.telemetry.report()!;
   expect(a.metrics.stageMs).toBeCloseTo(1000);

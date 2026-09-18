@@ -173,7 +173,7 @@ export class CombatScene extends Phaser.Scene {
   private focus = new TargetFocus();
   private pauseUi!: PauseView;
   private manualPaused = false;
-  private gameSpeed: 1 | 2 | 4 = 1;
+  private gameSpeed: 1 | 2 | 4 | 8 = 1;
   private cancelInput = () => {};
   private evolutions = new Set<string>();
   private notices: string[] = [];
