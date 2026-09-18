@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { ResultView, type RunResult } from "../../src/game/ui/ResultView";
+import { metaStore } from "../../src/game/meta/metaSave";
+import { operationRecords } from "../../src/game/data/operations";
 
 class ElementStub extends EventTarget {
   textContent = "";
@@ -34,6 +36,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it("shows earned and saved currencies separately and allows only one result action", () => {
   const nodes: ElementStub[] = [];
+  vi.stubGlobal("localStorage", { getItem: () => null, setItem: vi.fn() });
   vi.stubGlobal("document", {
     body: new ElementStub("body"),
     createElement: (tag: string) => {
@@ -58,11 +61,14 @@ it("shows earned and saved currencies separately and allows only one result acti
     evolutions: new Set(),
     settlement: {
       reward: { gold: 400, credits: 7 },
+      operations: {
+        completed: [operationRecords[0]!.id],
+        points: 1,
+        unlocked: ["수류탄", "특수 슬롯 1"],
+      },
       save: {
-        version: 1,
-        kind: "horde-meta",
+        ...metaStore.read(),
         account: { gold: 900, credits: 12, rerollLevel: 0 },
-        characters: { marine: { research: {} } },
         progress: {
           completedRuns: 1,
           stage1Cleared: false,
@@ -83,6 +89,19 @@ it("shows earned and saved currencies separately and allows only one result acti
   expect(value("획득 Gold / Credits")).toBe("400 / 7");
   expect(value("보유 Gold / Credits")).toBe("900 / 12");
   expect(value("정예 처치")).toBe("2");
+  expect(
+    nodes.some(
+      (node) => node.textContent === "이번 Run 작전 기록 완료 1 · 숙련 +1",
+    ),
+  ).toBe(true);
+  expect(
+    nodes.some((node) => node.textContent === operationRecords[0]!.title),
+  ).toBe(true);
+  expect(
+    nodes.some(
+      (node) => node.textContent === "신규 해금: 수류탄 · 특수 슬롯 1",
+    ),
+  ).toBe(true);
   expect(nodes[0]!.open).toBe(true);
   const buttons = nodes.filter((node) => node.tag === "button");
   buttons.find((node) => node.textContent === "메인으로")!.click();

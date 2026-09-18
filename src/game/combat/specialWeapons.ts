@@ -42,6 +42,7 @@ export interface SpecialResult {
 }
 type Stats = ReturnType<typeof getSpecialWeaponStats>;
 interface Grenade extends SpecialVisual {
+  critical: boolean;
   kind: "grenade";
   target: Point;
   from: Point;
@@ -54,6 +55,7 @@ interface Grenade extends SpecialVisual {
   extraSubmunitions: number;
 }
 interface Missile extends SpecialVisual {
+  critical: boolean;
   kind: "missile";
   targetId: number;
   weapon: SpecialWeaponState;
@@ -85,6 +87,7 @@ interface Drone extends SpecialVisual {
   targetId: number | null;
 }
 interface Area extends Point {
+  critical?: boolean;
   delay: number;
   damage: number;
   radius: number;
@@ -119,6 +122,8 @@ const danger = (e: EnemyState) =>
 
 /** Event targeting is O(N); in-flight missiles reuse validated enemy indices. */
 export class SpecialWeapons {
+  private retargetCount = 0;
+  private criticalHitCount = 0;
   private serial = 0;
   private grenades: Grenade[] = [];
   private missiles: Missile[] = [];
@@ -130,6 +135,14 @@ export class SpecialWeapons {
   private marks = new Map<number, { remaining: number; multiplier: number }>();
   private enemyIndices = new Map<number, number>();
   private missilePressure = { targetId: -1, hits: 0 };
+
+  get totalRetargets(): number {
+    return this.retargetCount;
+  }
+
+  get totalCriticalHits(): number {
+    return this.criticalHitCount;
+  }
 
   get activeUnitCount(): number {
     let count = this.missiles.length + this.drones.length;
@@ -262,14 +275,19 @@ export class SpecialWeapons {
   }
 
   private critical(stats: Stats, context: SpecialContext) {
-    return (context.random ?? Math.random)() <
+    const critical =
+      (context.random ?? Math.random)() <
       Math.min(
         1,
         stats.criticalChance + precisionBonus(context.relics ?? noRelics),
-      )
-      ? tune.criticalMultiplier +
+      );
+    return {
+      critical,
+      multiplier: critical
+        ? tune.criticalMultiplier +
           (context.growth.meta?.criticalMultiplierBonus ?? 0)
-      : 1;
+        : 1,
+    };
   }
 
   private cycleMultiplier(context: SpecialContext) {
@@ -284,6 +302,7 @@ export class SpecialWeapons {
     bypass: number,
     context: SpecialContext,
     weapon: SpecialWeaponId,
+    critical = false,
   ) {
     const multiplier =
       weapon === "grenade"
@@ -301,8 +320,10 @@ export class SpecialWeapons {
       damage * multiplier * threatMultiplier,
       bypass,
     );
-    if (next.hp < enemy.hp || (next.shieldHp ?? 0) < (enemy.shieldHp ?? 0))
+    if (next.hp < enemy.hp || (next.shieldHp ?? 0) < (enemy.shieldHp ?? 0)) {
+      if (critical) this.criticalHitCount++;
       context.synergy?.registerHits([enemy.id]);
+    }
     return applyImpact(
       [enemy],
       [next],
@@ -388,7 +409,9 @@ export class SpecialWeapons {
               y: anchor.y,
             }
           : anchor;
+      const critical = this.critical(stats, context);
       this.grenades.push({
+        critical: critical.critical,
         id: ++this.serial,
         kind: "grenade",
         ...origin,
@@ -400,7 +423,7 @@ export class SpecialWeapons {
         damage:
           stats.damage *
           action.damageMultiplier *
-          this.critical(stats, context) *
+          critical.multiplier *
           (nuclear
             ? grenadeTune.nuclear.damage
             : barrage
@@ -481,6 +504,7 @@ export class SpecialWeapons {
       this.area(
         {
           ...g.target,
+          critical: g.critical,
           damage: 0,
           radius: radius * grenadeTune.magnetic.radius,
           pull: grenadeTune.magnetic.pull,
@@ -500,6 +524,7 @@ export class SpecialWeapons {
       this.area(
         {
           ...g.target,
+          critical: g.critical,
           damage: damage * grenadeTune.tactical.damage,
           radius: radius * grenadeTune.tactical.radius,
           pull: grenadeTune.tactical.pull,
@@ -511,6 +536,7 @@ export class SpecialWeapons {
       if (w.branch === "b") {
         this.areas.push({
           ...g.target,
+          critical: g.critical,
           delay: grenadeTune.tactical.collapseDelayMs[Number(done)]!,
           damage: damage * grenadeTune.tactical.collapseDamage[Number(done)]!,
           radius: radius * grenadeTune.tactical.collapseRadius,
@@ -522,6 +548,7 @@ export class SpecialWeapons {
       } else {
         this.areas.push({
           ...g.target,
+          critical: g.critical,
           delay: grenadeTune.tactical.tickMs,
           damage: damage * grenadeTune.tactical.tickDamage,
           radius: radius * grenadeTune.tactical.radius,
@@ -533,7 +560,14 @@ export class SpecialWeapons {
       }
     } else {
       this.area(
-        { ...g.target, damage, radius, pull: 0, bypass: 0 },
+        {
+          ...g.target,
+          critical: g.critical,
+          damage,
+          radius,
+          pull: 0,
+          bypass: 0,
+        },
         context,
         result,
       );
@@ -541,6 +575,7 @@ export class SpecialWeapons {
         this.area(
           {
             ...g.target,
+            critical: g.critical,
             damage:
               damage * grenadeTune.highExplosive.coreDamage[Number(done)]!,
             radius: radius * grenadeTune.highExplosive.coreRadius,
@@ -560,6 +595,7 @@ export class SpecialWeapons {
         for (let i = 0; i < count; i++) {
           const angle = (i * Math.PI * 2) / count;
           this.areas.push({
+            critical: g.critical,
             x: Math.max(
               0,
               Math.min(
@@ -601,6 +637,7 @@ export class SpecialWeapons {
     if (w.transcendence === "aftershock")
       this.areas.push({
         ...g.target,
+        critical: g.critical,
         delay: grenadeTune.aftershock.delayMs,
         damage: damage * grenadeTune.aftershock.damage,
         radius: radius * grenadeTune.aftershock.radius,
@@ -628,6 +665,7 @@ export class SpecialWeapons {
 
   private area(
     area: Point & {
+      critical?: boolean;
       damage: number;
       radius: number;
       pull: number;
@@ -647,7 +685,14 @@ export class SpecialWeapons {
     result.enemies = result.enemies.map((enemy) => {
       if (enemy.hp <= 0 || distance(combatPosition(enemy), area) > area.radius)
         return enemy;
-      let next = this.hit(enemy, area.damage, area.bypass, context, weapon);
+      let next = this.hit(
+        enemy,
+        area.damage,
+        area.bypass,
+        context,
+        weapon,
+        area.critical,
+      );
       if (area.pull && !next.boss) {
         const old = combatPosition(next);
         const x = Math.max(
@@ -868,7 +913,9 @@ export class SpecialWeapons {
           : branch(w, "hunter", "a")
             ? missileTune.hunter.chains[done]!
             : 0;
+      const critical = this.critical(salvo.stats, context);
       const missile: Missile = {
+        critical: critical.critical,
         id: ++this.serial,
         kind: "missile",
         weapon: w,
@@ -876,9 +923,7 @@ export class SpecialWeapons {
         y: origin.y,
         targetId: target.id,
         damage:
-          salvo.stats.damage *
-          salvo.damageMultiplier *
-          this.critical(salvo.stats, context),
+          salvo.stats.damage * salvo.damageMultiplier * critical.multiplier,
         lifetime,
         maxLifetime: lifetime,
         retargets:
@@ -966,6 +1011,7 @@ export class SpecialWeapons {
         );
         if (!target) return false;
         missile.retargets--;
+        this.retargetCount++;
         this.redirectMissile(missile, target, context);
       }
       const wait = Math.min(delta, missile.rearmMs);
@@ -1006,6 +1052,7 @@ export class SpecialWeapons {
         w.tree === "hunter" ? missileTune.hunter.bypass : 0,
         context,
         "missile",
+        missile.critical,
       );
       this.replaceEnemy(result, context, enemyIndex(target.id)!, next);
       result.effects.push({
@@ -1183,11 +1230,9 @@ export class SpecialWeapons {
     factor: number,
   ) {
     const action = startAction(context.relics ?? noRelics, context.random);
+    const critical = this.critical(stats, context);
     let damage =
-      stats.damage *
-      factor *
-      action.damageMultiplier *
-      this.critical(stats, context);
+      stats.damage * factor * action.damageMultiplier * critical.multiplier;
     let bypass = 0;
     if (weapon.tree === "gunship") damage *= droneTune.gunship.damage;
     if (branch(weapon, "gunship", "b")) {
@@ -1214,7 +1259,7 @@ export class SpecialWeapons {
       result,
       context,
       index,
-      this.hit(target, damage, bypass, context, "drone"),
+      this.hit(target, damage, bypass, context, "drone", critical.critical),
     );
     result.effects.push({
       kind: "shot",
@@ -1228,6 +1273,7 @@ export class SpecialWeapons {
       this.area(
         {
           ...point,
+          critical: critical.critical,
           radius: droneTune.cruiser.radius,
           damage: damage * droneTune.cruiser.splashDamage,
           bypass,

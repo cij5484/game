@@ -52,7 +52,9 @@ export class PrototypeSynergies {
   updateBuild(
     growth: MarineGrowthState,
     weapons: readonly SpecialWeaponState[],
+    enabled = true,
   ): PrototypeSynergyId[] {
+    if (!enabled) return [];
     const added: PrototypeSynergyId[] = [];
     for (const recipe of Object.values(prototypeSynergyDefinitions)) {
       if (
@@ -90,7 +92,12 @@ export class PrototypeSynergies {
   }
 
   registerHits(ids: Iterable<number>): void {
-    if (!tune.enabled.saturation || !this.active.has("saturation") || this.saturation) return;
+    if (
+      !tune.enabled.saturation ||
+      !this.active.has("saturation") ||
+      this.saturation
+    )
+      return;
     for (const id of ids)
       if (Number.isSafeInteger(id)) this.recentHits.set(id, this.now);
     if (this.recentHits.size >= tune.saturation.distinctHits) {
@@ -112,12 +119,13 @@ export class PrototypeSynergies {
     return this.saturation ? tune.saturation.extraMissiles : 0;
   }
   get focusId(): number | null {
-    return tune.enabled.hunt ? this.huntTarget?.id ?? null : null;
+    return tune.enabled.hunt ? (this.huntTarget?.id ?? null) : null;
   }
 
   addZone(x: number, y: number, radius: number, durationMs: number): void {
     if (
-      !tune.enabled["kill-zone"] || !this.active.has("kill-zone") ||
+      !tune.enabled["kill-zone"] ||
+      !this.active.has("kill-zone") ||
       ![x, y, radius, durationMs].every(Number.isFinite) ||
       radius <= 0 ||
       durationMs <= 0
@@ -129,7 +137,8 @@ export class PrototypeSynergies {
   inKillZone(enemy: EnemyState): boolean {
     const point = combatPosition(enemy);
     return (
-      tune.enabled["kill-zone"] && enemy.hp > 0 &&
+      tune.enabled["kill-zone"] &&
+      enemy.hp > 0 &&
       this.zones.some(
         (zone) => Math.hypot(point.x - zone.x, point.y - zone.y) <= zone.radius,
       )
@@ -158,7 +167,9 @@ export class PrototypeSynergies {
   }
 
   get visuals(): SynergyVisual[] {
-    const visuals: SynergyVisual[] = (tune.enabled["kill-zone"] ? this.zones : []).map((zone) => ({
+    const visuals: SynergyVisual[] = (
+      tune.enabled["kill-zone"] ? this.zones : []
+    ).map((zone) => ({
       ...zone,
       kind: "zone",
     }));

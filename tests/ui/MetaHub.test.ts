@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mountMetaHub } from "../../src/game/ui/MetaHub";
 import { metaStore, META_STORAGE_KEY } from "../../src/game/meta/metaSave";
+import { operationRecords } from "../../src/game/data/operations";
 class ElementStub extends EventTarget {
   id = "";
   textContent = "";
@@ -45,6 +46,7 @@ afterEach(() => {
 });
 
 it("shows research breakthrough effects, saves purchases and disables unaffordable/MAX upgrades", async () => {
+  metaStore.unlockAll();
   const save = metaStore.read();
   save.account.gold = 1000;
   save.account.credits = 200;
@@ -75,6 +77,32 @@ it("shows research breakthrough effects, saves purchases and disables unaffordab
   expect(byId("meta-buy-reroll").disabled).toBe(true);
   expect(byId("meta-reroll").textContent).toContain("Run당 2회");
   cleanup();
+});
+
+it("shows fresh locks, automatic record rewards and progressive research without claim buttons", async () => {
+  metaStore.grantDevCurrencies(1000, 0);
+  mountMetaHub(new ElementStub() as unknown as HTMLElement, vi.fn());
+  expect(byId("meta-mastery").textContent).toContain("숙련 0 Point · 완료 0 /");
+  expect(byId("meta-special-capacity").textContent).toContain("0 / 2");
+  expect(byId("meta-buy-primary-damage").disabled).toBe(false);
+  expect(byId("meta-buy-special-damage").disabled).toBe(true);
+  expect(byId("meta-next-special-damage").textContent).toContain("첫");
+  expect(byId("meta-unlock-weapon-missile").textContent).toContain("9");
+  expect(byId("meta-record-hold-line").textContent).toContain("0:00 / 5:00");
+  const first = operationRecords.find(
+    (record) => record.title === "첫 작전 종료",
+  )!;
+  metaStore.completeRecord(first.id);
+  win.dispatchEvent(new Event("storage"));
+  expect(byId(`meta-record-${first.id}`).textContent).toBe("✓ 완료");
+  expect(byId("meta-mastery").textContent).toContain("숙련 1 Point · 완료 1 /");
+  expect(byId("meta-special-capacity").textContent).toContain("1 / 2");
+  expect(byId("meta-buy-special-damage").disabled).toBe(false);
+  expect(nodes.some((node) => /받기|Claim/.test(node.textContent))).toBe(false);
+  await click("meta-buy-special-damage");
+  metaStore.resetProgression();
+  win.dispatchEvent(new Event("storage"));
+  expect(byId("meta-buy-special-damage").textContent).toBe("연구");
 });
 
 it("exports separate Meta JSON and requires confirmation for import/reset while showing errors", async () => {

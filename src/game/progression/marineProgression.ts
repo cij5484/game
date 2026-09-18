@@ -1,4 +1,5 @@
 import { neutralMetaModifiers, type MetaModifiers } from "../data/meta";
+import type { UnlockState } from "../data/operations";
 import {
   deriveMarineWeaponConfig,
   describeMarineUpgrade,
@@ -90,7 +91,7 @@ export class MarineProgression {
   readonly branches = {};
   readonly activeSynergyIds = new Set<string>();
   traitLimit: number = marineGrowthBalance.traitLimit;
-  readonly special = new SpecialProgression();
+  readonly special: SpecialProgression;
   readonly history: MarineGrowthHistory[] = [];
   core: PrototypeCoreId | null = null;
   lastSelection: MarineGrowthHistory | null = null;
@@ -108,14 +109,22 @@ export class MarineProgression {
   private readonly random: () => number;
   readonly meta: Readonly<MetaModifiers>;
   rerollsRemaining: number;
+  private unlocks: UnlockState | undefined;
   constructor(
     random = Math.random,
     meta: Readonly<MetaModifiers> = neutralMetaModifiers,
     rerolls = 0,
+    unlocks?: UnlockState,
   ) {
     this.random = random;
+    this.unlocks = unlocks;
+    this.special = new SpecialProgression(unlocks);
     this.meta = Object.freeze({ ...meta });
     this.rerollsRemaining = Math.max(0, Math.min(3, Math.floor(rerolls)));
+  }
+  setUnlocks(unlocks: UnlockState): void {
+    this.unlocks = unlocks;
+    this.special.setUnlocks(unlocks);
   }
   reroll(): boolean {
     if (
@@ -163,7 +172,7 @@ export class MarineProgression {
     return true;
   }
   get validCoreIds(): PrototypeCoreId[] {
-    if (this.core) return [];
+    if (this.core || (this.unlocks && !this.unlocks.coreSystem)) return [];
     return (Object.keys(prototypeCores) as PrototypeCoreId[]).filter((id) =>
       id === "armament"
         ? this.special.capacity < 3
@@ -257,6 +266,12 @@ export class MarineProgression {
     };
   }
   private eligible(card: MarineUpgradeDefinition) {
+    if (
+      card.category === "weapon-trait" &&
+      this.unlocks &&
+      !this.unlocks.basicMods.includes(card.id as MarineTraitId)
+    )
+      return false;
     if ((this.ranks[card.id] ?? 0) >= card.maxRank) return false;
     if (
       card.category === "weapon-trait" &&
@@ -387,6 +402,8 @@ export class MarineProgression {
       )
         .filter(
           (definition) =>
+            (!this.unlocks ||
+              this.unlocks.specialWeapons.includes(definition.id)) &&
             !this.special.weapons.some((weapon) => weapon.id === definition.id),
         )
         .map((definition) => ({

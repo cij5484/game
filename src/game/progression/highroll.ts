@@ -6,6 +6,7 @@ import {
   type PrototypeRelicDefinition,
   type PrototypeRelicId,
 } from "../data/highroll";
+import type { UnlockState } from "../data/operations";
 
 export class PrototypeRelics {
   private readonly capacity = highrollBalance.relicCapacity;
@@ -15,8 +16,14 @@ export class PrototypeRelics {
   private elites = 0;
   private choices: PrototypeRelicDefinition[] | null = null;
   private readonly random: () => number;
-  constructor(random = Math.random) {
+  private unlocks: UnlockState | undefined;
+  constructor(random = Math.random, unlocks?: UnlockState) {
     this.random = random;
+    this.unlocks = unlocks;
+  }
+
+  setUnlocks(unlocks: UnlockState): void {
+    this.unlocks = unlocks;
   }
 
   get pending() {
@@ -24,6 +31,12 @@ export class PrototypeRelics {
   }
 
   onElite(): boolean {
+    if (
+      this.unlocks &&
+      (!this.unlocks.relicSystem ||
+        !this.unlocks.relics.some((id) => !this.owned.has(id)))
+    )
+      return false;
     if (
       !(this.elites++ === 0 && highrollBalance.firstRelicGuaranteed) &&
       this.random() >= highrollBalance.relicDropChance
@@ -37,7 +50,9 @@ export class PrototypeRelics {
     if (!this.pending || this.pendingReplacement) return [];
     if (!this.choices) {
       const pool = Object.values(prototypeRelics).filter(
-        (r) => !this.owned.has(r.id),
+        (r) =>
+          !this.owned.has(r.id) &&
+          (!this.unlocks || this.unlocks.relics.includes(r.id)),
       );
       this.choices = [];
       while (pool.length && this.choices.length < 3) {
@@ -87,8 +102,12 @@ export class PrototypeRelics {
 export class PrototypeCores {
   readonly owned = new Set<PrototypeCoreId>();
 
-  tryDrop(validIds: readonly PrototypeCoreId[], random = Math.random) {
-    if (this.owned.size >= highrollBalance.maxCores) return null;
+  tryDrop(
+    validIds: readonly PrototypeCoreId[],
+    random = Math.random,
+    enabled = true,
+  ) {
+    if (!enabled || this.owned.size >= highrollBalance.maxCores) return null;
     const pool = [...new Set(validIds)].filter(
       (id) =>
         Object.hasOwn(prototypeCores, id) && highrollBalance.coreEnabled[id],

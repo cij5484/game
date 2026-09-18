@@ -10,6 +10,12 @@ import {
 import { startBalanceBridge } from "./runtimeBridge";
 import { metaStore } from "../meta/metaSave";
 import { researchDefinitions } from "../data/meta";
+import {
+  getMasteryPoints,
+  getUnlocks,
+  operationRecords,
+  type OperationId,
+} from "../data/operations";
 import "./dev-panel.css";
 
 type Settings = { version: 1; overrides: Record<string, number | boolean> };
@@ -551,9 +557,14 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     state.id = "balance-meta-state";
     const levels = element("p");
     levels.id = "balance-meta-research";
+    const mastery = element("p");
+    mastery.id = "balance-meta-mastery";
     const refreshMeta = () => {
       try {
         const save = metaStore.read();
+        const unlocks = getUnlocks(save);
+        const records = save.characters.marine.completedOperationRecords;
+        mastery.textContent = `Marine 숙련 ${getMasteryPoints(records)} Point · 기록 ${records.length}/${operationRecords.length} · 특수 슬롯 ${unlocks.specialCapacity}/2 · 유물 ${unlocks.relicSystem ? "해금" : "잠김"} · 코어 ${unlocks.coreSystem ? "해금" : "잠김"} · 시너지 ${unlocks.synergySystem ? "해금" : "잠김"}`;
         state.textContent = `Gold ${save.account.gold} · Credits ${save.account.credits} · 새로고침 Lv${save.account.rerollLevel}/3`;
         levels.textContent = Object.values(researchDefinitions)
           .map(
@@ -565,6 +576,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
         state.textContent = `메타 저장 확인 필요: ${error instanceof Error ? error.message : String(error)}`;
         levels.textContent =
           "메인 화면의 저장 관리에서 백업 가져오기 또는 초기화를 진행하세요.";
+        mastery.textContent = "숙련 · 저장 확인 필요";
       }
     };
     body.append(
@@ -574,6 +586,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
       ),
       state,
       levels,
+      mastery,
       button(
         "Gold +1000",
         "영구 메타 저장에 개발용 Gold 1000을 더합니다.",
@@ -591,7 +604,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
         },
       ),
       button(
-        "메타 저장 초기화",
+        "신규 계정 상태로 초기화",
         "확인 후 영구 진행만 초기화합니다. 개발 밸런스 설정은 유지합니다.",
         () => {
           if (
@@ -604,6 +617,67 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
           refreshMeta();
           report("영구 메타 저장을 초기화했습니다.");
         },
+      ),
+    );
+    const recordLabel = element("label", "완료할 작전 기록");
+    recordLabel.htmlFor = "balance-meta-record";
+    const recordSelect = element("select");
+    recordSelect.id = recordLabel.htmlFor;
+    for (const record of operationRecords) {
+      const option = element(
+        "option",
+        `${record.title} · 숙련 +${record.points}`,
+      );
+      option.value = record.id;
+      recordSelect.append(option);
+    }
+    recordSelect.value = operationRecords[0]!.id;
+    body.append(
+      recordLabel,
+      recordSelect,
+      button(
+        "선택 기록 완료",
+        "선택 기록과 직접 보상을 영구 저장합니다. 중복 Point는 지급하지 않습니다.",
+        () => {
+          metaStore.completeRecord(recordSelect.value as OperationId);
+          refreshMeta();
+        },
+      ),
+      button(
+        "모든 Prototype 콘텐츠 해금",
+        "개발 테스트용으로 모든 Prototype 콘텐츠의 해금 상태를 저장합니다.",
+        () => {
+          metaStore.unlockAll();
+          refreshMeta();
+        },
+      ),
+      button(
+        "점진 해금 상태 초기화",
+        "Gold·Credits·구매 연구는 보존하고 기록·해금 진행을 초기화합니다.",
+        () => {
+          if (
+            !window.confirm(
+              "작전 기록과 점진 해금을 초기화할까요? Gold·Credits·구매 연구는 보존됩니다.",
+            )
+          )
+            return;
+          metaStore.resetProgression();
+          refreshMeta();
+        },
+      ),
+      element(
+        "p",
+        "특수 슬롯 테스트 · 계정 해금과 별도로 강제 지정합니다. 새 출격에서 확인하세요.",
+      ),
+      ...([0, 1, 2] as const).map((capacity) =>
+        button(
+          `특수 슬롯 ${capacity}`,
+          `개발 테스트용 특수 슬롯 ${capacity}개로 설정합니다.`,
+          () => {
+            metaStore.setSpecialCapacity(capacity);
+            refreshMeta();
+          },
+        ),
       ),
     );
     meta.append(body);

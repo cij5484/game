@@ -109,6 +109,8 @@ vi.mock("../../src/game/dev/runtimeBridge", () => ({
   },
 }));
 import { mountBalancePanel } from "../../src/game/dev/BalancePanel";
+import { metaStore } from "../../src/game/meta/metaSave";
+import { operationRecords } from "../../src/game/data/operations";
 
 class ElementStub extends EventTarget {
   id = "";
@@ -187,10 +189,10 @@ it("keeps dev Meta grants and confirmed reset separate from balance overrides", 
   expect(byId("balance-meta-state").textContent).toContain("Gold 1000");
   change("balance-run.combatTempo", "2");
   vi.mocked(window.confirm).mockReturnValue(false);
-  button("메타 저장 초기화").click();
+  button("신규 계정 상태로 초기화").click();
   expect(byId("balance-meta-state").textContent).toContain("Gold 1000");
   vi.mocked(window.confirm).mockReturnValue(true);
-  button("메타 저장 초기화").click();
+  button("신규 계정 상태로 초기화").click();
   expect(byId("balance-meta-state").textContent).toContain(
     "Gold 0 · Credits 0",
   );
@@ -205,6 +207,39 @@ it("does not create Meta test grants outside development", () => {
   expect(elements.some((node) => node.textContent === "Gold +1000")).toBe(
     false,
   );
+});
+
+it("completes selected records, unlocks all and resets progression without touching purchases or balance", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  button("Gold +1000").click();
+  button("Credits +100").click();
+  metaStore.purchaseResearch("primary-damage");
+  change("balance-run.combatTempo", "2");
+  byId("balance-meta-record").value = operationRecords.find(
+    (record) => record.title === "첫 작전 종료",
+  )!.id;
+  button("선택 기록 완료").click();
+  button("선택 기록 완료").click();
+  expect(byId("balance-meta-mastery").textContent).toContain("숙련 1 Point");
+  button("모든 Prototype 콘텐츠 해금").click();
+  expect(byId("balance-meta-mastery").textContent).toContain(
+    "유물 해금 · 코어 해금 · 시너지 해금",
+  );
+  for (const capacity of [0, 1, 2]) {
+    button(`특수 슬롯 ${capacity}`).click();
+    expect(byId("balance-meta-mastery").textContent).toContain(
+      `특수 슬롯 ${capacity}/2`,
+    );
+  }
+  vi.mocked(window.confirm).mockReturnValue(false);
+  button("점진 해금 상태 초기화").click();
+  expect(byId("balance-meta-mastery").textContent).toContain("시너지 해금");
+  vi.mocked(window.confirm).mockReturnValue(true);
+  button("점진 해금 상태 초기화").click();
+  expect(byId("balance-meta-mastery").textContent).toContain("숙련 0 Point");
+  expect(metaStore.read().account).toMatchObject({ gold: 880, credits: 100 });
+  expect(metaStore.read().characters.marine.research["primary-damage"]).toBe(1);
+  expect(state.overrides["run.combatTempo"]).toBe(2);
 });
 
 it("renders Korean tooltips, searches fields, applies values and releases subscriptions", () => {

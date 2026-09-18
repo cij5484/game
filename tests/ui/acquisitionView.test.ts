@@ -84,3 +84,24 @@ it("shows unlocked empty slots with random Lv8/14 acquisition guidance", () => {
   expect(titles[2]).toContain("무장 확장 코어로 해금");
   expect(titles.join(" ")).not.toMatch(/Lv5|Lv10/);
 });
+
+it.each([0, 1, 2])(
+  "shows account capacity %i with separate locked-slot conditions",
+  (capacity) => {
+    const view = {
+      specialSlots: [new ElementStub(), new ElementStub()],
+      inspect: vi.fn(),
+    } as unknown as BurstView;
+    BurstView.prototype.renderSpecialWeapons.call(view, [], [], capacity);
+    expect(
+      elements
+        .filter((element) => element.className === "weapon-slot")
+        .map((element) => element.dataset.state),
+    ).toEqual([0, 1].map((index) => (index < capacity ? "empty" : "locked")));
+    const titles = elements
+      .filter((element) => element.className === "slot-summary")
+      .map((element) => element.title);
+    if (capacity === 0) expect(titles[0]).toContain("첫 자연 Run 종료");
+    if (capacity < 2) expect(titles[1]).toContain("숙련 13 Point");
+  },
+);

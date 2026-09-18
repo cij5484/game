@@ -8,6 +8,7 @@ import type { Burst } from "../combat/burst";
 import type { StimpackPhase } from "../combat/stimpack";
 import { ultimateGestureHint } from "../input/ultimateGesture";
 import { hudLabels } from "./hudLabels";
+import { masteryThresholds } from "../data/operations";
 import "./combatHud.css";
 import type { BuildIcon } from "./buildSummary";
 import { buildBadge } from "./BuildBar";
@@ -135,7 +136,7 @@ export class BurstView {
     this.row.className = "loadout-row";
     this.row.append(this.basic);
     this.row.append(...this.specialSlots);
-    this.renderSpecialWeapons([], []);
+    this.renderSpecialWeapons([], [], 0);
     for (const c of equipped) {
       const slot = document.createElement("div");
       slot.className = "ability-slot";
@@ -241,15 +242,19 @@ export class BurstView {
                 ),
               }
             : {
-                state: "empty",
+                state: index < capacity ? "empty" : "locked",
                 title: `특수 ${index + 1}`,
                 symbol: "+",
                 detail:
-                  index === 2
-                    ? "무장 확장 코어로 해금 · Lv14부터 남은 무장 획득 카드 등장 가능"
-                    : index === 0
-                      ? "해금됨 · Lv8부터 무장 획득 카드 등장 가능"
-                      : "해금됨 · 첫 무장 보유 + Lv14부터 획득 카드 등장 가능",
+                  index >= capacity
+                    ? index === 0
+                      ? "첫 자연 Run 종료 후 해금 · 실패 또는 Stage 클리어"
+                      : `Marine 숙련 ${masteryThresholds.specialSlot2} Point에서 해금`
+                    : index === 2
+                      ? "무장 확장 코어로 해금 · Lv14부터 남은 무장 획득 카드 등장 가능"
+                      : index === 0
+                        ? "해금됨 · Lv8부터 무장 획득 카드 등장 가능"
+                        : "해금됨 · 첫 무장 보유 + Lv14부터 획득 카드 등장 가능",
               },
           this.inspect,
         ),
