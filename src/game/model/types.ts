@@ -3,6 +3,8 @@ export type EnemyKind = "grunt" | "runner" | "shield";
 
 export interface MarineConfig {
   id: "marine";
+  /** Earliest enemy progress eligible for primary fire; independent of visual scale. */
+  primaryMinProgress01: number;
   primaryAttackId: GaussRifleConfig["id"];
   secondaryAbilityId: StimpackConfig["id"];
   burstId: "marine-burst";

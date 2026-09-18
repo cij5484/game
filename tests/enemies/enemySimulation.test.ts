@@ -7,7 +7,7 @@ describe("enemy simulation", () => {
   it("creates a marked elite with extra HP but the same logical movement", () => {
     const elite = createPrototypeEnemy("grunt", "center", 1, 0.5, true);
     expect(elite.elite).toBe(true);
-    expect(elite.hp).toBe(120);
+    expect(elite.hp).toBe(32);
     expect(
       advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01,
     ).toBeCloseTo(0.0208);

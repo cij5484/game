@@ -58,3 +58,22 @@ it("focus persists across automatic shots, clears on blank tap, and permanently 
   expect(focus.resolve([far, near])).toBe(near);
   expect(focus.targetId).toBeNull();
 });
+
+it("range filters auto targets and holds an out-of-range focus without auto fallback", () => {
+  const focus = new TargetFocus();
+  const minProgress = 0.55;
+  expect(selectAutoTarget([far], minProgress)).toBeNull();
+  const boundary = { ...far, progress01: minProgress };
+  expect(selectAutoTarget([boundary], minProgress)).toBe(boundary);
+  focus.set(far.id);
+  expect(focus.resolve([far, near], minProgress)).toBeNull();
+  expect(focus.targetId).toBe(far.id);
+  expect(focus.resolve([boundary, near], minProgress)).toBe(boundary);
+  focus.set(null);
+  expect(focus.resolve([far, near], minProgress)).toBe(near);
+  focus.set(far.id);
+  expect(focus.resolve([{ ...far, hp: 0 }, near], minProgress)).toBe(near);
+  expect(focus.targetId).toBeNull();
+  // Shared magic targeting remains unrestricted unless a range is supplied.
+  expect(selectAutoTarget([far])).toBe(far);
+});
