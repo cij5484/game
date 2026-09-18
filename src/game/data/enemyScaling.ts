@@ -1,9 +1,9 @@
 import { runBalance } from "./run";
 
-// Linear spawn-time growth; density remains the main source of difficulty.
+// M3 tuning: 1.5x the M2 movement curve; HP and attack clocks are unchanged.
 export const enemyScalingBalance = {
   durationMs: runBalance.durationMs,
   maxHpMultiplier: 1.1,
-  initialSpeedMultiplier: 0.65,
-  maxSpeedMultiplier: 1.02,
+  initialSpeedMultiplier: 0.975,
+  maxSpeedMultiplier: 1.53,
 } as const;

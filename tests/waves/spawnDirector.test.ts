@@ -9,9 +9,12 @@ it("starts with distant grunts, respects capacity and discards blocked spawn opp
   const initial = d.spawn(0);
   expect(initial).toHaveLength(24);
   expect(
-    initial.every(
-      (e) => e.kind === "grunt" && e.progress01 >= 0.08 && e.progress01 <= 0.3,
-    ),
+    initial
+      .slice(3)
+      .every(
+        (e) =>
+          e.kind === "grunt" && e.progress01 >= 0.08 && e.progress01 <= 0.3,
+      ),
   ).toBe(true);
   d.advance(d.timeToSpawnMs);
   expect(d.spawn(50)).toEqual([]);

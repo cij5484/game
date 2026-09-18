@@ -14,6 +14,7 @@ import { activeSynergies } from "../progression/synergy";
 import { evolutionRecipes, type RecipeRequirements } from "../data/evolutions";
 export interface BuildIcon {
   id: string;
+  owner: "global" | "basicWeapon" | "stimpack" | "legacyMagic";
   group: "upgrade" | "trait" | "relic" | "core" | "synergy" | "evolution";
   title: string;
   symbol: string;
@@ -46,6 +47,13 @@ export function buildSummary(
       : undefined;
     result.push({
       id: card.id,
+      owner: isTrait
+        ? "basicWeapon"
+        : card.ability === "stimpack"
+          ? "stimpack"
+          : card.ability === "frost-nova" || card.ability === "chain-lightning"
+            ? "legacyMagic"
+            : "global",
       group: isTrait ? "trait" : "upgrade",
       title:
         card.title +
@@ -61,6 +69,7 @@ export function buildSummary(
       result.push({
         id: relic.id,
         group: "relic",
+        owner: "global",
         title: relic.title,
         symbol: choiceFaces[relic.id]!.symbol,
         level,
@@ -71,6 +80,7 @@ export function buildSummary(
     result.push({
       id,
       group: "core",
+      owner: "global",
       title: cores[id].title,
       symbol: cores[id].symbol,
       detail: cores[id].description,
@@ -79,6 +89,7 @@ export function buildSummary(
     result.push({
       id: recipe.id,
       group: "synergy",
+      owner: "global",
       title: recipe.title,
       symbol: recipe.symbol,
       detail: `선택 완료 · 조건: ${recipeCondition(recipe.requires)}\n${recipe.description}`,
@@ -87,6 +98,7 @@ export function buildSummary(
     result.push({
       id: recipe.id,
       group: "evolution",
+      owner: "basicWeapon",
       title: recipe.title,
       symbol: "⇶",
       detail: `조건: ${recipeCondition(recipe.requires)}\n추가 관통 +${recipe.effects.penetrationBonus} · 관통 폭 ×${recipe.effects.penetrationWidthMultiplier}`,

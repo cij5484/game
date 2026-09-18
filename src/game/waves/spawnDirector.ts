@@ -125,7 +125,7 @@ export class SpawnDirector {
     );
     return [
       ...spawns,
-      ...Array.from({ length: count }, () => {
+      ...Array.from({ length: count }, (_, index) => {
         const lane = weightedChoice(hordeBalance.laneWeights, this.random());
         const role = this.laneRoles[["left", "center", "right"].indexOf(lane)]!;
         const base = initial
@@ -150,12 +150,18 @@ export class SpawnDirector {
             hordeBalance.lateralMin01 +
             this.random() *
               (hordeBalance.lateralMax01 - hordeBalance.lateralMin01),
-          progress01: initial
-            ? hordeBalance.initialMinProgress01 +
-              this.random() *
-                (hordeBalance.initialMaxProgress01 -
-                  hordeBalance.initialMinProgress01)
-            : 0,
+          progress01:
+            initial && index < hordeBalance.initialVanguardCount
+              ? hordeBalance.initialVanguardMinProgress01 +
+                this.random() *
+                  (hordeBalance.initialVanguardMaxProgress01 -
+                    hordeBalance.initialVanguardMinProgress01)
+              : initial
+                ? hordeBalance.initialMinProgress01 +
+                  this.random() *
+                    (hordeBalance.initialMaxProgress01 -
+                      hordeBalance.initialMinProgress01)
+                : 0,
         };
       }),
     ];

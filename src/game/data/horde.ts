@@ -11,6 +11,9 @@ interface HordeStage {
 // M2 tuning: replacement pressure grows, Grunt HP does not become the difficulty lever.
 export const hordeBalance = {
   initialBatchSize: 24,
+  initialVanguardCount: 3,
+  initialVanguardMinProgress01: 0.43,
+  initialVanguardMaxProgress01: 0.445,
   initialEnemyWeights: { grunt: 1, runner: 0, shield: 0 },
   initialMinProgress01: 0.08,
   initialMaxProgress01: 0.3,

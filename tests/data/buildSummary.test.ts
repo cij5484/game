@@ -36,3 +36,18 @@ it("shows only selected synergies with conditions and keeps evolution distinct",
     "파쇄 관통",
   );
 });
+
+it("groups global bonuses separately from weapon and Stim growth", () => {
+  const items = buildSummary(
+    { "primary-damage": 1, penetration: 2, "stim-growth": 1 },
+    { "tesla-coil": 1 },
+    new Set(["choice-expansion"]),
+    new Set(["hyper-gauss"]),
+  );
+  expect(items.find((i) => i.id === "primary-damage")?.owner).toBe("global");
+  expect(items.find((i) => i.id === "penetration")?.owner).toBe("basicWeapon");
+  expect(items.find((i) => i.id === "hyper-gauss")?.owner).toBe("basicWeapon");
+  expect(items.find((i) => i.id === "stim-growth")?.owner).toBe("stimpack");
+  expect(items.find((i) => i.id === "tesla-coil")?.owner).toBe("global");
+  expect(items.find((i) => i.id === "choice-expansion")?.owner).toBe("global");
+});

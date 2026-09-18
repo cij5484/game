@@ -117,12 +117,25 @@ export function bindTapInput(
     points: readonly Point[],
     displayPoints: readonly Point[],
   ) => void,
+  acceptsPoint: (x: number, y: number) => boolean = () => true,
 ): { destroy: () => void; cancel: () => void } {
   const input = new TapInput();
   const mouse = new MouseTapInput();
   let mouseActive = false;
+  const accepted = (x: number, y: number) => {
+    const r = canvas.getBoundingClientRect();
+    return acceptsPoint(
+      ((x - r.left) * canvas.width) / r.width,
+      ((y - r.top) * canvas.height) / r.height,
+    );
+  };
   const emit = (tap: CombatInput | null) => {
-    if (!tap) return;
+    if (
+      !tap ||
+      !accepted(tap.x, tap.y) ||
+      (tap.kind === "gesture" && !tap.points.every((p) => accepted(p.x, p.y)))
+    )
+      return;
     const rect = canvas.getBoundingClientRect();
     const point = (value: Point) => ({
       x: ((value.x - rect.left) * canvas.width) / rect.width,
@@ -144,6 +157,7 @@ export function bindTapInput(
       ),
     );
   const down = (event: PointerEvent) => {
+    if (!accepted(event.clientX, event.clientY)) return;
     if (
       event.button !== 0 &&
       !(event.pointerType === "mouse" && event.button === 2)
@@ -163,6 +177,10 @@ export function bindTapInput(
       );
   };
   const move = (event: PointerEvent) => {
+    if (!accepted(event.clientX, event.clientY)) {
+      cancel();
+      return;
+    }
     // Browsers may combine an entire fast stroke into one dispatched move.
     for (const sample of event.getCoalescedEvents?.() ?? []) {
       if (event.pointerType === "mouse") {

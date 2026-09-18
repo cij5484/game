@@ -5,6 +5,60 @@ import type { StimpackPhase } from "../combat/stimpack";
 import { ultimateGestureHint } from "../input/ultimateGesture";
 import { hudLabels } from "./hudLabels";
 import "./combatHud.css";
+import type { BuildIcon } from "./buildSummary";
+import { buildBadge } from "./BuildBar";
+
+export type WeaponSlotState = {
+  state: "locked" | "empty" | "equipped";
+  title: string;
+  symbol: string;
+  detail: string;
+  upgrades?: readonly BuildIcon[];
+};
+export function weaponSlot(
+  slot: WeaponSlotState,
+  inspect: (entries: readonly BuildIcon[]) => void,
+) {
+  const root = document.createElement("div");
+  root.className = "weapon-slot";
+  root.dataset.state = slot.state;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "slot-summary";
+  button.title = `${slot.title} — ${slot.detail}`;
+  button.setAttribute("aria-label", button.title);
+  const symbol = document.createElement("strong");
+  symbol.textContent = slot.state === "locked" ? "🔒" : slot.symbol;
+  const name = document.createElement("span");
+  name.textContent = slot.title;
+  const status = document.createElement("small");
+  status.textContent =
+    slot.state === "locked"
+      ? "잠김"
+      : slot.state === "empty"
+        ? "미장착"
+        : "장착";
+  button.append(symbol, name, status);
+  button.addEventListener("click", () =>
+    inspect([
+      {
+        id: slot.title,
+        owner: "basicWeapon",
+        group: "trait",
+        title: slot.title,
+        symbol: slot.symbol,
+        detail: slot.detail,
+      },
+      ...(slot.upgrades ?? []),
+    ]),
+  );
+  root.append(button);
+  const badges = document.createElement("div");
+  badges.className = "slot-badges";
+  badges.append(...(slot.upgrades ?? []).map((e) => buildBadge(e, inspect)));
+  root.append(badges);
+  return root;
+}
 function circle(title: string, symbol: string, action: () => void) {
   const element = document.createElement("button");
   element.type = "button";
@@ -38,17 +92,23 @@ export class BurstView {
   private root = document.createElement("div");
   private hint = document.createElement("div");
   private hintTimer: number | undefined;
-  private stim;
-  private frost;
-  private chain;
-  private ultimate;
+  private stim: ReturnType<typeof circle>;
+  private frost: ReturnType<typeof circle>;
+  private chain: ReturnType<typeof circle>;
+  private ultimate: ReturnType<typeof circle>;
   private blocked = false;
+  private row = document.createElement("div");
+  private basic = document.createElement("div");
+  private stimBadges = document.createElement("div");
+  private inspect: (entries: readonly BuildIcon[]) => void;
   constructor(actions: {
     stim: () => void;
+    inspect?: (entries: readonly BuildIcon[]) => void;
     frost?: () => void;
     chain?: () => void;
     hint: () => void;
   }) {
+    this.inspect = actions.inspect ?? (() => {});
     this.stim = circle(hudLabels.stim, "✚", actions.stim);
     this.frost = circle(hudLabels.frost, "❄", actions.frost ?? (() => {}));
     this.chain = circle(hudLabels.chain, "ϟ", actions.chain ?? (() => {}));
@@ -60,10 +120,32 @@ export class BurstView {
       actions.frost && actions.chain
         ? [this.stim, this.frost, this.chain, this.ultimate]
         : [this.stim, this.ultimate];
-    equipped.forEach((c, i) => {
-      c.element.style.left = `${equipped.length === 2 ? 230 + i * 165 : 65 + i * 165}px`;
-      this.root.append(c.element);
-    });
+    this.row.className = "loadout-row";
+    this.row.append(this.basic);
+    for (let i = 1; i <= 2; i++)
+      this.row.append(
+        weaponSlot(
+          {
+            state: "locked",
+            title: `특수 ${i}`,
+            symbol: "🔒",
+            detail: "특수무기 시스템 미구현 · 현재 잠김",
+          },
+          this.inspect,
+        ),
+      );
+    for (const c of equipped) {
+      const slot = document.createElement("div");
+      slot.className = "ability-slot";
+      slot.append(c.element);
+      if (c === this.stim) {
+        this.stimBadges.className = "slot-badges";
+        slot.append(this.stimBadges);
+      }
+      this.row.append(slot);
+    }
+    this.root.append(this.row);
+    this.renderBuild([]);
     this.hint.className = "ultimate-hint";
     this.hint.hidden = true;
     this.hint.setAttribute("role", "status");
@@ -99,9 +181,32 @@ export class BurstView {
   }
   resize(width: number, height: number) {
     const layout = battlefieldLayout(width, height, readSafeArea());
-    this.root.style.left = `${layout.x}px`;
-    this.root.style.top = `${layout.y}px`;
-    this.root.style.transform = `scale(${layout.scale})`;
+    Object.assign(this.root.style, {
+      left: `${layout.bottom.x}px`,
+      top: `${layout.bottom.y}px`,
+      width: `${layout.bottom.width}px`,
+      height: `${layout.bottom.height}px`,
+    });
+    this.row.style.top = `${Math.max(28, 55 * layout.scale)}px`;
+  }
+  renderBuild(entries: readonly BuildIcon[]) {
+    this.basic.replaceChildren(
+      weaponSlot(
+        {
+          state: "equipped",
+          title: "가우스",
+          symbol: "⌁",
+          detail: "중거리 단발 자동사격 · 현재 장착한 강화는 아래 표시",
+          upgrades: entries.filter((e) => e.owner === "basicWeapon"),
+        },
+        this.inspect,
+      ),
+    );
+    this.stimBadges.replaceChildren(
+      ...entries
+        .filter((e) => e.owner === "stimpack")
+        .map((e) => buildBadge(e, this.inspect)),
+    );
   }
   render(burst: Burst, blocked: boolean, ultimate: boolean) {
     this.blocked = blocked;
