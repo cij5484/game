@@ -1,8 +1,8 @@
 # Combat / Progression / HUD 레퍼런스
 
-## Main Reference — v0.5 Current
+## Main Reference — v0.6 Current
 
-2026-09-18 확정: 핵심 레퍼런스는 **Deep Rock Galactic: Survivor**와 **20 Minutes Till Dawn** 두 작품으로 고정한다. [GDD v0.5](GAME_GDD_v0.5.md)가 Current Source of Truth이며 목표 설계와 실제 구현을 분리한다.
+2026-09-18 확정: 핵심 레퍼런스는 **Deep Rock Galactic: Survivor**와 **20 Minutes Till Dawn** 두 작품으로 고정한다. [GDD v0.6](GAME_GDD_v0.6.md)가 Current Source of Truth이며 목표 설계와 실제 구현을 분리한다.
 
 | Main Reference | 참고하는 축 — 사용자 확정 방향 | 계승하는 설계 방향 |
 | --- | --- | --- |
@@ -13,7 +13,7 @@
 
 **v0.5 보조 참고 — Hades:** 사용자 확정 참고 범위는 Meta Progression, gradual unlock, 반복 Run 동기, first clear 이후 Challenge, 역할별 영구 재화와 다양한 무기/능력 경험을 유도하는 장기 목표다. Main Combat Reference에는 추가하지 않는다. 이는 우리 프로젝트의 참고 방향 기록이며 Hades의 구체 수치나 최신 시스템을 새로 조사·검증했다는 뜻이 아니다.
 
-아래 §1~5는 **Legacy Reference / 이전 패스의 조사와 적용 기록**으로 보존한다. 다른 게임은 Main Reference가 아니다. 과거의 Marine Magic2종, 유한Lv5/전설 매핑, 시너지 보장, 비상호작용 Build Bar 같은 적용 결론은 v0.5에 의해 대체되거나 재평가 대상이다. 새 목표는 Marine 특수무기2종, 독립 희귀도, 반복 성장, 높은 RNG 편차, Header/Build Info 분리다. 목표 설계와 현재 구현의 차이는 GDD v0.5의 Current Implementation Gap을 따른다. 이번 변경은 문서만이다.
+아래 §1~5는 **Legacy Reference / 이전 패스의 조사와 적용 기록**으로 보존한다. 다른 게임은 Main Reference가 아니다. 과거의 Marine Magic2종, 유한Lv5/전설 매핑, 시너지 보장, 비상호작용 Build Bar 같은 적용 결론은 v0.5에 의해 대체되거나 재평가 대상이다. 새 목표는 Marine 특수무기2종, 독립 희귀도, 반복 성장, 높은 RNG 편차, Header/Build Info 분리다. 목표 설계와 현재 구현의 차이는 GDD v0.6의 Prototype Scope 및 Current Implementation Gap을 따른다. 이번 변경은 문서만이다.
 
 
 > 현행 적용은 **§5 자동 공격·선택형 성장 패스**와 GDD v0.2를 따릅니다. §1~4는 이전 조사와 설계 판단의 기록이며, 이전9종 특성·자동 시너지·비버튼 마법HUD는 후속 요청으로 대체됐습니다.
