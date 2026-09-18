@@ -462,6 +462,63 @@ it("renders stage-time telemetry, copies reports, and restores the last report w
   expect(state.overrides).toEqual({});
 });
 
+it("renders v2 pressure metrics and copies the AI analysis report", async () => {
+  const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+  vi.stubGlobal("navigator", { clipboard });
+  const report: BalanceReport = {
+    ...telemetryReport(),
+    metrics: {
+      ...telemetryReport().metrics,
+      spawns: 18,
+      spawnPerMin: 36,
+      nearWall75: 5,
+      nearWall90: 2,
+      fps: 57.25,
+      substeps: 6,
+    },
+  };
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  state.status({ connected: true, speed: 8, level: 4, telemetry: report });
+
+  expect(byId("balance-telemetry-spawnPerMin").textContent).toBe("36.0");
+  expect(byId("balance-telemetry-kpm").textContent).toBe("60.0");
+  expect(byId("balance-telemetry-nearWall75").textContent).toBe("5");
+  expect(byId("balance-telemetry-nearWall90").textContent).toBe("2");
+
+  button("AI 분석용 리포트 복사").click();
+  await Promise.resolve();
+  const copied = JSON.parse(clipboard.writeText.mock.lastCall![0]);
+  for (const section of [
+    "RunSummary",
+    "FinalBuild",
+    "Final30s",
+    "WeaponContribution",
+    "Timeline5s",
+    "GrowthEvents",
+    "PowerSpikeObservations",
+    "SpawnKillPressure",
+    "NearWallPressure",
+    "EnemyLifetime",
+    "EliteTTK",
+    "BossEvents",
+    "Performance",
+  ])
+    expect(copied).toHaveProperty(section);
+});
+
+it("shows dashes for v2 live metrics missing from a v1 report", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  state.status({
+    connected: true,
+    speed: 1,
+    level: 4,
+    telemetry: telemetryReport(),
+  });
+  expect(byId("balance-telemetry-spawnPerMin").textContent).toBe("—");
+  expect(byId("balance-telemetry-nearWall75").textContent).toBe("—");
+  expect(byId("balance-telemetry-nearWall90").textContent).toBe("—");
+});
+
 it("validates performance messages and keeps the one-second bridge cadence", async () => {
   vi.useFakeTimers();
   const { startBalanceBridge } = await vi.importActual<

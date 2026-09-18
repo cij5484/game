@@ -1,4 +1,5 @@
 import {
+  formatAiBalanceReport,
   formatBalanceReport,
   readLastBalanceReport,
   type BalanceReport,
@@ -38,7 +39,10 @@ export function createTelemetryCard() {
     ["missile", "Missile DPS"],
     ["drone", "Drone DPS"],
     ["other", "Other DPS"],
-    ["kpm", "최근 30초 KPM"],
+    ["spawnPerMin", "Spawn/min"],
+    ["kpm", "Kill/min"],
+    ["nearWall75", "Near Wall 75%"],
+    ["nearWall90", "Near Wall 90%"],
     ["average", "평균 Enemy"],
     ["wallDamage", "Wall Damage"],
     ["wallReach", "Wall 도달/min"],
@@ -70,18 +74,18 @@ export function createTelemetryCard() {
   const notice = element("p", "", "balance-notice");
   notice.setAttribute("role", "status");
   let report = readLastBalanceReport();
-  const controls = [
-    ["이번 Run 리포트 복사", false],
-    ["JSON 복사", true],
-  ].map(([label, json]) => {
+  const controls: [string, (value: BalanceReport) => string][] = [
+    ["이번 Run 리포트 복사", formatBalanceReport],
+    ["JSON 복사", (value) => JSON.stringify(value, null, 2)],
+    ["AI 분석용 리포트 복사", formatAiBalanceReport],
+  ];
+  const buttons = controls.map(([label, format]) => {
     const button = element("button", String(label));
     button.type = "button";
     button.addEventListener("click", async () => {
       if (!report) return;
       try {
-        await navigator.clipboard.writeText(
-          json ? JSON.stringify(report, null, 2) : formatBalanceReport(report),
-        );
+        await navigator.clipboard.writeText(format(report));
         notice.textContent = "Run 리포트를 복사했습니다.";
       } catch {
         notice.textContent =
@@ -106,7 +110,7 @@ export function createTelemetryCard() {
   function render(current: BalanceReport | null, label: string) {
     report = current;
     status.textContent = label;
-    for (const control of controls) control.disabled = !report;
+    for (const control of buttons) control.disabled = !report;
     if (!report) {
       for (const value of values.values()) value.textContent = "—";
       buildList.replaceChildren();
@@ -114,6 +118,8 @@ export function createTelemetryCard() {
       return;
     }
     const m = report.metrics;
+    const optionalNumber = (value: number | undefined, digits = true) =>
+      value === undefined ? "—" : digits ? number(value) : String(value);
     const display: Record<string, string> = {
       stage: time(m.stageMs),
       level: String(m.level),
@@ -125,7 +131,10 @@ export function createTelemetryCard() {
       missile: number(m.sourceDps.Missile),
       drone: number(m.sourceDps.Drone),
       other: number(m.sourceDps.Other),
+      spawnPerMin: optionalNumber(m.spawnPerMin),
       kpm: number(m.kpm),
+      nearWall75: optionalNumber(m.nearWall75, false),
+      nearWall90: optionalNumber(m.nearWall90, false),
       average: number(m.avgEnemies),
       wallDamage: number(m.wallDamage),
       wallReach: number(m.wallReachPerMin),
