@@ -384,7 +384,7 @@ export class EnemyPressureView {
     for (const visual of visuals) {
       const point = this.specialPoint(visual.x, visual.y);
       const size =
-        (visual.kind === "drone" ? 18 : 10) *
+        (visual.kind === "drone" ? 18 : visual.kind === "missile" ? 14 : 10) *
         (visual.size ?? 1) *
         perspectiveScale(Math.min(1, visual.y / combatGeometry.depth));
       const color =
@@ -409,8 +409,8 @@ export class EnemyPressureView {
         graphics.fillCircle(point.x, point.y, size * 0.55);
         if (visual.kind === "missile")
           graphics
-            .lineStyle(3, color, 0.5)
-            .lineBetween(point.x, point.y + size * 2, point.x, point.y);
+            .lineStyle(4, color, 0.65)
+            .lineBetween(point.x, point.y + size * 3, point.x, point.y);
       }
     }
     this.world.bringToTop(graphics);

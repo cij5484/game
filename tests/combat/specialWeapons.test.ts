@@ -94,14 +94,14 @@ it("saturation adds four carpet submunitions and three swarm missiles", () => {
     result.effects.filter((effect) => effect.weapon === "grenade"),
   ).toHaveLength(14);
   const missiles = new SpecialWeapons();
-  missiles.advance(0, {
+  const salvo = missiles.advance(2430, {
     ...context(
       [weapon("missile", { level: 10, tree: "saturation", branch: "a" })],
       Array.from({ length: 10 }, (_, i) => enemy(i)),
     ),
     synergy,
   });
-  expect(missiles.visuals).toHaveLength(8);
+  expect(missiles.visuals.length + salvo.effects.length).toBe(10);
 });
 
 it("singularity creates a kill zone that draws and boosts Gatling fire", () => {
@@ -162,7 +162,7 @@ it("missile swarm has one capacitor roll while each synchronized drone shot is a
     tree: "saturation",
     branch: "a",
   });
-  missiles.advance(0, {
+  const salvo = missiles.advance(1620, {
     ...context(
       [swarm],
       Array.from({ length: 10 }, (_, i) => enemy(i)),
@@ -170,8 +170,8 @@ it("missile swarm has one capacitor roll while each synchronized drone shot is a
     relics: new Set<PrototypeRelicId>(["capacitor"]),
     random,
   });
-  expect(missiles.visuals).toHaveLength(5);
-  expect(random).toHaveBeenCalledTimes(6);
+  expect(missiles.visuals.length + salvo.effects.length).toBe(7);
+  expect(random).toHaveBeenCalledTimes(8);
   const drones = new SpecialWeapons();
   random.mockClear();
   const ctx = {
@@ -360,7 +360,7 @@ it("immortal missiles chain kills with a finite lifetime", () => {
   );
   runtime.advance(0, ctx);
   const result = runtime.advance(2000, { ...ctx, weapons: [] });
-  expect(result.enemies.filter((e) => e.hp === 0)).toHaveLength(7);
+  expect(result.enemies.filter((e) => e.hp === 0)).toHaveLength(10);
   runtime.advance(7000, { ...ctx, weapons: [], enemies: result.enemies });
   expect(runtime.visuals).toEqual([]);
 });
@@ -407,7 +407,9 @@ it("Hunter launches a new missile on a kill while Chain Predator continues from 
     );
     runtime.advance(0, ctx);
     const id = runtime.visuals[0]!.id;
-    runtime.advance(500, { ...ctx, weapons: [] });
+    for (let i = 0; i < 50; i++) {
+      if (runtime.advance(10, { ...ctx, weapons: [] }).effects.length) break;
+    }
     return { id, visual: runtime.visuals[0]! };
   };
   const hunter = launch("hunter"),

@@ -17,6 +17,7 @@ import { MarineProgression } from "../../src/game/progression/marineProgression"
 import { SpawnDirector } from "../../src/game/waves/spawnDirector";
 import { hordeTimelineTempo, hordeBalance } from "../../src/game/data/horde";
 import { runBalance } from "../../src/game/data/run";
+import { specialWeaponBalance } from "../../src/game/data/specialWeaponBalance";
 
 beforeEach(() => configureFields(balanceFields, validateBalanceGroups));
 afterEach(() => {
@@ -82,4 +83,68 @@ it("does not permit runtime overrides in production", () => {
   vi.stubEnv("DEV", false);
   expect(() => setOverrides({ "enemies.grunt.hp": 20 })).toThrow(/개발 환경/);
   expect(getOverrides()).toEqual({});
+});
+
+it("binds Korean missile tuning to live runtime values and rejects invalid counts atomically", () => {
+  const grenade = JSON.stringify(specialWeaponBalance.grenade);
+  const drone = JSON.stringify(specialWeaponBalance.drone);
+  const values = {
+    "special.missileBehavior.baseSalvoCount": 4,
+    "special.missileBehavior.salvoIntervalMs": 300,
+    "special.missile.cycleMs": 4800,
+    "special.missile.damage": 95,
+    "special.missileSpeed": 700,
+    "special.missileBehavior.baseRetargets": 2,
+    "special.missileLifetimeMs": 7500,
+    "special.missileBehavior.damageReservation": false,
+    "special.missileBehavior.saturation.additionalCount.0": 2,
+    "special.missileBehavior.hunter.threatDamage": 2,
+    "special.missileBehavior.tracking.retargets": 3,
+    "special.missileBehavior.emergencyRetargets": 5,
+  };
+  for (const id of Object.keys(values)) {
+    const field = balanceFields.find((entry) => entry.id === id)!;
+    expect(field.group).toBe("특수무기 · 미사일");
+    expect(field.label).toMatch(/[가-힣]/);
+    expect(field.description.length).toBeGreaterThan(15);
+  }
+  setOverrides(values);
+  expect(specialWeaponBalance.missile).toMatchObject({
+    damage: 95,
+    cycleMs: 4800,
+  });
+  expect(specialWeaponBalance.missileSpeed).toBe(700);
+  expect(specialWeaponBalance.missileLifetimeMs).toBe(7500);
+  expect(specialWeaponBalance.missileBehavior).toMatchObject({
+    baseSalvoCount: 4,
+    salvoIntervalMs: 300,
+    baseRetargets: 2,
+    damageReservation: false,
+    hunter: { threatDamage: 2 },
+    tracking: { retargets: 3 },
+    emergencyRetargets: 5,
+  });
+  expect(
+    specialWeaponBalance.missileBehavior.saturation.additionalCount[0],
+  ).toBe(2);
+  for (const invalid of [
+    { "special.missileBehavior.baseSalvoCount": 0 },
+    { "special.missileBehavior.baseSalvoCount": 3.5 },
+    { "special.missileBehavior.baseRetargets": -1 },
+    { "special.missileBehavior.salvoIntervalMs": 0 },
+    { "special.missileLifetimeMs": Infinity },
+    { "special.missileBehavior.damageReservation": 1 },
+  ]) {
+    expect(() => setOverrides(invalid)).toThrow();
+    expect(getOverrides()).toEqual(values);
+  }
+  expect(() =>
+    loadPayload({
+      version: 1,
+      overrides: { "special.missileBehavior.saturation.count.0": 3 },
+    }),
+  ).toThrow(/알 수 없는 설정/);
+  expect(getOverrides()).toEqual(values);
+  expect(JSON.stringify(specialWeaponBalance.grenade)).toBe(grenade);
+  expect(JSON.stringify(specialWeaponBalance.drone)).toBe(drone);
 });
