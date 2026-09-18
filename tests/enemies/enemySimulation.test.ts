@@ -4,13 +4,14 @@ import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
 describe("enemy simulation", () => {
-  it("creates a marked elite with extra HP but the same logical movement", () => {
+  it("maps legacy grunt elite requests to the independent runner archetype", () => {
     const elite = createPrototypeEnemy("grunt", "center", 1, 0.5, true);
     expect(elite.elite).toBe(true);
-    expect(elite.hp).toBe(32);
+    expect(elite.kind).toBe("runner");
+    expect(elite.hp).toBe(80);
     expect(
       advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01,
-    ).toBeCloseTo(0.0208);
+    ).toBeCloseTo(0.04875);
   });
   it("slows travel only, preserves wall attack time, and counts arrival remainder", () => {
     const enemy = createPrototypeEnemy("grunt", "left", 1);
@@ -33,7 +34,7 @@ describe("enemy simulation", () => {
     "moves %s at its configured speed without mutating its spawn",
     (kind) => {
       const enemy = createPrototypeEnemy(kind, "left", 7);
-      expect(enemy).toEqual({
+      expect(enemy).toMatchObject({
         id: 7,
         speedMultiplier: 0.65,
         hp: enemyConfigs[kind].hp,

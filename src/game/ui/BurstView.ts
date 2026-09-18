@@ -45,19 +45,23 @@ export class BurstView {
   private blocked = false;
   constructor(actions: {
     stim: () => void;
-    frost: () => void;
-    chain: () => void;
+    frost?: () => void;
+    chain?: () => void;
     hint: () => void;
   }) {
     this.stim = circle(hudLabels.stim, "✚", actions.stim);
-    this.frost = circle(hudLabels.frost, "❄", actions.frost);
-    this.chain = circle(hudLabels.chain, "ϟ", actions.chain);
+    this.frost = circle(hudLabels.frost, "❄", actions.frost ?? (() => {}));
+    this.chain = circle(hudLabels.chain, "ϟ", actions.chain ?? (() => {}));
     this.ultimate = circle(hudLabels.burst, "V", actions.hint);
     this.root.className = "burst-ui combat-hud";
     this.root.setAttribute("role", "group");
     this.root.setAttribute("aria-label", hudLabels.abilities);
-    [this.stim, this.frost, this.chain, this.ultimate].forEach((c, i) => {
-      c.element.style.left = `${65 + i * 165}px`;
+    const equipped =
+      actions.frost && actions.chain
+        ? [this.stim, this.frost, this.chain, this.ultimate]
+        : [this.stim, this.ultimate];
+    equipped.forEach((c, i) => {
+      c.element.style.left = `${equipped.length === 2 ? 230 + i * 165 : 65 + i * 165}px`;
       this.root.append(c.element);
     });
     this.hint.className = "ultimate-hint";
@@ -118,7 +122,7 @@ export class BurstView {
   }
   renderAbilities(
     stim: { phase: StimpackPhase; progress: number },
-    magic: {
+    magic?: {
       frostProgress: number;
       chainProgress: number;
       frostActive: boolean;
@@ -126,14 +130,17 @@ export class BurstView {
   ) {
     const blocked = this.blocked;
     this.stim.element.disabled = blocked || stim.phase !== "normal";
-    this.frost.element.disabled = blocked || magic.frostProgress < 1;
-    this.chain.element.disabled = blocked || magic.chainProgress < 1;
+
     renderCircle(
       this.stim,
       stim.progress,
       hudLabels.stimPhases[stim.phase],
       stim.phase === "crash" ? "#ff7d72" : "#83edb0",
     );
+    this.stim.element.classList.toggle("ready", !this.stim.element.disabled);
+    if (!magic) return;
+    this.frost.element.disabled = blocked || magic.frostProgress < 1;
+    this.chain.element.disabled = blocked || magic.chainProgress < 1;
     renderCircle(
       this.frost,
       magic.frostProgress,

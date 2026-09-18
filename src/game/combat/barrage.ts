@@ -1,3 +1,4 @@
+import { applyEffectDamage } from "./damage";
 import { burstBalance } from "../data/burst";
 import type { EnemyState } from "../enemies/enemySimulation";
 
@@ -13,9 +14,7 @@ export function suppressiveBarrage(enemies: readonly EnemyState[]) {
   return {
     hitIds,
     enemies: enemies.map((enemy) =>
-      hits.has(enemy.id)
-        ? { ...enemy, hp: Math.max(0, enemy.hp - damage) }
-        : enemy,
+      hits.has(enemy.id) ? applyEffectDamage(enemy, damage) : enemy,
     ),
   };
 }

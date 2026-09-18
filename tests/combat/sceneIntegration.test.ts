@@ -11,21 +11,23 @@ import type {
   EchoVolley,
 } from "../../src/game/combat/relicCombat";
 import type { Burst } from "../../src/game/combat/burst";
-import type { Magic, MagicId } from "../../src/game/combat/magic";
 import type { TargetFocus } from "../../src/game/combat/targeting";
 import type { Point } from "../../src/game/input/gestureRecognizer";
 import { Stimpack } from "../../src/game/combat/stimpack";
 import { stimpackBalance } from "../../src/game/data/balance";
+import { runBalance } from "../../src/game/data/run";
+import type { Relics } from "../../src/game/progression/relics";
 import type { RunState } from "../../src/game/model/runState";
 
 interface SceneHarness {
   rifle: GaussRifle;
+  relics: Relics;
+  refreshBuild(): void;
   burst: Burst;
   progression: Progression;
   director: SpawnDirector;
   relicCombat: RelicCombat;
   stimpack: Stimpack;
-  magic: Magic;
   focus: TargetFocus;
   shotIndex: number;
   kills: number;
@@ -49,7 +51,6 @@ interface SceneHarness {
   fireEchoes(): void;
   update(time: number, deltaMs: number): void;
   focusAt(x: number, y: number): void;
-  castMagic(id: MagicId): boolean;
   activateStim(): boolean;
   activateUltimate(): boolean;
   handleGesture(
@@ -71,6 +72,7 @@ function scene(): SceneHarness {
   Object.assign(instance, {
     time: { timeScale: 1, paused: false },
     view: {
+      createEnemy: () => ({ destroy: noop }),
       showImpacts: noop,
       showNotice: noop,
       showPrimary: noop,
@@ -83,10 +85,11 @@ function scene(): SceneHarness {
       setFocus: noop,
       pickEnemy: (x: number) => (x > 0 ? x : null),
     },
-    pauseUi: { setBlocked: noop },
+    pauseUi: { setBlocked: noop, setBuildDetails: noop },
+    buildBar: { render: noop },
     renderCombat: noop,
     renderBurst: noop,
-    renderMagic: noop,
+    renderAbilities: noop,
     showChoices: noop,
     flushNotices: noop,
   });
@@ -159,23 +162,28 @@ it.each([
   ["frost-nova", circle],
   ["chain-lightning", z],
 ] as const)(
-  "%s icon and gesture share performance and cooldown",
-  (id, points) => {
-    const icon = scene(),
-      gesture = scene();
-    expect(icon.castMagic(id)).toBe(true);
-    gesture.handleGesture(points, points);
-    expect(gesture.enemies.map((e) => e.state.hp)).toEqual(
-      icon.enemies.map((e) => e.state.hp),
+  "%s is recognized but cannot affect the Marine runtime",
+  (_id, points) => {
+    const test = scene(),
+      control = scene();
+    const castHook = vi.spyOn(test.relicCombat, "onMagic");
+    const frostHook = vi.spyOn(test.relicCombat, "onPrimaryFrost");
+    const before = test.enemies.map((e) => ({ ...e.state }));
+    test.handleGesture(points, points);
+    expect(test.enemies.map((e) => e.state)).toEqual(before);
+    expect(test.kills).toBe(0);
+    expect(test.progression.xp).toBe(0);
+    expect(test).not.toHaveProperty("magic");
+    expect(castHook).not.toHaveBeenCalled();
+    test.update(0, 800);
+    control.update(0, 800);
+    expect(test.enemies.map((e) => e.state)).toEqual(
+      control.enemies.map((e) => e.state),
     );
-    expect(gesture.magic.remaining(id)).toBe(icon.magic.remaining(id));
-    expect(gesture.magic.frostRemainingMs).toBe(icon.magic.frostRemainingMs);
-    const after = icon.enemies.map((e) => e.state.hp);
-    icon.handleGesture(points, points);
-    expect(icon.enemies.map((e) => e.state.hp)).toEqual(after);
-    expect(gesture.castMagic(id)).toBe(false);
+    expect(frostHook).not.toHaveBeenCalled();
   },
 );
+
 it("stim activation uses the same guarded path and cannot restart an active boost", () => {
   const test = scene();
   expect(test.activateStim()).toBe(true);
@@ -202,7 +210,6 @@ it("ultimate gesture is inactive until ready then deals immediate fixed damage a
 });
 it("choice and manual pause halt world, automatic rifle and ability clocks", () => {
   const test = scene();
-  test.castMagic("frost-nova");
   test.activateStim();
   test.update(0, 50);
   const before = {
@@ -210,7 +217,6 @@ it("choice and manual pause halt world, automatic rifle and ability clocks", () 
     shots: test.shotIndex,
     rifle: test.rifle.timeToEventMs,
     stim: test.stimpack.timeToBoundaryMs,
-    frost: test.magic.remaining("frost-nova"),
   };
   test.progression.gainXp(test.progression.threshold);
   test.update(0, 1000);
@@ -219,13 +225,11 @@ it("choice and manual pause halt world, automatic rifle and ability clocks", () 
     shots: test.shotIndex,
     rifle: test.rifle.timeToEventMs,
     stim: test.stimpack.timeToBoundaryMs,
-    frost: test.magic.remaining("frost-nova"),
   }).toEqual(before);
   test.progression.pendingChoices = 0;
   test.manualPaused = true;
   test.update(0, 1000);
   expect(test.run.elapsedMs).toBe(before.world);
-  expect(test.castMagic("chain-lightning")).toBe(false);
 });
 it("echo level-up before a pending shot pauses without consuming that shot or extra world time", () => {
   const test = scene();
@@ -383,7 +387,6 @@ it("ultimate visuals never suspend automatic fire, focus input, or ready abiliti
   expect(presenting.ultimateRemainingMs).toBe(250);
   presenting.focusAt(2, 0);
   expect(presenting.focus.targetId).toBe(2);
-  expect(presenting.castMagic("frost-nova")).toBe(true);
   expect(presenting.activateStim()).toBe(true);
 });
 
@@ -416,4 +419,76 @@ it("out-of-range focus blocks in-range auto fire until entry or blank tap", () =
   expect(test.shotIndex).toBe(1);
   expect(test.enemies[0]!.state.hp).toBe(10000);
   expect(test.enemies[1]!.state.hp).toBe(9990);
+});
+
+it("Marine offers no magic growth, exhausts available cards safely and keeps gaining levels", () => {
+  const test = scene();
+  let selected = 0;
+  for (let i = 0; i < 150; i++) {
+    test.progression.gainXp(test.progression.threshold);
+    while (test.progression.pendingChoices > 0) {
+      const choices = test.progression.offer();
+      expect(
+        choices.every(
+          (c) => c.ability === "gauss-rifle" || c.ability === "stimpack",
+        ),
+      ).toBe(true);
+      if (!choices.length) break;
+      expect(test.progression.choose(choices[0]!.id)).toBe(true);
+      selected++;
+    }
+  }
+  expect(selected).toBeGreaterThan(0);
+  expect(test.progression.pendingChoices).toBe(0);
+  expect(test.progression.level).toBeGreaterThan(100);
+});
+
+it("advances the real scene through twenty minutes with choices and bounded spawns", () => {
+  // Technical endurance check: refill the wall between steps; this is not a balance/survival claim.
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
+  const test = scene();
+  test.enemies = [];
+  Object.assign(test, { nextEnemyId: 0 });
+  Object.assign(test.director, { nextSpawnAtMs: 0 });
+  let iterations = 0,
+    peak = 0;
+  while (test.run.elapsedMs < runBalance.durationMs && iterations++ < 3000) {
+    while (test.progression.pendingChoices > 0) {
+      const card = test.progression.offer()[0];
+      if (!card) break;
+      test.progression.choose(card.id);
+      test.refreshBuild();
+    }
+    while (test.relics.pendingRewards > 0) {
+      const card = test.relics.offer()[0];
+      if (!card) break;
+      test.relics.choose(card.id);
+      test.refreshBuild();
+    }
+    test.run.wallHp = runBalance.wallMaxHp;
+    test.update(0, 1000);
+    peak = Math.max(peak, test.enemies.length);
+    expect(test.enemies.length).toBeLessThanOrEqual(180);
+  }
+  expect(test.run.elapsedMs).toBe(runBalance.durationMs);
+  expect(test.run.status).toBe("cleared");
+  expect(test.kills).toBeGreaterThan(0);
+  console.log(
+    `20-minute scene (wall refill fixture): kills=${test.kills}, level=${test.progression.level}, peak=${peak}`,
+  );
+}, 30000);
+
+it("Marine reward growth excludes magic-only relics and exhausts without pausing forever", () => {
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
+  const test = scene();
+  test.relics.expandCapacity();
+  for (let i = 0; i < 25; i++) {
+    test.relics.reward();
+    const cards = test.relics.offer();
+    expect(
+      cards.every((c) => c.id !== "time-gear" && c.id !== "frost-resonator"),
+    ).toBe(true);
+    if (cards[0]) test.relics.choose(cards[0].id);
+  }
+  expect(test.relics.pendingRewards).toBe(0);
 });

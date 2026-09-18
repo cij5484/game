@@ -12,6 +12,11 @@ export function createPrototypeEnemy(
   elite = false,
   elapsedMs = 0,
 ): EnemyState {
+  // Legacy grunt-elite requests migrate to the Stage 1 runner archetype.
+  if (elite && kind === "grunt") kind = "runner";
+  const eliteStats = elite
+    ? eliteBalance[kind as "runner" | "shield"]
+    : undefined;
   const growth = Math.min(
     1,
     Math.max(0, elapsedMs / enemyScalingBalance.durationMs),
@@ -22,12 +27,22 @@ export function createPrototypeEnemy(
     growth *
       (enemyScalingBalance.maxSpeedMultiplier -
         enemyScalingBalance.initialSpeedMultiplier);
-  const hp =
-    enemyConfigs[kind].hp *
-    hpMultiplier *
-    (elite ? eliteBalance.hpMultiplier : 1);
+  const hp = (eliteStats?.hp ?? enemyConfigs[kind].hp) * hpMultiplier;
   return {
     id,
+    ...(kind === "shield"
+      ? {
+          shieldHp: elite
+            ? eliteBalance.shield.shieldHp
+            : enemyConfigs.shield.shieldHp,
+          maxShieldHp: elite
+            ? eliteBalance.shield.shieldHp
+            : enemyConfigs.shield.shieldHp,
+        }
+      : {}),
+    ...(elite && kind === "runner"
+      ? { chargePhase: "approaching" as const, chargeRemainingMs: 0 }
+      : {}),
     ...(elite ? { elite: true } : {}),
     ...(speedMultiplier !== 1 ? { speedMultiplier } : {}),
     kind,

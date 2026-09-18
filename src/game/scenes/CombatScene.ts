@@ -8,7 +8,8 @@ import {
 import { GaussRifle } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
 import { SpawnDirector } from "../waves/spawnDirector";
-import { Magic } from "../combat/magic";
+import { shieldProtection } from "../combat/damage";
+import { eliteBalance } from "../data/elite";
 import { recognizeGesture } from "../input/gestureRecognizer";
 import { recognizeUltimateGesture } from "../input/ultimateGesture";
 import type { Point } from "../input/gestureRecognizer";
@@ -56,10 +57,12 @@ export class CombatScene extends Phaser.Scene {
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
-  private magic = new Magic();
-  private progression = new Progression();
+  private progression = new Progression(Math.random, [
+    "gauss-rifle",
+    "stimpack",
+  ]);
   private choices!: LevelUpView;
-  private relics = new Relics();
+  private relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
   private relicCombat = new RelicCombat();
   private cores = new Cores();
   private buildBar!: BuildBar;
@@ -95,9 +98,11 @@ export class CombatScene extends Phaser.Scene {
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
-    this.magic = new Magic();
-    this.progression = new Progression();
-    this.relics = new Relics();
+    this.progression = new Progression(Math.random, [
+      "gauss-rifle",
+      "stimpack",
+    ]);
+    this.relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
     this.relicCombat = new RelicCombat();
     this.cores = new Cores();
     this.shotIndex = 0;
@@ -119,12 +124,6 @@ export class CombatScene extends Phaser.Scene {
       stim: () => {
         this.activateStim();
       },
-      frost: () => {
-        this.castMagic("frost-nova");
-      },
-      chain: () => {
-        this.castMagic("chain-lightning");
-      },
       hint: () => {
         if (this.canUseAbility) this.burstUi.showHint();
       },
@@ -135,7 +134,7 @@ export class CombatScene extends Phaser.Scene {
         this.cancelInput();
         this.time.paused = paused;
         this.renderBurst();
-        this.renderMagic();
+        this.renderAbilities();
       },
       () => this.scene.restart(),
     );
@@ -168,7 +167,7 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
     );
-    this.renderMagic();
+    this.renderAbilities();
     this.renderProgression();
     this.renderBurst();
     this.refreshBuild();
@@ -185,11 +184,7 @@ export class CombatScene extends Phaser.Scene {
     this.focus.set(this.view.pickEnemy(x, y, this.enemies));
     this.view.setFocus(this.focus.targetId);
     for (const entry of this.enemies)
-      this.view.renderEnemy(
-        entry.visual,
-        entry.state,
-        this.magic.frostRemainingMs > 0,
-      );
+      this.view.renderEnemy(entry.visual, entry.state, false);
   }
 
   private activateStim(): boolean {
@@ -199,41 +194,9 @@ export class CombatScene extends Phaser.Scene {
       ...this.run,
       wallHp: Math.max(1, this.run.wallHp - effect.wallCost),
     };
-    this.magic.refundCooldowns(effect.cooldownRefunds);
-    this.renderBurst();
-    this.renderMagic();
-    return true;
-  }
 
-  private castMagic(id: "frost-nova" | "chain-lightning"): boolean {
-    if (!this.canUseAbility) return false;
-    const result = this.magic.cast(
-      id,
-      this.enemies.map((e) => e.state),
-    );
-    if (!result) return false;
-    this.view.showMagic(
-      id,
-      result.hitIds.flatMap((id) => {
-        const entry = this.enemies.find((e) => e.state.id === id);
-        return entry ? [entry.visual] : [];
-      }),
-    );
-    this.showStatusImpacts("lightning", result.strikeIds);
-    const effect = this.relicCombat.onMagic(
-      id,
-      this.run.wallHp / runBalance.wallMaxHp,
-    );
-    this.run = {
-      ...this.run,
-      wallHp: Math.min(
-        runBalance.wallMaxHp,
-        this.run.wallHp + effect.wallHealing,
-      ),
-    };
-    this.magic.refundCooldowns(effect.cooldownRefunds);
-    this.applyEnemyStates(result.enemies, true, true);
-    this.renderMagic();
+    this.renderBurst();
+    this.renderAbilities();
     return true;
   }
 
@@ -247,21 +210,20 @@ export class CombatScene extends Phaser.Scene {
       this.activateUltimate();
       return;
     }
+    // Legacy Mage recognition remains available for debug; it never casts for Marine.
     const gesture = recognizeGesture(points);
     this.view.showGesture(
       displayPoints,
       `${gesture.kind} · ${gesture.reason}`,
       gesture.kind === "unknown",
     );
-    if (gesture.kind !== "unknown")
-      this.castMagic(
-        gesture.kind === "circle" ? "frost-nova" : "chain-lightning",
-      );
+    // Circle/Z remain recognized for debug only; Marine owns V and Stimpack.
   }
 
   private activateUltimate(): boolean {
     if (!this.canUseAbility || !this.burst.activate()) return false;
     this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
+    this.refreshProtection();
     const result = suppressiveBarrage(this.enemies.map((e) => e.state));
     this.view.showBarrage(
       result.hitIds.flatMap((id) => {
@@ -271,7 +233,7 @@ export class CombatScene extends Phaser.Scene {
     );
     this.applyEnemyStates(result.enemies, false, false, false);
     this.renderBurst();
-    this.renderMagic();
+    this.renderAbilities();
     return true;
   }
 
@@ -299,7 +261,7 @@ export class CombatScene extends Phaser.Scene {
       this.enemies.push({
         state,
         attackElapsedMs: 0,
-        visual: this.view.createEnemy(state, this.magic.frostRemainingMs > 0),
+        visual: this.view.createEnemy(state, false),
       });
     }
   }
@@ -347,7 +309,7 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.attackSpeedMultiplier,
     );
     this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
-    this.renderMagic();
+    this.renderAbilities();
     this.view.renderRun(this.run.elapsedMs, runBalance.durationMs);
     const settings = this.director.settings;
     this.view.renderDirector(
@@ -355,20 +317,11 @@ export class CombatScene extends Phaser.Scene {
     );
   }
 
-  private renderMagic(): void {
-    this.view.renderMagic(
-      this.magic.remaining("frost-nova"),
-      this.magic.remaining("chain-lightning"),
-      this.magic.frostRemainingMs,
-    );
-    this.burstUi.renderAbilities(
-      { phase: this.stimpack.phase, progress: this.stimpack.phaseProgress },
-      {
-        frostProgress: this.magic.readyProgress("frost-nova"),
-        chainProgress: this.magic.readyProgress("chain-lightning"),
-        frostActive: this.magic.frostRemainingMs > 0,
-      },
-    );
+  private renderAbilities(): void {
+    this.burstUi.renderAbilities({
+      phase: this.stimpack.phase,
+      progress: this.stimpack.phaseProgress,
+    });
   }
 
   private finishRun(): void {
@@ -442,7 +395,15 @@ export class CombatScene extends Phaser.Scene {
     return consumed;
   }
 
+  private refreshProtection(): void {
+    const states = shieldProtection(this.enemies.map((e) => e.state));
+    this.enemies.forEach((entry, i) => {
+      entry.state = states[i]!;
+    });
+  }
+
   private firePrimary(): void | boolean {
+    this.refreshProtection();
     const target = this.focus.resolve(
       this.enemies.map((entry) => entry.state),
       marineConfig.primaryMinProgress01,
@@ -467,7 +428,6 @@ export class CombatScene extends Phaser.Scene {
         this.progression.ranks,
         gaussRifleBalance.damagePerRound *
           marineConfig.baseStats.damageMultiplier *
-          this.magic.primaryDamageMultiplier *
           this.stimpack.primaryDamageMultiplier,
         this.relicCombat.primaryModifiersFor(
           this.run.wallHp / runBalance.wallMaxHp,
@@ -507,14 +467,8 @@ export class CombatScene extends Phaser.Scene {
             (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
           ),
         );
-      this.magic.refundCooldowns(relicResult.cooldownRefunds);
-      const frost = this.relicCombat.onPrimaryFrost(
-        relicResult.enemies,
-        result.hitIds,
-        this.magic.frostRemainingMs > 0,
-      );
-      this.showStatusImpacts("frost", frost.shatterIds);
-      this.applyEnemyStates(frost.enemies);
+
+      this.applyEnemyStates(relicResult.enemies);
       if (this.choosing) return false;
     } else
       this.relicCombat.afterPrimary(
@@ -527,20 +481,10 @@ export class CombatScene extends Phaser.Scene {
   private applyEnemyStates(
     states: readonly EnemyState[],
     chargeBurst = true,
-    magicKill = false,
+    _magicKill = false,
     allowRelicEnergy = true,
   ): void {
-    const frostBurst = this.magic.afterDeaths(
-      states,
-      states.filter((e) => e.hp <= 0).map((e) => e.id),
-    );
-    this.view.showImpacts(
-      "frost",
-      frostBurst.centerIds.map(
-        (id) => this.enemies.find((e) => e.state.id === id)!.visual,
-      ),
-    );
-    const byId = new Map(frostBurst.enemies.map((enemy) => [enemy.id, enemy]));
+    const byId = new Map(states.map((enemy) => [enemy.id, enemy]));
     let buildChanged = false;
     let xp = 0;
     let nearWallKills = 0;
@@ -549,8 +493,10 @@ export class CombatScene extends Phaser.Scene {
     let eliteKills = 0;
     for (const entry of this.enemies) {
       const oldHp = entry.state.hp;
+      const oldShield = entry.state.shieldHp ?? 0;
       entry.state = byId.get(entry.state.id)!;
-      if (entry.state.hp < oldHp) hits++;
+      if (entry.state.hp < oldHp || (entry.state.shieldHp ?? 0) < oldShield)
+        hits++;
       if (entry.state.hp <= 0) {
         kills++;
         xp += enemyConfigs[entry.state.kind].xpOnKill;
@@ -574,21 +520,17 @@ export class CombatScene extends Phaser.Scene {
           eliteKills++;
         }
         entry.visual.destroy();
-      } else
-        this.view.renderEnemy(
-          entry.visual,
-          entry.state,
-          this.magic.frostRemainingMs > 0,
-        );
+      } else this.view.renderEnemy(entry.visual, entry.state, false);
     }
     this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    this.refreshProtection();
     this.focus.resolve(this.enemies.map((e) => e.state));
     this.view.setFocus(this.focus.targetId);
     this.kills += kills;
     const reward = this.relicCombat.onKills(kills, {
-      frost: this.magic.frostRemainingMs > 0,
+      frost: false,
       boost: this.stimpack.phase === "boost",
-      magic: magicKill,
+      magic: false,
       nearWallKills,
     });
     this.run = {
@@ -687,7 +629,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.relicCombat.setLevels(this.relics.levels);
     this.rifle.setConfig(deriveWeaponConfig(this.progression.ranks));
-    this.magic.setUpgrades(this.progression.ranks, this.progression.branches);
+
     this.stimpack.setUpgrades(
       this.progression.ranks,
       this.progression.branches,
@@ -730,7 +672,7 @@ export class CombatScene extends Phaser.Scene {
       status: result.wallHp > 0 ? "running" : "failed",
     };
     if (!result.event) return;
-    this.magic.refundCooldowns(result.cooldownRefunds);
+
     const pushed = this.enemies
       .filter(
         (e) =>
@@ -766,6 +708,8 @@ export class CombatScene extends Phaser.Scene {
     const due = this.echoRounds
       .filter((e) => e.dueMs <= this.run.elapsedMs)
       .slice(0, 6);
+    if (!due.length) return;
+    this.refreshProtection();
     for (const pending of due) {
       this.echoRounds.splice(this.echoRounds.indexOf(pending), 1);
       const candidates = this.enemies
@@ -821,31 +765,27 @@ export class CombatScene extends Phaser.Scene {
         16,
         this.director.timeToSpawnMs,
         runBalance.durationMs - this.run.elapsedMs,
-        this.magic.frostRemainingMs > 0
-          ? this.magic.frostRemainingMs
-          : Infinity,
       );
+      this.refreshProtection();
       for (const entry of this.enemies) {
         const config = enemyConfigs[entry.state.kind];
-        const movement = advanceEnemy(
-          entry.state,
-          step,
-          config,
-          this.magic.movementMultiplier,
-        );
+        const movement = advanceEnemy(entry.state, step, config, 1);
         entry.state = movement.enemy;
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
           movement.wallTimeMs,
-          config,
+          entry.state.elite
+            ? {
+                ...config,
+                wallAttackDamage:
+                  eliteBalance[entry.state.kind as "runner" | "shield"]
+                    .wallDamage,
+              }
+            : config,
         );
         entry.attackElapsedMs = attack.elapsedMs;
         this.takeWallDamage(attack.damage);
-        this.view.renderEnemy(
-          entry.visual,
-          entry.state,
-          this.magic.frostRemainingMs > step,
-        );
+        this.view.renderEnemy(entry.visual, entry.state, false);
         if (this.run.status !== "running") break;
       }
       const echoes = this.relicCombat.advance(step);
@@ -857,19 +797,10 @@ export class CombatScene extends Phaser.Scene {
           });
       }
       this.director.advance(step);
-      this.magic.advance(step);
+
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
-      if (this.run.status === "running") {
-        const strikes = this.magic.drainStrikes(
-          this.enemies.map((e) => e.state),
-        );
-        if (strikes.hitIds.length) {
-          this.showStatusImpacts("lightning", strikes.strikeIds);
-          this.applyEnemyStates(strikes.enemies, true, true);
-        }
-      }
       if (this.run.status === "running" && !this.choosing) this.fireEchoes();
       if (this.choosing) break;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {

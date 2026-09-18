@@ -1,105 +1,86 @@
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { SpawnDirector } from "../../src/game/waves/spawnDirector";
 import { hordeBalance } from "../../src/game/data/horde";
+import { eliteBalance } from "../../src/game/data/elite";
 import { runBalance } from "../../src/game/data/run";
 
-describe("five-minute encounter director", () => {
-  it("starts with 48 visible grunts and fills the early horde while reserving an elite slot", () => {
-    const director = new SpawnDirector(() => 0.5);
-    const initial = director.spawn(0);
-    expect(initial).toHaveLength(48);
-    expect(
-      initial.every(
-        (enemy) =>
-          enemy.kind === "grunt" &&
-          enemy.progress01 > 0 &&
-          enemy.progress01 <= 0.45,
-      ),
-    ).toBe(true);
-    let active = initial.length;
-    while (director.elapsedMs + director.timeToSpawnMs < 30000) {
-      director.advance(director.timeToSpawnMs);
-      active += director.spawn(active).length;
+it("starts with distant grunts, respects capacity and discards blocked spawn opportunities", () => {
+  const d = new SpawnDirector(() => 0.5);
+  const initial = d.spawn(0);
+  expect(initial).toHaveLength(24);
+  expect(
+    initial.every(
+      (e) => e.kind === "grunt" && e.progress01 >= 0.08 && e.progress01 <= 0.3,
+    ),
+  ).toBe(true);
+  d.advance(d.timeToSpawnMs);
+  expect(d.spawn(50)).toEqual([]);
+  expect(d.timeToSpawnMs).toBeGreaterThan(0);
+  d.advance(d.timeToSpawnMs);
+  expect(d.spawn(48)).toHaveLength(1);
+});
+it("changes phase exactly, keeps both relief windows populated and delays shields", () => {
+  const d = new SpawnDirector(() => 0.5);
+  d.spawn(0);
+  for (const stage of hordeBalance.stages.slice(1)) {
+    d.advance(stage.atMs - d.elapsedMs);
+    expect(d.settings.name).toBe(stage.name);
+    const spawns = d.spawn(0);
+    expect(spawns.length).toBeGreaterThan(0);
+    if (stage.atMs < 360000)
+      expect(spawns.every((e) => e.kind !== "shield")).toBe(true);
+  }
+  expect(
+    hordeBalance.stages.filter((s) => s.phase === "relief").map((s) => s.atMs),
+  ).toEqual([300000, 660000, 1140000]);
+});
+it("runs twenty minutes with five bounded elite windows and increasing replacement pressure", () => {
+  let seed = 42;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const d = new SpawnDirector(random);
+  const elites: { at: number; kind: string }[] = [];
+  const counts = new Map<number, number>();
+  while (d.elapsedMs < runBalance.durationMs) {
+    const spawns = d.spawn(0);
+    for (const e of spawns) {
+      if (e.elite) elites.push({ at: d.elapsedMs, kind: e.kind });
+      if (e.kind === "shield")
+        expect(d.elapsedMs).toBeGreaterThanOrEqual(360000);
+      expect(e.offset01).toBeGreaterThanOrEqual(0.12);
+      expect(e.offset01).toBeLessThanOrEqual(0.88);
     }
-    expect(active).toBe(71);
-    expect(director.spawn(0)).toEqual([]);
-  });
-
-  it("changes encounter on the exact boundary and drops blocked spawn opportunities", () => {
-    const director = new SpawnDirector();
-    director.spawn(0);
-    director.advance(29500);
-    director.spawn(130);
-    expect(director.timeToSpawnMs).toBe(500);
-    director.advance(500);
-    expect(director.settings).toMatchObject({
-      phase: "relief",
-      name: "BREATHING ROOM",
-      batchSize: 5,
-    });
-    expect(director.spawn(130)).toEqual([]);
-    director.advance(director.timeToSpawnMs);
-    expect(director.spawn(0)).toHaveLength(5);
-    expect(director.spawn(0)).toEqual([]);
-  });
-
-  it("reserves an elite slot at 60 seconds and retries capacity without backlog", () => {
-    const director = new SpawnDirector(() => 0.5);
-    director.spawn(0);
-    director.advance(59000);
-    expect(director.spawn(83).some((enemy) => enemy.elite)).toBe(false);
-    director.advance(1000);
-    const first = director.spawn(89);
-    expect(first).toHaveLength(1);
-    expect(first[0]).toMatchObject({
-      kind: "grunt",
-      elite: true,
-      progress01: 0,
-    });
-    director.advance(40000);
-    expect(director.spawn(105)).toEqual([]);
-    expect(director.timeToSpawnMs).toBeGreaterThan(0);
-    director.advance(director.timeToSpawnMs);
-    expect(director.spawn(104).filter((enemy) => enemy.elite)).toHaveLength(1);
-  });
-
-  it("keeps raising late-run capacity and replacement pressure through the last 15 seconds", () => {
-    expect(runBalance.durationMs).toBe(300000);
-    const director = new SpawnDirector(() => 0.99);
-    director.spawn(0);
-    director.advance(60000);
-    expect(director.spawn(0).some((enemy) => enemy.kind === "shield")).toBe(
-      true,
+    counts.set(
+      d.settings.stage,
+      (counts.get(d.settings.stage) ?? 0) + spawns.length,
     );
-    director.advance(195000);
-    expect(director.settings).toMatchObject({
-      name: "FINAL PRESSURE",
-      phase: "pressure",
-      maxActiveEnemies: 170,
-      batchSize: 20,
-      spawnIntervalMs: 850,
-    });
-    director.advance(30000);
-    expect(director.settings.maxActiveEnemies).toBe(180);
-    const final = director.spawn(165);
-    expect(final).toHaveLength(14);
-    director.advance(director.timeToSpawnMs);
-    expect(director.spawn(0)).toHaveLength(24);
-    expect(director.timeToSpawnMs).toBe(800);
-    expect(
-      hordeBalance.stages.every((stage) => stage.atMs < runBalance.durationMs),
-    ).toBe(true);
+    expect(spawns.length).toBeLessThanOrEqual(d.settings.maxActiveEnemies);
+    expect(d.timeToSpawnMs).toBeGreaterThan(0);
+    d.advance(d.timeToSpawnMs);
+  }
+  expect(elites).toHaveLength(5);
+  elites.forEach((e, i) => {
+    expect(e.at).toBeGreaterThanOrEqual(eliteBalance.windows[i]![0]);
+    expect(e.at).toBeLessThanOrEqual(eliteBalance.windows[i]![1]);
   });
-
-  it("keeps relief populated and returns to pressure after eight seconds", () => {
-    const director = new SpawnDirector(() => 0.5);
-    director.spawn(0);
-    for (const atMs of [30000, 90000, 165000, 210000]) {
-      director.advance(atMs - director.elapsedMs);
-      expect(director.settings.phase).toBe("relief");
-      expect(director.spawn(0).length).toBeGreaterThanOrEqual(3);
-      director.advance(8000);
-      expect(director.settings.phase).toBe("pressure");
-    }
-  });
+  expect(elites.slice(0, 2).every((e) => e.kind === "runner")).toBe(true);
+  expect((counts.get(9) ?? 0) / 60).toBeGreaterThan(
+    ((counts.get(0) ?? 0) / 180) * 5,
+  );
+  expect(Math.max(...hordeBalance.stages.map((s) => s.maxActiveEnemies))).toBe(
+    180,
+  );
+});
+it("reserves room for elites and retries a full battlefield without a regular backlog", () => {
+  const d = new SpawnDirector(() => 0.5);
+  d.spawn(0);
+  d.advance(270000);
+  expect(d.spawn(70)).toEqual([]);
+  d.advance(d.timeToSpawnMs);
+  const retry = d.spawn(69);
+  expect(retry).toHaveLength(1);
+  expect(retry[0]).toMatchObject({ kind: "runner", elite: true });
+  expect(d.timeToSpawnMs).toBeGreaterThan(0);
 });

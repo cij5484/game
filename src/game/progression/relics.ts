@@ -24,8 +24,18 @@ export class Relics {
   capacity: number = relicBalance.maxTypes;
   private choices: RelicDefinition[] | undefined;
   private random: () => number;
-  constructor(random: () => number = Math.random) {
+  private readonly excluded: readonly RelicId[];
+  constructor(
+    random: () => number = Math.random,
+    excluded: readonly RelicId[] = [],
+  ) {
     this.random = random;
+    this.excluded = excluded;
+  }
+  private eligible(): RelicDefinition[] {
+    return eligibleRelics(this.levels, this.capacity).filter(
+      (r) => !this.excluded.includes(r.id),
+    );
   }
   expandCapacity(): boolean {
     if (this.capacity >= relicBalance.expandedMaxTypes) return false;
@@ -33,13 +43,12 @@ export class Relics {
     return true;
   }
   reward(): void {
-    if (eligibleRelics(this.levels, this.capacity).length > 0)
-      this.pendingRewards++;
+    if (this.eligible().length > 0) this.pendingRewards++;
   }
   offer(): RelicDefinition[] {
     if (this.pendingRewards <= 0) return [];
     if (!this.choices) {
-      const candidates = eligibleRelics(this.levels, this.capacity);
+      const candidates = this.eligible();
       for (let i = candidates.length - 1; i > 0; i--) {
         const j = Math.floor(this.random() * (i + 1));
         [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!];
@@ -53,8 +62,7 @@ export class Relics {
     this.levels[id] = (this.levels[id] ?? 0) + 1;
     this.pendingRewards--;
     this.choices = undefined;
-    if (eligibleRelics(this.levels, this.capacity).length === 0)
-      this.pendingRewards = 0;
+    if (this.eligible().length === 0) this.pendingRewards = 0;
     return true;
   }
 }
