@@ -22,6 +22,43 @@ const selected = (...ids: string[]) => ({
   activeSynergyIds: new Set(ids),
 });
 
+it.each(["penetration", "explosive"] as const)(
+  "applies target damage bonuses only to each marked %s hit, including secondary damage",
+  (trait) => {
+    const enemies = [enemy(1, 0.8), enemy(2, 0.78), enemy(3, 0.76)];
+    const context = {
+      ...noCrit,
+      growth: {
+        ranks: { [trait]: 1 },
+        quality: {},
+        legendary: new Set<never>(),
+      },
+    };
+    const ordinary = primaryAttack(
+      enemies[0]!,
+      enemies,
+      {},
+      10,
+      {},
+      [],
+      context,
+    );
+    expect(ordinary.enemies[1]!.hp).toBeLessThan(100);
+    for (const markedId of [1, 2]) {
+      const marked = primaryAttack(enemies[0]!, enemies, {}, 10, {}, [], {
+        ...context,
+        targetDamageMultiplier: (id) => (id === markedId ? 1.2 : 1),
+      });
+      marked.enemies.forEach((target, index) => {
+        const ordinaryDamage = 100 - ordinary.enemies[index]!.hp;
+        expect(100 - target.hp).toBeCloseTo(
+          ordinaryDamage * (target.id === markedId ? 1.2 : 1),
+        );
+      });
+    }
+  },
+);
+
 it("unselected branch cannot silently grant high-level effects", () => {
   expect(weaponTraitIds).toHaveLength(5);
   for (const id of weaponTraitIds)

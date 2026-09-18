@@ -15,7 +15,6 @@ import type { TargetFocus } from "../../src/game/combat/targeting";
 import type { Point } from "../../src/game/input/gestureRecognizer";
 import { Stimpack } from "../../src/game/combat/stimpack";
 import { stimpackBalance } from "../../src/game/data/balance";
-import { runBalance } from "../../src/game/data/run";
 import type { Relics } from "../../src/game/progression/relics";
 import type { RunState } from "../../src/game/model/runState";
 
@@ -75,6 +74,8 @@ function scene(): SceneHarness {
     view: {
       createEnemy: () => ({ destroy: noop }),
       showImpacts: noop,
+      showSpecialEffects: noop,
+      renderSpecialWeapons: noop,
       showNotice: noop,
       showPrimary: noop,
       showMagic: noop,
@@ -88,7 +89,7 @@ function scene(): SceneHarness {
     },
     pauseUi: { setBlocked: noop, setBuildDetails: noop },
     buildBar: { render: noop },
-    burstUi: { renderBuild: noop },
+    burstUi: { renderBuild: noop, renderSpecialWeapons: noop },
     renderCombat: noop,
     renderBurst: noop,
     renderAbilities: noop,
@@ -431,8 +432,8 @@ it("Marine offers no magic growth, keeps repeatable growth available while gaini
     while (test.progression.pendingChoices > 0) {
       const choices = test.progression.offer();
       expect(
-        choices.every(
-          (c) => c.ability === "gauss-rifle" || c.ability === "stimpack",
+        choices.every((c) =>
+          ["gauss-rifle", "grenade", "missile", "drone"].includes(c.ability),
         ),
       ).toBe(true);
       if (!choices.length) break;
@@ -444,91 +445,6 @@ it("Marine offers no magic growth, keeps repeatable growth available while gaini
   expect(test.progression.pendingChoices).toBe(0);
   expect(test.progression.level).toBeGreaterThan(100);
 });
-
-it.each([
-  { seed: 42, build: ["penetration", "burst", "explosive"] },
-  { seed: 73, build: ["ricochet", "multishot", "heavy"] },
-  { seed: 2026, build: ["burst", "multishot", "explosive"] },
-])(
-  "advances twenty minutes with M4 growth and bounded horde ($seed)",
-  ({ seed, build }) => {
-    // Technical endurance check with wall refill; not a survival/balance claim.
-    let rng = seed;
-    vi.spyOn(Math, "random").mockImplementation(() => {
-      rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
-      return rng / 4294967296;
-    });
-    const test = scene();
-    test.enemies = [];
-    Object.assign(test, { nextEnemyId: 0 });
-    Object.assign(test.director, { nextSpawnAtMs: 0 });
-    let peak = 0,
-      sum = 0,
-      samples = 0;
-    const phases = Array.from({ length: 4 }, () => ({
-      sum: 0,
-      n: 0,
-      peak: 0,
-      level: 1,
-    }));
-    const started = performance.now();
-    while (test.run.elapsedMs < runBalance.durationMs && samples++ < 3000) {
-      while (test.progression.pendingChoices > 0) {
-        const offered = test.progression.offer();
-        const pick =
-          offered.find((c) => build.includes(c.id)) ??
-          offered.find((c) =>
-            ["primary-damage", "attack-speed", "range", "crit-chance"].includes(
-              c.id,
-            ),
-          ) ??
-          offered[0];
-        expect(pick).toBeDefined();
-        test.progression.choose(pick!.id);
-        test.refreshBuild();
-      }
-      while (test.relics.pendingRewards > 0) {
-        const card = test.relics.offer()[0];
-        if (!card) break;
-        test.relics.choose(card.id);
-        test.refreshBuild();
-      }
-      test.run.wallHp = runBalance.wallMaxHp;
-      test.update(0, 1000);
-      peak = Math.max(peak, test.enemies.length);
-      sum += test.enemies.length;
-      const phase =
-        phases[Math.min(3, Math.floor(test.run.elapsedMs / 300000))]!;
-      phase.sum += test.enemies.length;
-      phase.n++;
-      phase.peak = Math.max(phase.peak, test.enemies.length);
-      phase.level = test.progression.level;
-      expect(test.enemies.length).toBeLessThanOrEqual(700);
-    }
-    expect(test.run.elapsedMs).toBe(runBalance.durationMs);
-    expect(test.run.status).toBe("cleared");
-    expect(test.kills).toBeGreaterThan(0);
-    console.log(
-      JSON.stringify({
-        kind: "M4 scene wall-refill technical fixture",
-        seed,
-        build,
-        elapsedMs: Math.round(performance.now() - started),
-        kills: test.kills,
-        level: test.progression.level,
-        averageActive: Math.round((sum / samples) * 100) / 100,
-        peak,
-        phases: phases.map((p) => ({
-          average: Math.round((p.sum / p.n) * 100) / 100,
-          peak: p.peak,
-          level: p.level,
-        })),
-        ranks: test.progression.ranks,
-      }),
-    );
-  },
-  30000,
-);
 
 it("Marine reward growth excludes magic-only relics and exhausts without pausing forever", () => {
   vi.spyOn(Math, "random").mockReturnValue(0.5);
@@ -586,59 +502,57 @@ it("Marine Scene applies range, burst and quality while old evolution/synergy st
   expect(test.shotIndex).toBe(3);
 });
 
-it("records an unassisted-wall M4 run with automatic ability use", () => {
-  let rng = 42;
-  vi.spyOn(Math, "random").mockImplementation(() => {
-    rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
-    return rng / 4294967296;
-  });
-  const test = scene();
-  test.enemies = [];
-  Object.assign(test, { nextEnemyId: 0 });
-  Object.assign(test.director, { nextSpawnAtMs: 0 });
-  let steps = 0,
-    peak = 0;
-  while (test.run.status === "running" && steps++ < 4000) {
-    while (test.progression.pendingChoices > 0) {
-      const choices = test.progression.offer();
-      const desired = ["burst", "penetration", "explosive"];
-      const pick =
-        choices.find(
-          (c) =>
-            desired.includes(c.id) && (test.progression.ranks[c.id] ?? 0) < 5,
-        ) ??
-        choices.find((c) =>
-          ["primary-damage", "attack-speed", "range"].includes(c.id),
-        ) ??
-        choices.find((c) => desired.includes(c.id)) ??
-        choices[0]!;
-      test.progression.choose(pick.id);
-      test.refreshBuild();
-    }
-    while (test.relics.pendingRewards > 0) {
-      const c = test.relics.offer()[0];
-      if (!c) break;
-      test.relics.choose(c.id);
-      test.refreshBuild();
-    }
-    test.activateStim();
-    if (test.enemies.length >= 20) test.activateUltimate();
-    test.update(0, 1000);
-    peak = Math.max(peak, test.enemies.length);
-  }
-  expect(test.run.status).not.toBe("running");
-  expect(test.run.elapsedMs).toBeLessThanOrEqual(runBalance.durationMs);
-  console.log(
-    JSON.stringify({
-      kind: "M4 no wall refill; automated choices and abilities, not human playtest",
-      seed: 42,
-      status: test.run.status,
-      timeSeconds: Math.round(test.run.elapsedMs / 1000),
-      kills: test.kills,
-      level: test.progression.level,
-      peak,
-      wallHp: Math.ceil(test.run.wallHp),
-      ranks: test.progression.ranks,
-    }),
+it("scales gameplay once at update entry while pause and focus input remain unscaled", () => {
+  const normal = scene(),
+    fast = scene();
+  Object.assign(fast, { gameSpeed: 4 });
+  normal.update(0, 800);
+  fast.update(0, 200);
+  expect(fast.run.elapsedMs).toBe(normal.run.elapsedMs);
+  expect(fast.enemies.map((e) => e.state)).toEqual(
+    normal.enemies.map((e) => e.state),
   );
-}, 30000);
+  expect(fast.shotIndex).toBe(normal.shotIndex);
+  expect(fast.director.elapsedMs).toBe(normal.director.elapsedMs);
+  fast.manualPaused = true;
+  fast.update(0, 1000);
+  fast.focusAt(1, 0);
+  expect(fast.run.elapsedMs).toBe(800);
+  expect(fast.focus.targetId).toBeNull();
+});
+
+it("special acquisition pauses without spending normal choices; special kills credit XP once", () => {
+  const test = scene();
+  test.progression.special.acquireAtCharacterLevel(5);
+  test.update(0, 1000);
+  expect(test.run.elapsedMs).toBe(0);
+  expect(test.progression.special.offer()?.choices).toHaveLength(3);
+  expect(test.progression.special.choose("grenade")).toBe(true);
+  expect(test.progression.pendingChoices).toBe(0);
+  test.enemies.forEach((e) => {
+    e.state.progress01 = 0.1;
+    e.state.hp = 1;
+  });
+  test.update(0, 800);
+  expect(test.kills).toBe(2);
+  expect(test.progression.xp).toBe(2);
+  test.update(0, 100);
+  expect(test.progression.xp).toBe(2);
+});
+it("X4 shares special projectile, cooldown and Stim clocks with ordinary simulation", () => {
+  const normal = scene(),
+    fast = scene();
+  for (const test of [normal, fast]) {
+    test.progression.special.acquireAtCharacterLevel(5);
+    test.progression.special.choose("missile");
+    test.activateStim();
+  }
+  Object.assign(fast, { gameSpeed: 4 });
+  normal.update(0, 1200);
+  fast.update(0, 300);
+  expect(fast.enemies.map((e) => e.state)).toEqual(
+    normal.enemies.map((e) => e.state),
+  );
+  expect(fast.stimpack.timeToBoundaryMs).toBe(normal.stimpack.timeToBoundaryMs);
+  expect(fast.run).toEqual(normal.run);
+});

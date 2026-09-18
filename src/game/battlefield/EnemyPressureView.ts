@@ -1,3 +1,5 @@
+import { combatGeometry } from "./combatGeometry";
+import type { SpecialVisual, SpecialEffect } from "../combat/specialWeapons";
 import Phaser from "phaser";
 import type { EnemyState } from "../enemies/enemySimulation";
 import type { EnemyKind } from "../model/types";
@@ -36,6 +38,7 @@ const colors: Record<EnemyKind, number> = {
 
 export class EnemyPressureView {
   private readonly world: Phaser.GameObjects.Container;
+  private readonly specialGraphics: Phaser.GameObjects.Graphics;
   private readonly hud: Phaser.GameObjects.Container;
   private readonly header: Phaser.GameObjects.Container;
   private layout!: ReturnType<typeof battlefieldLayout>;
@@ -71,6 +74,8 @@ export class EnemyPressureView {
     this.scene = scene;
     const environment = scene.add.graphics();
     this.world = scene.add.container();
+    this.specialGraphics = scene.add.graphics();
+    this.world.add(this.specialGraphics);
     this.hud = scene.add.container().setDepth(1);
     this.header = scene.add.container().setDepth(1);
     this.debug = scene.add.container().setDepth(2).setVisible(false);
@@ -103,7 +108,7 @@ export class EnemyPressureView {
       this.xpFill,
     ]);
 
-    this.runText = text(500, 25, "20:00", 27);
+    this.runText = text(450, 25, "20:00", 27);
     this.header.add(this.runText);
     this.stimText = text(360, 1040, "", 20);
     this.magicText = text(360, 1010, "", 16);
@@ -267,6 +272,93 @@ export class EnemyPressureView {
     );
   }
 
+  private specialPoint(x: number, y: number) {
+    return {
+      x: field.left + (x / combatGeometry.width) * field.width,
+      y: (y / combatGeometry.depth) * this.wallY,
+    };
+  }
+
+  renderSpecialWeapons(visuals: readonly SpecialVisual[]): void {
+    const graphics = this.specialGraphics.clear();
+    for (const visual of visuals) {
+      const point = this.specialPoint(visual.x, visual.y);
+      const size =
+        (visual.kind === "drone" ? 18 : 10) *
+        (visual.size ?? 1) *
+        perspectiveScale(Math.min(1, visual.y / combatGeometry.depth));
+      const color =
+        visual.kind === "grenade"
+          ? 0xffb35b
+          : visual.kind === "missile"
+            ? 0xff7d7d
+            : 0x8affda;
+      graphics.fillStyle(color, 0.95).lineStyle(2, 0xffffff, 0.9);
+      if (visual.kind === "drone") {
+        graphics.fillRect(point.x - size, point.y - size * 0.5, size * 2, size);
+        graphics.lineBetween(
+          point.x - size * 1.5,
+          point.y,
+          point.x + size * 1.5,
+          point.y,
+        );
+        graphics
+          .strokeCircle(point.x - size, point.y, size * 0.45)
+          .strokeCircle(point.x + size, point.y, size * 0.45);
+      } else {
+        graphics.fillCircle(point.x, point.y, size * 0.55);
+        if (visual.kind === "missile")
+          graphics
+            .lineStyle(3, color, 0.5)
+            .lineBetween(point.x, point.y + size * 2, point.x, point.y);
+      }
+    }
+    this.world.bringToTop(graphics);
+  }
+
+  showSpecialEffects(effects: readonly SpecialEffect[]): void {
+    if (!effects.length) return;
+    const graphics = this.scene.add.graphics();
+    this.world.add(graphics);
+    for (const effect of effects) {
+      const p = this.specialPoint(effect.x, effect.y);
+      const color =
+        effect.weapon === "grenade"
+          ? 0xffb35b
+          : effect.weapon === "missile"
+            ? 0xff7d7d
+            : 0x8affda;
+      graphics.lineStyle(effect.kind === "shot" ? 3 : 4, color, 0.9);
+      if (effect.kind === "shot") {
+        const to = this.specialPoint(
+          effect.toX ?? effect.x,
+          effect.toY ?? effect.y,
+        );
+        graphics.lineBetween(p.x, p.y, to.x, to.y).strokeCircle(to.x, to.y, 7);
+      } else {
+        const radius =
+          ((effect.radius ?? 70) * field.width) / combatGeometry.width;
+        graphics.strokeEllipse(
+          p.x,
+          p.y,
+          radius * 2,
+          (radius * 2 * this.wallY) / combatGeometry.depth,
+        );
+        graphics
+          .fillStyle(color, 0.12)
+          .fillEllipse(
+            p.x,
+            p.y,
+            radius * 2,
+            (radius * 2 * this.wallY) / combatGeometry.depth,
+          );
+        if (effect.kind === "pull") graphics.strokeCircle(p.x, p.y, 10);
+      }
+    }
+    // Visual-only flash duration: simulation projectile/effect lifetime is owned by SpecialWeapons.
+    this.scene.time.delayedCall(160, () => graphics.destroy());
+  }
+
   createEnemy(enemy: EnemyState, slowed = false): Phaser.GameObjects.Container {
     const shape = this.scene.add.rectangle(
       0,
@@ -319,6 +411,12 @@ export class EnemyPressureView {
   ): void {
     let x = field.left + laneX(enemy.lane, field.width, enemy.offset01);
     let y = this.farY + (this.wallY - this.farY) * enemy.progress01;
+    // Gravity can move an attacker into another lane; release its old visual slot.
+    if (
+      enemy.phase !== "attacking" ||
+      this.attackSlots.get(enemy.id)?.lane !== enemy.lane
+    )
+      this.attackSlots.delete(enemy.id);
     if (enemy.phase === "attacking") {
       if (!this.attackSlots.has(enemy.id)) {
         const occupied = new Set(

@@ -1,3 +1,5 @@
+import { specialBuildSummary } from "./buildSummary";
+import type { SpecialWeaponState } from "../data/specialWeapons";
 import {
   marineUpgrades,
   marineTraitIds,
@@ -25,6 +27,7 @@ export interface RunResult {
   wallHp: number;
   ranks: UpgradeRanks;
   growth?: MarineGrowthState;
+  specialWeapons?: readonly SpecialWeaponState[];
   branches: GrowthBranches;
   activeSynergyIds: ReadonlySet<string>;
   relics: RelicLevels;
@@ -98,6 +101,16 @@ export class ResultView {
               )
               .join(" · ") || display.none
           : selections(["gauss-rifle"]),
+      ],
+      [
+        "특수무기",
+        (result.specialWeapons ?? [])
+          .map((w) =>
+            specialBuildSummary(w)
+              .map((e) => `${e.title}${e.level ? ` Lv${e.level}` : ""}`)
+              .join(" / "),
+          )
+          .join(" · ") || display.none,
       ],
       [display.stimpack, selections(["stimpack"])],
       [display.magicGrowth, selections(["frost-nova", "chain-lightning"])],
