@@ -73,13 +73,11 @@ export function advanceSiegeBoss(
         boss.interruptDamage = 0;
       } else {
         current.phase = "attacking";
-        const attackTime =
-          remaining + tune.finalWallIntervalMs - boss.wallAttackRemainingMs;
-        wallDamage +=
-          Math.floor(attackTime / tune.finalWallIntervalMs) *
-          tune.finalWallDamage;
-        boss.wallAttackRemainingMs =
-          tune.finalWallIntervalMs - (attackTime % tune.finalWallIntervalMs);
+        boss.wallAttackRemainingMs -= remaining;
+        while (boss.wallAttackRemainingMs <= 0) {
+          wallDamage += tune.finalWallDamage;
+          boss.wallAttackRemainingMs += tune.finalWallIntervalMs;
+        }
         break;
       }
     } else {

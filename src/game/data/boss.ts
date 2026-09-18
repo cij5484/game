@@ -1,5 +1,6 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 // M7 prototype tuning; difficulty and encounter length await player playtest.
-export const siegeBossBalance = {
+export const siegeBossBalance = runtimeObject("boss", {
   hp: 30000,
   spawnMs: 19 * 60_000,
   warningMs: 18 * 60_000 + 50_000,
@@ -21,4 +22,4 @@ export const siegeBossBalance = {
   finalSpeed: 0.09,
   finalWallDamage: 1000,
   finalWallIntervalMs: 1800,
-} as const;
+} as const);

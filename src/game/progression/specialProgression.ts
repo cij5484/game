@@ -6,6 +6,7 @@ import {
   type SpecialWeaponState,
 } from "../data/specialWeapons";
 import { promoteRarity } from "../data/highroll";
+import { marineGrowthBalance } from "../data/marineGrowth";
 import type { UpgradeRarity } from "../data/upgrades";
 
 export interface SpecialGrowthHistory {
@@ -39,7 +40,7 @@ type QueueEntry =
 export class SpecialProgression {
   readonly weapons: SpecialWeaponState[] = [];
   readonly history: SpecialGrowthHistory[] = [];
-  capacity = 2;
+  capacity = marineGrowthBalance.specialCapacity;
   private qualityLiberated = false;
   private readonly queue: QueueEntry[] = [];
 

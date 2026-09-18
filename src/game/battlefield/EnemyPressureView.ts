@@ -528,7 +528,7 @@ export class EnemyPressureView {
       const phase = charge
         ? `공성 준비 ${(boss.phaseRemainingMs / 1000).toFixed(1)}초\n중단 ${Math.min(100, Math.floor((boss.interruptDamage / siegeBossBalance.interruptDamage) * 100))}%`
         : stagger
-          ? "공격 중단 · 약점 노출 ×1.5"
+          ? `공격 중단 · 약점 노출 ×${siegeBossBalance.vulnerableMultiplier}`
           : boss.phase === "final-charge"
             ? "최후 돌진"
             : "접근 중";
@@ -543,7 +543,14 @@ export class EnemyPressureView {
         visual.getData("bossCharge") as Phaser.GameObjects.Rectangle
       ).setDisplaySize(
         charge
-          ? 140 * (1 - boss.phaseRemainingMs / siegeBossBalance.chargeMs)
+          ? 140 *
+              Math.max(
+                0,
+                Math.min(
+                  1,
+                  1 - boss.phaseRemainingMs / siegeBossBalance.chargeMs,
+                ),
+              )
           : 0,
         8,
       );

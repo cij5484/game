@@ -52,6 +52,7 @@ import { burstBalance } from "../data/burst";
 import { BurstView } from "../ui/BurstView";
 import { ResultView } from "../ui/ResultView";
 import { runBalance } from "../data/run";
+import { enemyScalingBalance } from "../data/enemyScaling";
 
 interface PrimaryAction {
   growth: MarineGrowthState;
@@ -66,7 +67,11 @@ interface CopiedAttack {
 }
 
 export class CombatScene extends Phaser.Scene {
-  private run = createRunState(runBalance.wallMaxHp);
+  get developerStatus() {
+    return { speed: this.gameSpeed, level: this.progression.level };
+  }
+  private wallMaxHp = runBalance.wallMaxHp;
+  private run = createRunState(this.wallMaxHp);
   private result!: ResultView;
   private resultShown = false;
   private kills = 0;
@@ -114,7 +119,8 @@ export class CombatScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.run = createRunState(runBalance.wallMaxHp);
+    this.wallMaxHp = runBalance.wallMaxHp;
+    this.run = createRunState(this.wallMaxHp);
     this.kills = 0;
     this.bossSpawned = false;
     this.bossKilled = false;
@@ -190,7 +196,7 @@ export class CombatScene extends Phaser.Scene {
       this.buildBar.destroy();
     });
     this.spawnBatch();
-    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, this.wallMaxHp);
     const unbindInput = bindTapInput(
       this.game.canvas,
       (kind, x, y) => {
@@ -347,6 +353,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
+    this.time.timeScale = this.gameSpeed * runBalance.combatTempo;
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
     // Sole combat tempo owner. Stage time removes base tempo; developer speed affects both.
@@ -396,7 +403,7 @@ export class CombatScene extends Phaser.Scene {
       this.stimpack.phase,
       this.stimpack.attackSpeedMultiplier,
     );
-    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, this.wallMaxHp);
     this.renderAbilities();
     this.view.renderRun(
       this.run.elapsedMs,
@@ -851,7 +858,12 @@ export class CombatScene extends Phaser.Scene {
           continue;
         }
         const config = enemyConfigs[entry.state.kind];
-        const movement = advanceEnemy(entry.state, step, config, 1);
+        const movement = advanceEnemy(
+          entry.state,
+          step,
+          config,
+          enemyScalingBalance.movementMultiplier,
+        );
         entry.state = movement.enemy;
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
@@ -870,7 +882,7 @@ export class CombatScene extends Phaser.Scene {
         this.view.renderEnemy(entry.visual, entry.state, false);
         if (this.run.status !== "running") break;
       }
-      this.director.advance(step);
+      this.director.advance(step, step / runBalance.combatTempo);
       this.synergies.advance(
         step,
         this.enemies.map((e) => e.state),
@@ -898,7 +910,7 @@ export class CombatScene extends Phaser.Scene {
         this.spawnBatch();
       }
     }
-    this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
+    this.view.renderWall(this.run.wallHp, this.wallMaxHp);
     return Math.max(0, deltaMs) - remaining;
   }
 }

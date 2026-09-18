@@ -1,3 +1,4 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import type { MarineTraitId } from "./marineGrowth";
 import type { SpecialWeaponId } from "./specialWeapons";
 
@@ -16,7 +17,8 @@ interface PrototypeSynergyDefinition {
 }
 
 // Prototype tuning: all durations use the shared combat clock.
-export const prototypeSynergyBalance = {
+export const prototypeSynergyBalance = runtimeObject("synergies", {
+  enabled: { saturation: true, "kill-zone": true, hunt: true },
   saturation: {
     distinctHits: 8,
     windowMs: 1800,
@@ -27,7 +29,7 @@ export const prototypeSynergyBalance = {
   },
   killZoneMultiplier: 1.45,
   huntMultiplier: 1.4,
-} as const;
+} as const);
 
 export const prototypeSynergyDefinitions: Record<
   PrototypeSynergyId,

@@ -1,9 +1,10 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import type { MarineConfig, StimpackConfig } from "../model/types";
 
 // Keep weapon tuning in one place while preserving the planned balance imports.
 export { gaussRifleBalance } from "./weapons";
 
-export const marineConfig = {
+export const marineConfig = runtimeObject("marine", {
   id: "marine",
   primaryMinProgress01: 0.55, // prototype: wall-side 45% of logical depth, all lanes
   primaryAttackId: "gauss-rifle",
@@ -13,7 +14,7 @@ export const marineConfig = {
     damageMultiplier: 1, // prototype tuning value
     attackSpeedMultiplier: 1, // prototype tuning value
   },
-} as const satisfies MarineConfig;
+} as const satisfies MarineConfig);
 
 export const stimpackBalance = {
   id: "stimpack",

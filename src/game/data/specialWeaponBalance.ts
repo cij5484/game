@@ -1,8 +1,9 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import { marineStrength, type MarineGrowthState } from "./marineGrowth";
 import type { SpecialWeaponState } from "./specialWeapons";
 
 /** Prototype special-weapon tuning; spawn HP scaling lives in enemyScaling.ts. */
-export const specialWeaponBalance = {
+export const specialWeaponBalance = runtimeObject("special", {
   grenade: {
     damage: 65,
     cycleMs: 7800, // 5.2 real seconds at base combat tempo 1.5, before growth.
@@ -27,6 +28,7 @@ export const specialWeaponBalance = {
     speedCoefficient: 0.85,
     critCoefficient: 0.9,
   },
+  droneBaseCount: 1,
   criticalMultiplier: 1.75,
   grenadeFlightMs: 720,
   missileSpeed: 440,
@@ -140,7 +142,7 @@ export const specialWeaponBalance = {
     synchronizationDamage: 1.3,
     minimumCycleMs: 90,
   },
-} as const;
+} as const);
 
 export function getSpecialWeaponStats(
   weapon: SpecialWeaponState,

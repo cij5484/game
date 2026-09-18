@@ -8,6 +8,7 @@ import {
   marineTraitIds,
   marineUpgrades,
   marineUpgradeWeight,
+  marineRarityWeights,
   rollMarineRarity,
   type MarineGrowthState,
   type MarineRanks,
@@ -92,7 +93,16 @@ export class MarineProgression {
   readonly history: MarineGrowthHistory[] = [];
   core: PrototypeCoreId | null = null;
   lastSelection: MarineGrowthHistory | null = null;
-  private choiceCount: number = marineGrowthBalance.choiceCount;
+  private expandedChoices = false;
+  private get choiceCount() {
+    return Math.max(
+      marineGrowthBalance.choiceCount,
+      this.expandedChoices ? 4 : 0,
+    );
+  }
+  private thresholdLevel = 0;
+  private thresholdValue = 0;
+  private offeredGreatSuccessChance = marineGrowthBalance.greatSuccessChance;
   private choices: MarineLevelChoice[] | null = null;
   private readonly random: () => number;
   constructor(random = Math.random) {
@@ -106,11 +116,15 @@ export class MarineProgression {
     };
   }
   get threshold() {
-    return Math.ceil(
-      marineGrowthBalance.initialXp +
-        (this.level - 1) * marineGrowthBalance.xpPerLevel +
-        (this.level - 1) ** 2 * marineGrowthBalance.xpQuadratic,
-    );
+    if (this.thresholdLevel !== this.level) {
+      this.thresholdLevel = this.level;
+      this.thresholdValue = Math.ceil(
+        marineGrowthBalance.initialXp +
+          (this.level - 1) * marineGrowthBalance.xpPerLevel +
+          (this.level - 1) ** 2 * marineGrowthBalance.xpQuadratic,
+      );
+    }
+    return this.thresholdValue;
   }
   get traitLevels(): Partial<Record<MarineTraitId, number>> {
     return Object.fromEntries(
@@ -185,7 +199,7 @@ export class MarineProgression {
   }
   expandChoices() {
     if (this.choiceCount === 4) return false;
-    this.choiceCount = 4;
+    this.expandedChoices = true;
     this.choices = null;
     return true;
   }
@@ -288,10 +302,17 @@ export class MarineProgression {
   offer(): MarineLevelChoice[] {
     if (this.pendingChoices <= 0) return [];
     if (this.choices) return this.choices;
+    this.offeredGreatSuccessChance = marineGrowthBalance.greatSuccessChance;
     type Candidate =
       MarineUpgradeDefinition | SpecialGrowthChoice | SpecialAcquisitionChoice;
-    const eligible = Object.values(marineUpgrades).filter((card) =>
-      this.eligible(card),
+    const eligible = Object.values(marineUpgrades).filter(
+      (card) =>
+        this.eligible(card) &&
+        marineRarityWeights(
+          this.level,
+          card.id === "range",
+          this.legendary.has(card.id as MarineTraitId),
+        ).some((weight) => weight > 0),
     );
     const pool: {
       kind: "card" | "mod" | "acquire";
@@ -367,14 +388,21 @@ export class MarineProgression {
           cards,
         });
     }
-    const pick = <T>(items: T[], weight: (item: T) => number): T => {
+    const pick = <T>(
+      items: T[],
+      weight: (item: T) => number,
+    ): T | undefined => {
+      const available = items.filter((item) => weight(item) > 0);
       let roll =
-        this.random() * items.reduce((sum, item) => sum + weight(item), 0);
-      return items.find((item) => (roll -= weight(item)) < 0) ?? items.at(-1)!;
+        this.random() * available.reduce((sum, item) => sum + weight(item), 0);
+      return (
+        available.find((item) => (roll -= weight(item)) < 0) ?? available.at(-1)
+      );
     };
     const result: MarineLevelChoice[] = [];
     while (result.length < this.choiceCount && pool.length) {
       const group = pick(pool, (group) => group.weight);
+      if (!group) break;
       const card =
         group.kind === "card"
           ? group.cards[0]!
@@ -389,6 +417,7 @@ export class MarineProgression {
           (group.kind === "mod" && pool[i]!.kind === "mod")
         )
           pool.splice(i, 1);
+      if (!card) continue;
       if (card.category === "special-acquisition") {
         result.push(card);
         continue;
@@ -399,6 +428,7 @@ export class MarineProgression {
         card.id === "range",
         this.legendary.has(card.id as MarineTraitId),
       );
+      if (originalRarity === null) continue;
       const rarity =
         this.core === "quality"
           ? promoteRarity(originalRarity)
@@ -440,9 +470,7 @@ export class MarineProgression {
       this.choices = null;
       return true;
     }
-    if (card.category !== "special-growth" && !this.eligible(card))
-      return false;
-    const greatSuccess = this.random() < marineGrowthBalance.greatSuccessChance;
+    const greatSuccess = this.random() < this.offeredGreatSuccessChance;
     let levels = greatSuccess ? 2 : 1;
     if (card.category === "special-growth") {
       this.special.addLevels(
@@ -455,8 +483,7 @@ export class MarineProgression {
       const rank = this.ranks[card.id] ?? 0;
       levels = Math.min(levels, card.maxRank - rank);
       this.quality[card.id] =
-        marineStrength(this.growth, card.id) +
-        levels * marineQualityIncrements[card.id][card.rarity];
+        marineStrength(this.growth, card.id) + levels * card.amount;
       this.ranks[card.id] = rank + levels;
       if (card.rarity === "LEGENDARY" && card.category === "weapon-trait")
         this.legendary.add(card.id as MarineTraitId);

@@ -1,3 +1,4 @@
+import { runtimeObject } from "../dev/runtimeBalance";
 import type { UpgradeRarity } from "./upgrades";
 
 export type PrototypeRelicId =
@@ -23,7 +24,9 @@ export interface PrototypeCoreDefinition {
 }
 
 // M6 prototype tuning: user playtest owns subsequent balance changes.
-export const highrollBalance = {
+export const highrollBalance = runtimeObject("highroll", {
+  firstRelicGuaranteed: true,
+  coreEnabled: { armament: true, modification: true, quality: true },
   relicDropChance: 0.32,
   coreDropChance: 0.03,
   maxCores: 1,
@@ -36,7 +39,7 @@ export const highrollBalance = {
   overchargeChance: 0.08,
   overchargeMultiplier: 2,
   replicationChance: 0.08,
-} as const;
+} as const);
 
 export const prototypeRelics: Record<
   PrototypeRelicId,

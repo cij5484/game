@@ -1,4 +1,5 @@
-import { hordeBalance } from "../data/horde";
+import { hordeBalance, hordeTimelineTempo } from "../data/horde";
+import { runBalance } from "../data/run";
 import { eliteBalance } from "../data/elite";
 import { siegeBossBalance } from "../data/boss";
 import type { EnemyKind, LaneId } from "../model/types";
@@ -29,6 +30,7 @@ function weightedChoice<T extends string>(
 export class SpawnDirector {
   bossPhase: "warning" | "active" | "final" | null = null;
   private elapsed = 0;
+  private phaseElapsed = 0;
   private nextSpawnAtMs = 0;
   private eliteIndex = 0;
   private eliteTimes: number[];
@@ -71,7 +73,7 @@ export class SpawnDirector {
 
   get settings() {
     const stage = hordeBalance.stages.findLastIndex(
-      (value) => value.atMs <= this.elapsed,
+      (value) => value.atMs <= this.phaseElapsed,
     );
     const values = hordeBalance.stages[stage]!;
     if (this.bossPhase)
@@ -86,8 +88,9 @@ export class SpawnDirector {
     return { stage, ...values };
   }
 
-  advance(deltaMs: number) {
+  advance(deltaMs: number, stageDeltaMs = deltaMs / hordeTimelineTempo) {
     this.elapsed += Math.max(0, deltaMs);
+    this.phaseElapsed += Math.max(0, stageDeltaMs) * hordeTimelineTempo;
   }
 
   spawn(activeCount: number): SpawnSpec[] {
@@ -123,14 +126,16 @@ export class SpawnDirector {
       Math.min(
         initial
           ? hordeBalance.initialBatchSize
-          : Math.max(
-              1,
-              settings.batchSize +
-                Math.floor(
-                  this.random() * (2 * hordeBalance.batchVariation + 1),
-                ) -
-                hordeBalance.batchVariation,
-            ),
+          : settings.batchSize === 0
+            ? 0
+            : Math.max(
+                1,
+                settings.batchSize +
+                  Math.floor(
+                    this.random() * (2 * hordeBalance.batchVariation + 1),
+                  ) -
+                  hordeBalance.batchVariation,
+              ),
         // Boss phases suppress elites; otherwise reserve space for the next elite.
         settings.maxActiveEnemies -
           (this.bossPhase ? 0 : 1) -
@@ -145,7 +150,11 @@ export class SpawnDirector {
       this.elapsed +
         settings.spawnIntervalMs *
           (1 + (this.random() * 2 - 1) * hordeBalance.intervalVariation),
-      hordeBalance.stages[settings.stage + 1]?.atMs ?? Infinity,
+      this.elapsed +
+        (((hordeBalance.stages[settings.stage + 1]?.atMs ?? Infinity) -
+          this.phaseElapsed) /
+          hordeTimelineTempo) *
+          runBalance.combatTempo,
     );
     const remainingLanes: Record<LaneId, number> = {
       ...hordeBalance.laneWeights,
