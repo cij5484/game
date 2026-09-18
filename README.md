@@ -1,18 +1,23 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.10 — High-roll / Combat Tempo](docs/design/GAME_GDD_v0.10.md)**. 목표 설계와 구현 범위를 구분하며 [Current Implementation Gap](docs/design/GAME_GDD_v0.10.md#5-current-implementation-gap)을 따릅니다. [v0.9](docs/design/GAME_GDD_v0.9.md)와 이전 버전은 historical record로 보존합니다. Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.11 — Boss / Random Acquisition](docs/design/GAME_GDD_v0.11.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.11.md#5-current-implementation-gap)으로 구분합니다. [v0.10](docs/design/GAME_GDD_v0.10.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
-최신 구현은 [Prototype M6](docs/prototype-m6-highroll-tempo.md)입니다. M5 `0ca568c`를 [PR20](https://github.com/cij5484/game/pull/20)로 main `4bee754`에 병합한 뒤 `codex/prototype-m6-highroll-tempo`에서 진행합니다. M6은 commit/push 후 멈추며 main merge와 다음 Milestone은 하지 않습니다.
+최신 작업은 [Prototype M7](docs/prototype-m7-boss-acquisition.md)입니다. M6 `4b06c39e82683cd809fbb2bec544424cd5aa1187`을 [PR21](https://github.com/cij5484/game/pull/21)로 main `544aa1f`에 병합한 뒤 `codex/prototype-m7-boss-acquisition`에서 진행합니다. M7은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
 
-정상 Combat Tempo는 M5 X1 대비 **1.5배**, Stage Clock은 분리해 정상 X1에서 실제 약20분을 유지합니다. X1→X2→X4→X1은 개발 도구이며 X2/X4는 Stage 시간도 빠르게 진행합니다. 실제 입력/UI 시간은 가속하지 않습니다. Enemy 생성 시 `1+.020x+.0008x²`, 다음 Level XP는 `ceil(8+5x+.50x²)`이며 `x=L−1`입니다. 기존 적 HP는 Level-Up 때 바뀌지 않습니다. 수류탄은 기본 피해65/반경110/내부 Cycle7800ms로 정상 X1 반복 주기5.2초입니다. 기존 M3 Enemy 이동속도1.5배는 유지합니다. 후속 사용자 요청으로 초기80→36명, 공급은 평균 batch3→96/내부 간격1800→550ms로 점점 강화하고 후반 cap700을 유지합니다. 실제 Stage분에 맞춘 전체 표는 M6 기록을 따릅니다.
+- 특수무기 Lv5/Lv10 고정 지급을 제거했습니다. 일반 Level-Up3장에 첫 무기는 **Lv8부터 Category weight0.30**, 두 번째는 **Lv14+첫 무기 보유 시0.20**으로 등장합니다. 한 Offer 최대1장, 일반 선택1회 소비, 항상 Weapon Lv1, 희귀도/대성공/품질 개방 미적용입니다. 기본2종·무장 Core3종이며 Hard Pity/획득 보장은 없습니다.
+- 기본 개조는 **신규 Category0.45 / 보유 성장0.35**, 한 Offer 합계 최대1장입니다. 개조 내부 Investment Bias는 최대×1.4, 기본3종·Core4종입니다. Range의 희소성과 별도 슬롯 규칙, 보유 특수무기의 기존 성장 빈도는 유지합니다. 숫자는 고정 등장 확률이 아닌 상대 weight입니다.
+- Stage18:50 공급 완화 후 **19:00 공성 거인(HP30,000)**이 등장합니다. 접근→6000combat ms 공성 충전→1800피해 Interrupt/3000ms Stagger·피해×1.5, 실패 시 Wall1800피해입니다. HP65% 증원,25% 최후 돌진과 강한 반복 Wall 공격을 사용합니다. 본체는 항상 공격 가능하며 Gauss Range를 우회하지 않습니다.
+- **Boss 처치만 Stage Clear**, Wall HP0이면 실패합니다.20:00 자동 종료는 없고 Boss 전투가 계속됩니다. 목표 약19~21분은 사용자 Playtest에서 조정합니다. Result에 해당 Run의 Boss Kill을 표시하며 영구 저장·경제는 없습니다.
+- M6 초기Horde36/cap700/CombatTempo1.5/기존Enemy속도/생성HP/XP/Grenade/Relic6·Core3·Synergy3를 유지합니다. Boss 경고부터 일반 공급은8/1400combat ms, 최후 돌진은32/700ms이며 새 Elite를 억제합니다. 상세 수치는 M7 기록을 따릅니다.
+- Header는 공용 강화·Relic·Core·Synergy, Bottom은 기본무기/개조·특수무기 성장·Stimpack·Ultimate를 소유합니다. Special Slot은 시작 시 Unlocked/Empty이며 무기 획득 순서대로 채웁니다. Boss HP/상태/약점/충전 예고는 최소 UI로 표시합니다.
 
-새 High-roll은 **무레벨 Relic6종(최대2·교체/포기), Core3종(Run1개), 자동 Synergy3종**입니다. 첫 Elite는 Relic 기회 보장, 이후32%; Core는 Elite3%로 유효 Pool 랜덤1개 즉시 지급합니다. 무장 확장2→3, 개조 확장3→4, 품질 개방은 과거·미래 일반 성장의 실제 효과를1단계 올립니다. Synergy는 지정 기본 개조와 두 특수무기 Lv10 완성 조건으로 자동 활성화하며 별도 카드/Lv15·20은 요구하지 않습니다.
+**M7 통합 `npm.cmd run check`:46파일/342테스트·TypeScript·Vite build 통과.** 기존500kB 초과 bundle 경고는 유지합니다.390×844의 짧은 UI fixture로 Boss Charge 표시·Lv8 획득 카드·시작 Empty Slot을 확인했습니다. 전체 Boss Run Playtest와는 구분합니다. M6의43파일/323테스트와 이전 브라우저 확인은 [M6 역사 기록](docs/prototype-m6-highroll-tempo.md)에 남기며 M7 검증으로 재사용하지 않습니다. 장시간 자동 Run/밸런스/최종Level/평균DPS/자동Clear 분석은 하지 않습니다. 난이도·재미·획득시점·성장감·실기기 성능은 사용자 직접 Playtest 영역입니다.
 
-Header는 공용 강화·Relic·Core·Synergy, Bottom은 기본무기/개조·특수무기 전용 성장·Stimpack·Ultimate를 소유합니다. 무장 확장은 세 번째 슬롯을 추가하고 기존 Tap/Click 상세를 사용합니다. M5 수류탄/미사일/드론과 Lv3/6/10/15/20 성장·Queue를 유지합니다. Marine Magic과 Legacy 보상/선택형 시너지의 충돌 연결은 제외하며 자산은 보존합니다. 전체10 Relic/5 Core/6 Synergy와 Boss/Meta/Stage2+/Final Art는 현재 완성 범위가 아닙니다.
+Gold/Credits/작전기록/영구보상/점진Unlock/Challenge/Endless/Stage2+/신규Character/Awakening/FinalArt/전체 추가 Pool은 구현 범위 밖입니다.
 
-**M6 통합 `npm run check`: 43파일/323테스트·TypeScript·Vite build 통과**, 기존500kB 초과 bundle 경고는 유지합니다. localhost에서 기본 HUD/자동 공격/일반 성장/Pause/배속 순환을 확인했고,360×780 임시 UI fixture로 Header/3특수슬롯/유물 선택·교체를 확인한 뒤 제거했습니다. 자연 Run의 희귀 Core/전체 Synergy 시각 검증과 구분하며 해당 로직은 단위/통합 테스트로 확인했습니다. 난이도·재미·속도감·성장감과 실기기 성능은 사용자 직접 Playtest로 판단합니다. 장시간 자동 Run/최종 Level/DPS/생존시간/Clear 분석은 하지 않습니다. M5의40파일/292테스트와 이전 검증은 해당 역사 기록에 남깁니다.
+## Historical gameplay snapshot
 
-아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4/M5/M6 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다. 이 과거 검증 숫자를 현재 검증 결과로 읽지 않습니다.
+아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4/M5/M6/M7 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다. 이 과거 검증 숫자를 현재 검증 결과로 읽지 않습니다.
 
 ## 한 판과 조작
 
@@ -122,4 +127,4 @@ npm run check
 
 `check`는 테스트 후 TypeScript 검사와 프로덕션 빌드를 실행합니다.
 
-현재 작업은 `codex/prototype-m6-highroll-tempo`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.
+현재 작업은 `codex/prototype-m7-boss-acquisition`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.

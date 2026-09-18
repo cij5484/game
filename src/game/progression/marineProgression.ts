@@ -51,11 +51,27 @@ export interface SpecialGrowthChoice {
   ability: SpecialWeaponId;
   amount: number;
 }
-export type MarineLevelChoice = (MarineChoice | SpecialGrowthChoice) & {
+export interface SpecialAcquisitionChoice {
+  id: `acquire-${SpecialWeaponId}`;
+  growthId: `acquire-${SpecialWeaponId}`;
+  weaponId: SpecialWeaponId;
+  ability: SpecialWeaponId;
+  owner: SpecialWeaponId;
+  category: "special-acquisition";
+  title: string;
+  symbol: string;
+  description: string;
+  currentLevel: 0;
+  nextLevel: 1;
+  rarity?: never;
+  originalRarity?: never;
+}
+type GrowthChoice = (MarineChoice | SpecialGrowthChoice) & {
   originalRarity: UpgradeRarity;
 };
+export type MarineLevelChoice = GrowthChoice | SpecialAcquisitionChoice;
 export interface MarineGrowthHistory {
-  id: MarineLevelChoice["id"];
+  id: GrowthChoice["id"];
   levels: number;
   greatSuccess: boolean;
   originalRarity: UpgradeRarity;
@@ -146,6 +162,7 @@ export class MarineProgression {
       this.special.liberateQuality();
       this.choices =
         this.choices?.map((card) => {
+          if (card.category === "special-acquisition") return card;
           const rarity = promoteRarity(card.originalRarity);
           return card.category === "special-growth"
             ? this.specialCard(
@@ -179,7 +196,6 @@ export class MarineProgression {
       this.xp -= this.threshold;
       this.level++;
       this.pendingChoices++;
-      this.special.acquireAtCharacterLevel(this.level);
     }
   }
   private preview(
@@ -272,27 +288,111 @@ export class MarineProgression {
   offer(): MarineLevelChoice[] {
     if (this.pendingChoices <= 0) return [];
     if (this.choices) return this.choices;
-    const pool: (MarineUpgradeDefinition | SpecialGrowthChoice)[] = [
-      ...Object.values(marineUpgrades).filter((card) => this.eligible(card)),
-      ...this.special.weapons.map((weapon) =>
-        this.specialCard(weapon, "COMMON"),
-      ),
-    ];
-    const weight = (card: MarineUpgradeDefinition | SpecialGrowthChoice) =>
-      card.category === "special-growth"
-        ? card.weight *
+    type Candidate =
+      MarineUpgradeDefinition | SpecialGrowthChoice | SpecialAcquisitionChoice;
+    const eligible = Object.values(marineUpgrades).filter((card) =>
+      this.eligible(card),
+    );
+    const pool: {
+      kind: "card" | "mod" | "acquire";
+      weight: number;
+      cards: Candidate[];
+    }[] = eligible
+      .filter((card) => card.category === "basic")
+      .map((card) => ({ kind: "card", weight: card.weight, cards: [card] }));
+    for (const owned of [false, true]) {
+      const cards = eligible.filter(
+        (card) =>
+          card.category === "weapon-trait" && !!this.ranks[card.id] === owned,
+      );
+      if (cards.length)
+        pool.push({
+          kind: "mod",
+          weight: owned
+            ? marineGrowthBalance.ownedModWeight
+            : marineGrowthBalance.newModWeight,
+          cards,
+        });
+    }
+    for (const card of eligible.filter(
+      (card) => card.category === "weapon-growth",
+    ))
+      pool.push({ kind: "card", weight: card.weight, cards: [card] });
+    for (const weapon of this.special.weapons)
+      pool.push({
+        kind: "card",
+        weight:
+          1.3 *
           Math.min(
             marineGrowthBalance.maxInvestment,
-            1 + (card.currentLevel - 1) * marineGrowthBalance.investmentPerRank,
-          )
-        : marineUpgradeWeight(card, this.ranks);
+            1 + (weapon.level - 1) * marineGrowthBalance.investmentPerRank,
+          ),
+        cards: [this.specialCard(weapon, "COMMON")],
+      });
+    const owned = this.special.weapons.length;
+    if (
+      owned < this.special.capacity &&
+      this.level >=
+        (owned === 0
+          ? marineGrowthBalance.firstAcquisitionLevel
+          : marineGrowthBalance.laterAcquisitionLevel)
+    ) {
+      const cards: SpecialAcquisitionChoice[] = Object.values(
+        specialWeaponDefinitions,
+      )
+        .filter(
+          (definition) =>
+            !this.special.weapons.some((weapon) => weapon.id === definition.id),
+        )
+        .map((definition) => ({
+          id: `acquire-${definition.id}`,
+          growthId: `acquire-${definition.id}`,
+          weaponId: definition.id,
+          ability: definition.id,
+          owner: definition.id,
+          category: "special-acquisition",
+          title: `${definition.title} 획득`,
+          symbol: definition.symbol,
+          description: definition.description,
+          currentLevel: 0,
+          nextLevel: 1,
+        }));
+      if (cards.length)
+        pool.push({
+          kind: "acquire",
+          weight:
+            owned === 0
+              ? marineGrowthBalance.firstAcquisitionWeight
+              : marineGrowthBalance.laterAcquisitionWeight,
+          cards,
+        });
+    }
+    const pick = <T>(items: T[], weight: (item: T) => number): T => {
+      let roll =
+        this.random() * items.reduce((sum, item) => sum + weight(item), 0);
+      return items.find((item) => (roll -= weight(item)) < 0) ?? items.at(-1)!;
+    };
     const result: MarineLevelChoice[] = [];
     while (result.length < this.choiceCount && pool.length) {
-      let roll =
-        this.random() * pool.reduce((sum, card) => sum + weight(card), 0);
+      const group = pick(pool, (group) => group.weight);
       const card =
-        pool.find((card) => (roll -= weight(card)) < 0) ?? pool.at(-1)!;
-      pool.splice(pool.indexOf(card), 1);
+        group.kind === "card"
+          ? group.cards[0]!
+          : pick(group.cards, (candidate) =>
+              candidate.category === "weapon-trait"
+                ? marineUpgradeWeight(candidate, this.ranks)
+                : 1,
+            );
+      for (let i = pool.length - 1; i >= 0; i--)
+        if (
+          pool[i] === group ||
+          (group.kind === "mod" && pool[i]!.kind === "mod")
+        )
+          pool.splice(i, 1);
+      if (card.category === "special-acquisition") {
+        result.push(card);
+        continue;
+      }
       const originalRarity = rollMarineRarity(
         this.level,
         this.random,
@@ -332,7 +432,15 @@ export class MarineProgression {
   }
   choose(id: string): boolean {
     const card = this.offer().find((card) => card.id === id);
-    if (!card || (card.category !== "special-growth" && !this.eligible(card)))
+    if (!card) return false;
+    if (card.category === "special-acquisition") {
+      if (!this.special.acquireWeapon(card.weaponId)) return false;
+      this.lastSelection = null;
+      this.pendingChoices--;
+      this.choices = null;
+      return true;
+    }
+    if (card.category !== "special-growth" && !this.eligible(card))
       return false;
     const greatSuccess = this.random() < marineGrowthBalance.greatSuccessChance;
     let levels = greatSuccess ? 2 : 1;

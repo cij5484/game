@@ -45,23 +45,18 @@ describe("M6 high-roll rewards", () => {
     expect(cores.owned.size).toBe(1);
   });
 
-  it.each([1, 5, 10])(
-    "adds exactly one acquisition around queued Lv5/10 events (level %s)",
-    (level) => {
+  it.each([0, 1, 2])(
+    "adds exactly one Core acquisition with %s existing weapons",
+    (owned) => {
       const p = new MarineProgression();
-      p.special.acquireAtCharacterLevel(level);
+      if (owned >= 1) p.special.acquireWeapon("grenade");
+      if (owned >= 2) p.special.acquireWeapon("missile");
       expect(p.applyCore("armament")).toBe(true);
       expect(p.special.capacity).toBe(3);
       while (p.special.pending)
         p.special.choose(p.special.offer()!.choices[0]!.id);
-      p.special.acquireAtCharacterLevel(10);
-      while (p.special.pending)
-        p.special.choose(p.special.offer()!.choices[0]!.id);
-      expect(p.special.weapons.map((w) => w.id).sort()).toEqual([
-        "drone",
-        "grenade",
-        "missile",
-      ]);
+      expect(p.special.weapons).toHaveLength(owned + 1);
+      expect(new Set(p.special.weapons.map((w) => w.id)).size).toBe(owned + 1);
       expect(
         p.special.weapons.every((w) => w.level === 1 && w.quality === 0),
       ).toBe(true);
@@ -113,8 +108,7 @@ describe("M6 high-roll rewards", () => {
 
   it("upgrades special quality already applied and still queued at a branch boundary", () => {
     const p = new MarineProgression();
-    p.special.acquireAtCharacterLevel(5);
-    p.special.choose("grenade");
+    p.special.acquireWeapon("grenade");
     p.special.addLevels("grenade", 3, 1);
     expect(p.special.weapons[0]).toMatchObject({ level: 3, quality: 2 });
     p.applyCore("quality");
@@ -127,15 +121,24 @@ describe("M6 high-roll rewards", () => {
   });
 
   it.each([
-    ["penetration", 0.3, 0.99, 2.4, 3.2, "LEGENDARY"],
-    ["penetration", 0.3, 0.9999, 3.2, 3.2, "LEGENDARY"],
+    ["penetration", 3.1 / 3.7, 0.99, 2.4, 3.2, "LEGENDARY"],
+    ["penetration", 3.1 / 3.7, 0.9999, 3.2, 3.2, "LEGENDARY"],
     ["range", 0.9999, 0, 0.03, 0.045, "EPIC"],
     ["attack-speed", 0, 0, 0.08, 0.125, "RARE"],
     ["crit-chance", 0, 0, 0.055, 0.09, "RARE"],
   ] as const)(
     "promotes %s actual quality and preserves its rank",
     (id, pickRoll, rarityRoll, before, after, rarity) => {
-      const rolls = [pickRoll, rarityRoll, 0, 0, 0, 0, 0.5];
+      const rolls = [
+        pickRoll,
+        ...(id === "penetration" ? [0] : []),
+        rarityRoll,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+      ];
       const p = new MarineProgression(() => rolls.shift() ?? 0.5);
       p.pendingChoices = 1;
       expect(p.choose(id)).toBe(true);
@@ -151,8 +154,7 @@ describe("M6 high-roll rewards", () => {
   it("promotes future special cards once and never changes special choices", () => {
     const rolls = [0.9999, 0, 0, 0, 0, 0, 0.5];
     const p = new MarineProgression(() => rolls.shift() ?? 0.5);
-    p.special.acquireAtCharacterLevel(5);
-    p.special.choose("grenade");
+    p.special.acquireWeapon("grenade");
     p.applyCore("quality");
     p.pendingChoices = 1;
     expect(p.offer()[0]).toMatchObject({

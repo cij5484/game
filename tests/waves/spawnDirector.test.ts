@@ -90,7 +90,8 @@ it("fills the late horde to a finite 700-enemy ceiling without a spawn backlog",
     expect(d.timeToSpawnMs).toBeGreaterThanOrEqual(0);
     d.advance(d.timeToSpawnMs);
   }
-  expect(active).toBeGreaterThanOrEqual(699);
+  // M7 reserves one additional place for the Boss before its Scene spawn.
+  expect(active).toBeGreaterThanOrEqual(698);
   expect(active).toBeLessThanOrEqual(700);
   // A cleared screen receives one current batch, never all missed batches.
   expect(d.spawn(0).length).toBeLessThanOrEqual(98);
@@ -105,4 +106,30 @@ it("reserves room for elites and retries a full battlefield without a regular ba
   expect(retry).toHaveLength(1);
   expect(retry[0]).toMatchObject({ kind: "runner", elite: true });
   expect(d.timeToSpawnMs).toBeGreaterThan(0);
+});
+
+it("Boss supply keeps ordinary enemies, suppresses new elites and increases final pressure", () => {
+  const director = new SpawnDirector(() => 0.5);
+  director.spawn(0);
+  director.advance(19 * 60000 * runBalance.combatTempo);
+  director.bossPhase = "active";
+  const active = director.spawn(0);
+  expect(active).toHaveLength(8);
+  expect(active.every((e) => !e.elite)).toBe(true);
+  director.bossPhase = "final";
+  director.advance(director.timeToSpawnMs);
+  const final = director.spawn(0);
+  expect(final).toHaveLength(32);
+  expect(final.every((e) => !e.elite)).toBe(true);
+  expect(director.settings.maxActiveEnemies).toBe(700);
+});
+
+it("reserves the Boss place even when a late elite is due at the final capacity", () => {
+  const d = new SpawnDirector(() => 0.5);
+  d.spawn(0);
+  d.advance(18 * 60000 * runBalance.combatTempo);
+  const batch = d.spawn(698);
+  expect(698 + batch.length).toBeLessThanOrEqual(699);
+  d.advance(d.timeToSpawnMs);
+  expect(d.spawn(699)).toEqual([]);
 });

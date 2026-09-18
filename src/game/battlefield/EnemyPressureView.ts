@@ -21,6 +21,7 @@ import {
   stimLabels,
 } from "../data/display";
 import { evolutionRecipes } from "../data/evolutions";
+import { siegeBossBalance } from "../data/boss";
 
 // Visual layout only, in logical reference units.
 const field = { left: 36, width: 648, farY: 0, wallY: 900, enemySize: 56 };
@@ -422,6 +423,34 @@ export class EnemyPressureView {
       })
       .setOrigin(0.5);
     const visual = this.scene.add.container(0, 0, [shape, label]);
+    if (enemy.boss) {
+      shape.setSize(140, 110).setDisplaySize(140, 110);
+      const title = this.scene.add
+        .text(0, -78, "공성 거인", {
+          fontFamily: "sans-serif",
+          fontSize: "26px",
+          color: "#ffffff",
+          align: "center",
+          backgroundColor: "#30232a",
+        })
+        .setOrigin(0.5, 1);
+      const hp = this.scene.add
+        .rectangle(-70, -68, 140, 7, 0xffae76)
+        .setOrigin(0, 0.5);
+      const charge = this.scene.add
+        .rectangle(-70, 67, 140, 8, 0xff5650)
+        .setOrigin(0, 0.5);
+      const weakpoint = this.scene.add
+        .circle(0, -8, 17, 0xffffbb)
+        .setStrokeStyle(4, 0xffffff);
+      visual.add([title, hp, charge, weakpoint]);
+      visual.setData({
+        bossTitle: title,
+        bossHp: hp,
+        bossCharge: charge,
+        bossWeakpoint: weakpoint,
+      });
+    }
     if (enemy.elite) {
       visual.add(
         this.scene.add
@@ -464,7 +493,7 @@ export class EnemyPressureView {
       this.attackSlots.get(enemy.id)?.lane !== enemy.lane
     )
       this.attackSlots.delete(enemy.id);
-    if (enemy.phase === "attacking") {
+    if (enemy.phase === "attacking" && !enemy.boss) {
       if (!this.attackSlots.has(enemy.id)) {
         const occupied = new Set(
           [...this.attackSlots.values()]
@@ -485,6 +514,51 @@ export class EnemyPressureView {
     visual
       .setPosition(x, y)
       .setScale(perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1));
+    if (enemy.boss) {
+      // Visual inset keeps the large silhouette in the field; logical progress is unchanged.
+      visual.setY(
+        Math.max(
+          185 * visual.scaleY,
+          Math.min(y, this.wallY - 58 * visual.scaleY),
+        ),
+      );
+      const boss = enemy.boss;
+      const charge = boss.phase === "siege-charge";
+      const stagger = boss.phase === "stagger";
+      const phase = charge
+        ? `공성 준비 ${(boss.phaseRemainingMs / 1000).toFixed(1)}초\n중단 ${Math.min(100, Math.floor((boss.interruptDamage / siegeBossBalance.interruptDamage) * 100))}%`
+        : stagger
+          ? "공격 중단 · 약점 노출 ×1.5"
+          : boss.phase === "final-charge"
+            ? "최후 돌진"
+            : "접근 중";
+      (visual.getData("bossTitle") as Phaser.GameObjects.Text).setText(
+        `공성 거인 · ${Math.ceil(enemy.hp)}\n${phase}`,
+      );
+      (visual.getData("bossHp") as Phaser.GameObjects.Rectangle).setDisplaySize(
+        (140 * enemy.hp) / (enemy.maxHp ?? siegeBossBalance.hp),
+        7,
+      );
+      (
+        visual.getData("bossCharge") as Phaser.GameObjects.Rectangle
+      ).setDisplaySize(
+        charge
+          ? 140 * (1 - boss.phaseRemainingMs / siegeBossBalance.chargeMs)
+          : 0,
+        8,
+      );
+      (visual.getData("bossWeakpoint") as Phaser.GameObjects.Arc).setVisible(
+        charge || stagger,
+      );
+      (visual.getAt(0) as Phaser.GameObjects.Rectangle)
+        .setFillStyle(stagger ? 0xa88aeb : charge ? 0xe86e49 : 0x9b5550)
+        .setStrokeStyle(
+          enemy.id === this.focusId ? 7 : 4,
+          enemy.id === this.focusId ? 0xffffff : 0xffc08c,
+        );
+      this.world.bringToTop(visual);
+      return;
+    }
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
       `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
     );
@@ -562,7 +636,10 @@ export class EnemyPressureView {
       const dy = y - (this.world.y + visual.y * this.world.scaleY);
       const radius = Math.max(
         combatVisual.minimumTouchSize / 2,
-        (field.enemySize * visual.scaleX * this.world.scaleX) / 2 +
+        ((state.boss ? 140 : field.enemySize) *
+          visual.scaleX *
+          this.world.scaleX) /
+          2 +
           combatVisual.touchPadding,
       );
       const squared = dx * dx + dy * dy;
@@ -623,11 +700,14 @@ export class EnemyPressureView {
     this.hpFill.setDisplaySize(650 * (hp / maxHp), 8);
   }
 
-  renderRun(elapsedMs: number, durationMs: number): void {
-    const seconds = Math.max(0, Math.ceil((durationMs - elapsedMs) / 1000));
+  renderRun(elapsedMs: number, bossAtMs: number, bossActive = false): void {
+    const seconds = bossActive
+      ? Math.floor(elapsedMs / 1000)
+      : Math.max(0, Math.ceil((bossAtMs - elapsedMs) / 1000));
     this.runText.setText(
-      `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
+      `${bossActive ? "BOSS" : "BOSS까지"}\n${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
     );
+    this.runText.setFontSize(20);
   }
 
   renderProgression(level: number, xp: number, threshold: number): void {

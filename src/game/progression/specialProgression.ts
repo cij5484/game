@@ -41,7 +41,6 @@ export class SpecialProgression {
   readonly history: SpecialGrowthHistory[] = [];
   capacity = 2;
   private qualityLiberated = false;
-  private readonly acquisitions = new Set<number>();
   private readonly queue: QueueEntry[] = [];
 
   get pending(): boolean {
@@ -67,14 +66,15 @@ export class SpecialProgression {
     }
   }
 
-  acquireAtCharacterLevel(level: number): void {
-    if (!Number.isFinite(level)) return;
-    for (const threshold of [5, 10]) {
-      if (level >= threshold && !this.acquisitions.has(threshold)) {
-        this.acquisitions.add(threshold);
-        this.queue.push({ kind: "acquire" });
-      }
-    }
+  acquireWeapon(id: SpecialWeaponId): boolean {
+    if (
+      !Object.hasOwn(specialWeaponDefinitions, id) ||
+      this.weapons.length >= this.capacity ||
+      this.weapons.some((weapon) => weapon.id === id)
+    )
+      return false;
+    this.weapons.push({ id, level: 1, quality: 0 });
+    return true;
   }
 
   addLevels(
@@ -187,12 +187,7 @@ export class SpecialProgression {
     const selection = this.offer();
     if (!selection?.choices.some((c) => c.id === optionId)) return false;
     if (selection.kind === "acquire") {
-      if (this.weapons.length >= this.capacity) return false;
-      this.weapons.push({
-        id: optionId as SpecialWeaponId,
-        level: 1,
-        quality: 0,
-      });
+      if (!this.acquireWeapon(optionId as SpecialWeaponId)) return false;
     } else {
       const weapon = this.weapons.find((w) => w.id === selection.weaponId)!;
       if (selection.kind === "branch") weapon.branch = optionId as "a" | "b";

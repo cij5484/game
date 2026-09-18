@@ -581,7 +581,7 @@ export class SpecialWeapons {
       if (enemy.hp <= 0 || distance(combatPosition(enemy), area) > area.radius)
         return enemy;
       let next = this.hit(enemy, area.damage, area.bypass, context, weapon);
-      if (area.pull) {
+      if (area.pull && !next.boss) {
         const old = combatPosition(next);
         const x = Math.max(
           0,

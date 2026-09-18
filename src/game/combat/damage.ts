@@ -1,5 +1,6 @@
 import type { EnemyState } from "../enemies/enemySimulation";
 import { eliteBalance } from "../data/elite";
+import { applyBossDamage } from "../enemies/siegeBoss";
 
 /** Primary hits drain the physical shield first; excess damage spills into body HP. */
 export function applyPrimaryDamage(
@@ -7,6 +8,7 @@ export function applyPrimaryDamage(
   damage: number,
   shieldBypass = 0,
 ): EnemyState {
+  if (enemy.boss) return applyBossDamage(enemy, damage);
   const amount = Math.max(0, damage) * (enemy.incomingDamageMultiplier ?? 1);
   const bypass = Math.max(0, Math.min(1, shieldBypass));
   const shieldDamage = Math.min(enemy.shieldHp ?? 0, amount * (1 - bypass));
@@ -24,6 +26,7 @@ export function applyEffectDamage(
   enemy: EnemyState,
   damage: number,
 ): EnemyState {
+  if (enemy.boss) return applyBossDamage(enemy, damage);
   return {
     ...enemy,
     hp: Math.max(
@@ -48,6 +51,7 @@ export function shieldProtection(enemies: readonly EnemyState[]): EnemyState[] {
       .filter(
         (e) =>
           !e.elite &&
+          !e.boss &&
           e.hp > 0 &&
           e.lane === guard.lane &&
           e.progress01 <= guard.progress01 &&

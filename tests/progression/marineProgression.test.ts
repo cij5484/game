@@ -63,13 +63,13 @@ describe("Marine M4 growth", () => {
     expect(p.pendingChoices).toBe(0);
     expect(p.offer()).toEqual([]);
   });
-  it("keeps investment bounded at twice base and separate from rarity", () => {
+  it("keeps mod investment bounded at 1.4 base and separate from rarity", () => {
     expect(marineUpgradeWeight(marineUpgrades.penetration, {})).toBe(
       marineUpgrades.penetration.weight,
     );
     expect(
       marineUpgradeWeight(marineUpgrades.penetration, { penetration: 100 }),
-    ).toBe(marineUpgrades.penetration.weight * 2);
+    ).toBe(marineUpgrades.penetration.weight * 1.4);
     expect(
       marineUpgradeWeight(marineUpgrades.penetration, { heavy: 100 }),
     ).toBe(marineUpgrades.penetration.weight);
@@ -84,7 +84,10 @@ describe("Marine M4 growth", () => {
     const p = new MarineProgression(() => roll);
     p.gainXp(8);
     const basic = p.offer()[0]!;
-    if (basic.category === "special-growth")
+    if (
+      basic.category === "special-growth" ||
+      basic.category === "special-acquisition"
+    )
       throw new Error("No special weapon is owned");
     roll = 0.05999;
     expect(p.choose(basic.id)).toBe(true);
@@ -151,7 +154,7 @@ describe("Marine M4 growth", () => {
     }
   });
   it("keeps rarity independent of rank and records a selected legendary trait", () => {
-    const rolls = [0.3, 0.9999, 0, 0, 0, 0, 0.5];
+    const rolls = [3.1 / 3.7, 0, 0.9999, 0, 0, 0, 0, 0.5];
     const p = new MarineProgression(() => rolls.shift() ?? 0.5);
     p.gainXp(8);
     const card = p.offer()[0]!;
@@ -185,8 +188,7 @@ describe("Marine M4 growth", () => {
       const p = new MarineProgression(() => 0);
       p.ranks["attack-speed"] = 90;
       p.quality["attack-speed"] = quality;
-      p.special.acquireAtCharacterLevel(5);
-      p.special.choose("grenade");
+      p.special.acquireWeapon("grenade");
       p.pendingChoices = 1;
       expect(deriveMarineWeaponConfig(p.growth).shotIntervalMs).toBe(100);
       expect(p.offer().some((card) => card.id === "attack-speed")).toBe(
@@ -275,7 +277,7 @@ describe("Marine M4 growth", () => {
 });
 
 it("keeps owned legendary traits growing without offering the same legendary again", () => {
-  const rolls = [0.3, 0.9999, 0, 0, 0, 0, 0.5];
+  const rolls = [3.5 / 4.05, 0, 0.9999, 0, 0, 0, 0, 0.5];
   const p = new MarineProgression(() => rolls.shift() ?? 0.5);
   p.ranks.penetration = 1;
   p.legendary.add("penetration");

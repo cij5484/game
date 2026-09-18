@@ -23,6 +23,7 @@ export interface RunResult {
   status: "cleared" | "failed";
   elapsedMs: number;
   kills: number;
+  bossKilled?: boolean;
   level: number;
   wallHp: number;
   ranks: UpgradeRanks;
@@ -93,6 +94,7 @@ export class ResultView {
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
       ],
       [display.killsLevel, `${result.kills} / ${levelLabel(result.level)}`],
+      ["공성 거인", result.bossKilled ? "처치 완료" : "미처치"],
       [display.wall, String(Math.ceil(result.wallHp))],
       [`${display.trait} (${result.traitLimit})`, direction],
       [
