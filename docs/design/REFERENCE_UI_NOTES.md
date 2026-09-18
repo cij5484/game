@@ -1,5 +1,19 @@
 # Combat / Progression / HUD 레퍼런스
 
+## Main Reference — v0.3 Current
+
+2026-09-18 확정: 핵심 레퍼런스는 **Deep Rock Galactic: Survivor**와 **20 Minutes Till Dawn** 두 작품으로 고정한다. [GDD v0.3](GAME_GDD_v0.3.md)가 Current Source of Truth이며 목표 설계와 실제 구현을 분리한다.
+
+| Main Reference | 참고하는 축 — 사용자 확정 방향 | v0.3 적용 방향 |
+| --- | --- | --- |
+| [Deep Rock Galactic: Survivor](https://store.steampowered.com/app/2321470/Deep_Rock_Galactic_Survivor/) | 자동전투, 무기 성장, 카드 희귀도, Overclock, 큰 장점과 대가가 있는 변형 | 자동 기본무기+특수무기, 레벨과 희귀도 분리, 독립 전설/Overclock과 Trade-off |
+| [20 Minutes Till Dawn](https://store.steampowered.com/app/1966900/20_Minutes_Till_Dawn/) | 업그레이드 트리, 성장 분기, Synergy, Evolution, Run마다 달라지는 Build | 특수무기 고유 트리와 선택, 조합이 만드는 새로운 행동, Build 완성 순간 |
+
+표는 **우리 프로젝트가 참고하기로 정한 설계 방향**이다. 원작의 최신 수치·레벨 조건·희귀도 확률과 동일하다는 주장이 아니다. 공식 상품 페이지 링크를 제공하며 이번 조회에서는 Steam 연령 확인 페이지가 반환되어 본문을 새로 검증하지 않았다. 기존 조사 기록을 최신 검증으로 바꾸지 않는다. 원작의 명칭·아이콘·아트·효과를 복제하지 않는다.
+
+아래 §1~5는 **Legacy Reference / 이전 패스의 조사와 적용 기록**으로 보존한다. 다른 게임은 Main Reference가 아니다. 과거의 Marine Magic2종, 유한Lv5/전설 매핑, 시너지 보장, 비상호작용 Build Bar 같은 적용 결론은 v0.3에 의해 대체되거나 재평가 대상이다. 새 목표는 Marine 특수무기2종, 독립 희귀도, 반복 성장, 높은 RNG 편차, Header/Build Info 분리다. 모든 v0.3 기능은 구현 예정이며 이번 변경은 문서만이다.
+
+
 > 현행 적용은 **§5 자동 공격·선택형 성장 패스**와 GDD v0.2를 따릅니다. §1~4는 이전 조사와 설계 판단의 기록이며, 이전9종 특성·자동 시너지·비버튼 마법HUD는 후속 요청으로 대체됐습니다.
 
 조사일: 2026-09-17. 공식 개발사·퍼블리셔 소개와 Steam 공식 스크린샷을 참고했다. 아래 **관찰**과 **적용 판단**을 구분한다. 상업 성과를 별도 추정하지 않으며, 공개적으로 널리 플레이된 장르 대표작 4종을 비교 대상으로 삼았다. 아트·아이콘·레이아웃을 복제하지 않는다.

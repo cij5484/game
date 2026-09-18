@@ -22,4 +22,4 @@ If the Mac checkout has uncommitted changes, preserve them before switching or p
 - Circle tolerances: closure0.22, radial error0.18. Z alignment and negative fixtures retained. Real-device gesture reliability needs playtesting.
 - Desktop secondary input: simultaneous left/right mouse buttons. Mobile: two-finger tap. Pause icon top right; restart resets the run.
 
-Read README.md, docs/design/GAME_GDD_v0.2.md and docs/design/PROTOTYPE_TECHNICAL_SPEC_v0.1.md before continuing. Gameplay tuning lives in src/game/data/. Mobile performance, pacing and gesture feel remain user playtest items.
+Current design source: docs/design/GAME_GDD_v0.3.md (target design, not implemented). Read its Current Implementation Gap before continuing. The state above is a historical handoff snapshot; do not treat it as the latest implementation. Read README.md and the code for current behavior. GDD v0.2 and PROTOTYPE_TECHNICAL_SPEC_v0.1.md retain historical design/implementation notes. Gameplay tuning lives in src/game/data/. Mobile performance, pacing and gesture feel remain user playtest items.
