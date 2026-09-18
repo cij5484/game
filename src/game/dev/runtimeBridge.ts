@@ -14,6 +14,36 @@ export interface GameStatus {
   speed: number;
   level: number;
   appliedOverrides?: number;
+  performance?: {
+    fps: number;
+    enemies: number;
+    specialUnits: number;
+    combatVfx: number;
+    substeps: number;
+  };
+}
+function readPerformance(value: unknown): GameStatus["performance"] {
+  if (!value || typeof value !== "object") return;
+  const data = value as Record<string, unknown>;
+  if (
+    typeof data.fps !== "number" ||
+    !Number.isFinite(data.fps) ||
+    data.fps < 0 ||
+    ["enemies", "specialUnits", "combatVfx", "substeps"].some(
+      (key) =>
+        typeof data[key] !== "number" ||
+        !Number.isSafeInteger(data[key]) ||
+        data[key] < 0,
+    )
+  )
+    return;
+  return {
+    fps: data.fps,
+    enemies: data.enemies as number,
+    specialUnits: data.specialUnits as number,
+    combatVfx: data.combatVfx as number,
+    substeps: data.substeps as number,
+  };
 }
 export function validateBalanceGroups(values: Overrides): void {
   const n = (id: string) => Number(values[id] ?? getDefault(id));
@@ -72,7 +102,10 @@ export function loadPayload(value: unknown): void {
 export function startBalanceBridge(
   role: "game" | "panel",
   onStatus?: (status: GameStatus) => void,
-  readStatus: () => { speed: number; level: number } = () => ({
+  readStatus: () => Omit<
+    GameStatus,
+    "connected" | "appliedOverrides"
+  > = () => ({
     speed: 1,
     level: 1,
   }),
@@ -128,6 +161,8 @@ export function startBalanceBridge(
         level: message.level,
         appliedOverrides: Number(message.appliedOverrides) || 0,
       };
+      const performance = readPerformance(message.performance);
+      if (performance) status.performance = performance;
       onStatus?.(status);
     }
   };

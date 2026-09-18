@@ -93,3 +93,21 @@ it("elite telegraph and charge preserve arrival time across tick subdivision", (
   expect(wallTime).toBeCloseTo(whole.wallTimeMs);
   expect(state.chargePhase).toBe("spent");
 });
+
+it("reuses unchanged shield-protection state and clears protection after the guard breaks", () => {
+  const guard = {
+    ...createPrototypeEnemy("shield", "center", 99, 0.5, true),
+    progress01: 0.7,
+  };
+  const troop = {
+    ...createPrototypeEnemy("grunt", "center", 1),
+    progress01: 0.69,
+  };
+  const initial = shieldProtection([guard, troop]);
+  expect(shieldProtection(initial)).toBe(initial);
+  const broken = [{ ...initial[0]!, shieldHp: 0 }, initial[1]!];
+  const cleared = shieldProtection(broken);
+  expect(cleared[1]!.protectedBy).toBeUndefined();
+  expect(cleared[1]!.incomingDamageMultiplier).toBe(1);
+  expect(cleared[0]).toBe(broken[0]);
+});

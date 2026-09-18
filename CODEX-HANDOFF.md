@@ -1,12 +1,12 @@
 # Mac handoff — 2026-09-18
 
-M7 `60f19c02dceceaa1009562f866024632f5b29e8d` is merged via [PR22](https://github.com/cij5484/game/pull/22), main `9fa09f4`. M8 uses `codex/prototype-m8-dev-balance-panel`: **commit/push only, no M8 main merge or automatic next milestone**.
+M8 `1719e74694e4cdf10211f3d04d1c976221223032` is merged via [PR23](https://github.com/cij5484/game/pull/23), main `7d1cae9`. M9 uses `codex/prototype-m9-horde-performance`: **commit/push only, no M9 main merge or automatic next milestone**.
 
 ## Setup
 
 ```sh
 git fetch origin
-git switch codex/prototype-m8-dev-balance-panel
+git switch codex/prototype-m9-horde-performance
 git pull --ff-only
 npm ci
 npm run dev -- --host 0.0.0.0
@@ -16,14 +16,20 @@ Preserve uncommitted work before switching/pulling. Never reset or force-push to
 
 ## Current implementation / design
 
-Current Source of Truth: [GAME_GDD_v0.12.md](docs/design/GAME_GDD_v0.12.md). It inherits the complete v0.11 game design/defaults/future pools; v0.11 remains unchanged. Read [M8 implementation](docs/prototype-m8-dev-balance-panel.md).
+Current Source of Truth: [GAME_GDD_v0.13.md](docs/design/GAME_GDD_v0.13.md). It inherits the complete v0.12 design/defaults/developer tools/future pools; v0.12 remains unchanged. Read [M9 implementation](docs/prototype-m9-horde-performance.md). This adds Prototype Technical Requirements, not gameplay balance changes.
+
+- M9 separates simulation substeps from the once-per-frame enemy transform pass; damage updates changed state without rendering, and focus updates the old/new target only. Reuse readonly snapshots, validated missile indices and lane shield candidates; preserve input ownership and gameplay ordering.
+- Transient combat VFX: 16 objects/frame, 64 active including critical labels, 96 impact targets/frame; reuse hidden Graphics with existing timers. Damage is unaffected. No enemy-wide pool. `/dev` read-only metrics: FPS, enemies, visible special units, active transient VFX groups/labels, frame simulation substeps; DEV-only status broadcast about once/second.
+- **M9 npm run check: 51 files/373 tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** A one-frame 700-enemy/X4/64ms functional fixture reduced transform calls 17,500→700; this is not an FPS benchmark. Browser checked all five metrics and paused substeps 0 with zero runtime overrides. Keep cap 700, movement, HP, damage, timing, growth and all gameplay defaults. Real smoothness remains user playtest.
+
+### Preserved M8 developer panel
 
 - Open game `/` and panel `/dev` in separate windows of the same browser/profile/origin. Korean fields/search/categories/tooltips/default/current/changed/apply timing, individual/all reset, named presets, validated JSON import/export. The panel is a Prototype Development Tool / Not Final Game Feature.
 - Existing data defaults register stable runtime objects; central numeric/boolean overrides reach gameplay through BroadcastChannel `game.prototype.balance.v1`. Developer localStorage persists overrides across reloads. Presets use a separate key and survive reset. No backend/server/new dependencies.
 - Damage/cycles and live movement/supply read updated values. Spawn intervals/batches take effect on the next Spawn calculation; already scheduled timers remain intact. Spawn HP/shields/scaling preserve existing enemies. Current Level XP threshold and already-open offers (candidates, growth amounts and Great Success chance) stay frozen; new Level/offer reads new values. Starting caps/wallHP/initial enemies/elite windows apply next Run.
 - Special cycle UI is X1 real seconds at current combatTempo; JSON stores combat ms. Rarity uses1000‰ weights with percent display and sum validation. Single core structure stays0~1; no new multi-core rule.
 - Production `import.meta.env.DEV` gate removes panel/bridge imports and never loads local overrides. Runtime override does not change code defaults/GDD; a separate user instruction is required to promote a JSON as new defaults.
-- **M8 integrated npm run check:50files/358tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** Browser checked243fields, connected game X1/X4/Level/override acknowledgment, Grunt HP8→12/reset, presets/reload persistence, JSON valid/unknown-field rejection, search/tooltips/grenade5.2 X1seconds. Test overrides reset and test preset deleted. Production preview `/dev` shows unavailable and production build contains no Panel/Bridge assets. Integration tests cover next-spawn HP, frozen offer amount/Great Success/currentXP, zero batch/Stage clock and production guard. No automatic balance judgment or long simulations.
+- **Historical M8 integrated npm run check:50files/358tests, TypeScript and Vite build passed; existing Phaser >500kB chunk warning remains.** Browser checked243fields, connected game X1/X4/Level/override acknowledgment, Grunt HP8→12/reset, presets/reload persistence, JSON valid/unknown-field rejection, search/tooltips/grenade5.2 X1seconds. Test overrides reset and test preset deleted. Production preview `/dev` shows unavailable and production build contains no Panel/Bridge assets. Integration tests cover next-spawn HP, frozen offer amount/Great Success/currentXP, zero batch/Stage clock and production guard. No automatic balance judgment or long simulations.
 
 ### Preserved M7 game baseline
 
@@ -49,4 +55,4 @@ Current Source of Truth: [GAME_GDD_v0.12.md](docs/design/GAME_GDD_v0.12.md). It 
 - Circle tolerances: closure0.22, radial error0.18. Z alignment and negative fixtures retained. Real-device gesture reliability needs playtesting.
 - Desktop secondary input: simultaneous left/right mouse buttons. Mobile: two-finger tap. Pause icon top right; restart resets the run.
 
-Current design source: docs/design/GAME_GDD_v0.12.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.
+Current design source: docs/design/GAME_GDD_v0.13.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.

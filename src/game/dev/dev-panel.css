@@ -126,6 +126,20 @@
   background: #1b2834;
   cursor: pointer;
 }
+.balance-performance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin: 16px;
+}
+.balance-performance dt {
+  color: #b7c7d5;
+  font-size: 13px;
+}
+.balance-performance dd {
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums;
+}
 .balance-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 200px;

@@ -1,14 +1,16 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.12 — 실시간 개발자 밸런스 패널](docs/design/GAME_GDD_v0.12.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.12.md#5-current-implementation-gap)으로 구분합니다. [v0.11](docs/design/GAME_GDD_v0.11.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.13 — 대규모 Horde 성능](docs/design/GAME_GDD_v0.13.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.13.md#5-current-implementation-gap)으로 구분합니다. [v0.12](docs/design/GAME_GDD_v0.12.md)와 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
-최신 작업은 [Prototype M8](docs/prototype-m8-dev-balance-panel.md)입니다. M7 `60f19c02dceceaa1009562f866024632f5b29e8d`을 [PR22](https://github.com/cij5484/game/pull/22)로 main `9fa09f4`에 병합한 뒤 `codex/prototype-m8-dev-balance-panel`에서 진행합니다. M8은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+최신 작업은 [Prototype M9](docs/prototype-m9-horde-performance.md)입니다. M8 `1719e74694e4cdf10211f3d04d1c976221223032`를 [PR23](https://github.com/cij5484/game/pull/23)로 main `7d1cae9`에 병합한 뒤 `codex/prototype-m9-horde-performance`에서 진행합니다. M9는 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+
+M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID 색인을 재사용합니다. Damage/Focus의 전체 redraw를 제거하고 순간 VFX를 제한·재사용합니다. `/dev`의 읽기 전용 **성능**에서 FPS·적 수·특수 유닛 수·전투 효과 수·Frame simulation 단계 수를 확인합니다. **Horde cap 700과 Gameplay Balance는 그대로입니다. M9 통합 `npm run check`: 51파일/373테스트·TypeScript·Vite build 통과.** 기존 Phaser chunk 경고는 남으며 실제 끊김은 사용자 Playtest로 판단합니다.
 
 개발 서버의 게임 `/`와 한국어 패널 **`/dev`**를 같은 브라우저·같은 origin의 별도 창에서 엽니다. 한국어 검색/분류/Tooltip, 현재·기본값, 적용 시점, 개별/전체 Reset, Preset, JSON Import/Export를 제공합니다. 기본 설정→중앙RuntimeStore→실제게임 흐름이며 BroadcastChannel로 새로고침 없이 전달하고 개발용 localStorage에 Override를 저장합니다. 수류탄·미사일·드론 주기는 X1 실제 초로 입력합니다.
 
 적HP는 다음 생성부터, 카드/XP는 다음Offer/Level부터, 보유한도·초기조건은 다음Run부터 적용합니다. 현재 적HP와 열린 카드는 보존합니다. **Production에서는/dev·통신·Override 로딩이 비활성화됩니다.** 이 패널은 Prototype Development Tool / Not Final Game Feature이며 Override가 코드 기본값이나 GDD를 바꾸지 않습니다.
 
-**M8 통합 `npm run check`:50파일/358테스트·TypeScript·Vite build 통과.** 기존 Phaser500kB 초과 경고는 유지합니다. 브라우저에서243개 항목·게임 연결·실시간 전달·Reset/Preset·새로고침 유지·JSON 검증·검색/Tooltip·X1초 표시와 Production `/dev` 차단을 확인했습니다. 적용 경계는 기능 테스트로 확인했으며 자동 밸런스 판단은 하지 않았습니다. M7의 과거 검증 숫자를 M8 결과로 재사용하지 않습니다.
+**역사 기록 — M8 통합 `npm run check`:50파일/358테스트·TypeScript·Vite build 통과.** 기존 Phaser500kB 초과 경고는 유지합니다. 브라우저에서243개 항목·게임 연결·실시간 전달·Reset/Preset·새로고침 유지·JSON 검증·검색/Tooltip·X1초 표시와 Production `/dev` 차단을 확인했습니다. 적용 경계는 기능 테스트로 확인했으며 자동 밸런스 판단은 하지 않았습니다. M7의 과거 검증 숫자를 M8 결과로 재사용하지 않습니다.
 
 아래 M7 게임 규칙과 기본 수치는 그대로 유지합니다. 개발 패널은 새 콘텐츠나 기본 밸런스 변경이 아닙니다.
 

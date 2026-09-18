@@ -68,7 +68,21 @@ interface CopiedAttack {
 
 export class CombatScene extends Phaser.Scene {
   get developerStatus() {
-    return { speed: this.gameSpeed, level: this.progression.level };
+    return {
+      speed: this.gameSpeed,
+      level: this.progression.level,
+      ...(import.meta.env.DEV
+        ? {
+            performance: {
+              fps: this.game?.loop.actualFps ?? 0,
+              enemies: this.enemies.length,
+              specialUnits: this.specialWeapons.activeUnitCount,
+              combatVfx: this.view?.combatVfxCount ?? 0,
+              substeps: this.frameSubsteps,
+            },
+          }
+        : {}),
+    };
   }
   private wallMaxHp = runBalance.wallMaxHp;
   private run = createRunState(this.wallMaxHp);
@@ -84,6 +98,39 @@ export class CombatScene extends Phaser.Scene {
     attackElapsedMs: number;
     visual: Phaser.GameObjects.Container;
   }[] = [];
+  private frameSubsteps = 0;
+  private inFrame = false;
+  private snapshotSource: typeof this.enemies | undefined;
+  private stateSnapshot: readonly EnemyState[] | undefined;
+  private lookupSource: typeof this.enemies | undefined;
+  private enemyById = new Map<number, (typeof this.enemies)[number]>();
+  private get states(): readonly EnemyState[] {
+    if (
+      !this.stateSnapshot ||
+      this.snapshotSource !== this.enemies ||
+      this.stateSnapshot.length !== this.enemies.length
+    ) {
+      this.snapshotSource = this.enemies;
+      this.stateSnapshot = this.enemies.map((entry) => entry.state);
+    }
+    return this.stateSnapshot;
+  }
+  private get entriesById() {
+    if (
+      this.lookupSource !== this.enemies ||
+      this.enemyById.size !== this.enemies.length
+    ) {
+      this.lookupSource = this.enemies;
+      this.enemyById = new Map(
+        this.enemies.map((entry) => [entry.state.id, entry]),
+      );
+    }
+    return this.enemyById;
+  }
+  private renderEnemies(): void {
+    for (const entry of this.enemies)
+      this.view.renderEnemy(entry.visual, entry.state, false);
+  }
   private director = new SpawnDirector();
   private specialWeapons = new SpecialWeapons();
   private nextEnemyId = 0;
@@ -131,6 +178,9 @@ export class CombatScene extends Phaser.Scene {
       this.result.destroy(),
     );
     this.enemies = [];
+    this.stateSnapshot = undefined;
+    this.frameSubsteps = 0;
+    this.inFrame = false;
     this.director = new SpawnDirector();
     this.specialWeapons = new SpecialWeapons();
     this.nextEnemyId = 0;
@@ -226,10 +276,14 @@ export class CombatScene extends Phaser.Scene {
 
   private focusAt(x: number, y: number): void {
     if (!this.canUseAbility) return;
+    const previous = this.focus.targetId;
     this.focus.set(this.view.pickEnemy(x, y, this.enemies));
     this.view.setFocus(this.focus.targetId);
-    for (const entry of this.enemies)
-      this.view.renderEnemy(entry.visual, entry.state, false);
+    if (previous === this.focus.targetId) return;
+    for (const id of [previous, this.focus.targetId]) {
+      const entry = id === null ? undefined : this.entriesById.get(id);
+      if (entry) this.view.renderEnemyStatus(entry.visual, entry.state);
+    }
   }
 
   private activateStim(): boolean {
@@ -263,19 +317,15 @@ export class CombatScene extends Phaser.Scene {
     if (!this.canUseAbility || !this.burst.activate()) return false;
     this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
     this.refreshProtection();
-    const result = suppressiveBarrage(this.enemies.map((e) => e.state));
+    const result = suppressiveBarrage(this.states);
     this.view.showBarrage(
       result.hitIds.flatMap((id) => {
-        const entry = this.enemies.find((e) => e.state.id === id);
-        return entry ? [entry.visual] : [];
+        const entry = this.entriesById.get(id);
+        return entry ? [this.view.enemyVisualPoint(entry.state)] : [];
       }),
     );
     this.applyEnemyStates(
-      applyImpact(
-        this.enemies.map((e) => e.state),
-        result.enemies,
-        this.relics.owned,
-      ),
+      applyImpact(this.states, result.enemies, this.relics.owned),
       false,
     );
     this.renderBurst();
@@ -313,7 +363,7 @@ export class CombatScene extends Phaser.Scene {
     this.enemies.push({
       state,
       attackElapsedMs: 0,
-      visual: this.view.createEnemy(state, false),
+      visual: this.view.createEnemy(state, false, !this.inFrame),
     });
   }
 
@@ -354,8 +404,11 @@ export class CombatScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     this.time.timeScale = this.gameSpeed * runBalance.combatTempo;
+    this.frameSubsteps = 0;
+    this.view.beginFrame();
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
+    this.inFrame = true;
     // Sole combat tempo owner. Stage time removes base tempo; developer speed affects both.
     let remaining =
       Math.max(0, deltaMs) * this.gameSpeed * runBalance.combatTempo;
@@ -386,6 +439,8 @@ export class CombatScene extends Phaser.Scene {
         else this.flushNotices();
       }
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
+    this.inFrame = false;
+    this.renderEnemies();
     this.renderCombat();
   }
 
@@ -456,7 +511,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private primaryTarget(): EnemyState | null {
-    const enemies = this.enemies.map((e) => e.state);
+    const enemies = this.states;
     const range = getMarineStats(this.progression.growth).minTargetProgress01;
     const automatic = this.focus.resolve(enemies, range);
     if (this.focus.targetId !== null) return automatic;
@@ -473,7 +528,9 @@ export class CombatScene extends Phaser.Scene {
       ...(this.companion ? [this.companion] : []),
       ...this.copiedAttacks.map((copy) => copy.rifle),
     ];
-    const target = this.primaryTarget();
+    const target = rifles.some((rifle) => rifle.timeToEventMs === 0)
+      ? this.primaryTarget()
+      : null;
     const untilRound = Math.min(
       ...rifles.map((rifle) =>
         rifle.timeToEventMs === 0 && !target
@@ -549,10 +606,12 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private refreshProtection(): void {
-    const states = shieldProtection(this.enemies.map((e) => e.state));
+    const states = shieldProtection(this.states);
+    if (states === this.states) return;
     this.enemies.forEach((entry, i) => {
       entry.state = states[i]!;
     });
+    this.stateSnapshot = states;
   }
 
   private firePrimary(action: PrimaryAction, copied: boolean): void {
@@ -561,7 +620,7 @@ export class CombatScene extends Phaser.Scene {
     this.view.setFocus(this.focus.targetId);
     if (!target) return;
     this.shotIndex++;
-    const before = this.enemies.map((entry) => entry.state);
+    const before = this.states;
     const result = primaryAttack(
       target,
       before,
@@ -577,7 +636,7 @@ export class CombatScene extends Phaser.Scene {
           .minTargetProgress01,
         criticalChanceBonus: action.criticalChanceBonus,
         targetDamageMultiplier: (id) => {
-          const enemy = before.find((e) => e.id === id);
+          const enemy = this.entriesById.get(id)?.state;
           return (
             this.specialWeapons.gaussDamageMultiplier(id) *
             (enemy ? this.synergies.targetMultiplier(enemy) : 1)
@@ -589,8 +648,8 @@ export class CombatScene extends Phaser.Scene {
     );
     this.view.showPrimary(
       [...result.hitIds, ...result.splashIds].flatMap((id) => {
-        const enemy = this.enemies.find((entry) => entry.state.id === id);
-        return enemy ? [enemy.visual] : [];
+        const enemy = this.entriesById.get(id);
+        return enemy ? [this.view.enemyVisualPoint(enemy.state)] : [];
       }),
       result.ricochetIds,
       [...result.hitIds, ...result.splashIds],
@@ -619,16 +678,25 @@ export class CombatScene extends Phaser.Scene {
     states: readonly EnemyState[],
     chargeBurst = true,
   ): void {
-    const byId = new Map(states.map((enemy) => [enemy.id, enemy]));
+    if (states === this.states) return;
+    let byId: Map<number, EnemyState> | undefined;
+    let changed = false;
     let buildChanged = false;
     let xp = 0;
     let hits = 0;
     let kills = 0;
     let eliteKills = 0;
-    for (const entry of this.enemies) {
+    for (const [index, entry] of this.enemies.entries()) {
+      let next = states[index];
+      if (next?.id !== entry.state.id) {
+        byId ??= new Map(states.map((enemy) => [enemy.id, enemy]));
+        next = byId.get(entry.state.id);
+      }
+      if (!next || next === entry.state) continue;
+      changed = true;
       const oldHp = entry.state.hp;
       const oldShield = entry.state.shieldHp ?? 0;
-      entry.state = byId.get(entry.state.id)!;
+      entry.state = next;
       if (entry.state.hp < oldHp || (entry.state.shieldHp ?? 0) < oldShield) {
         hits++;
         this.synergies.registerHits([entry.state.id]);
@@ -650,11 +718,14 @@ export class CombatScene extends Phaser.Scene {
           eliteKills++;
         }
         entry.visual.destroy();
-      } else this.view.renderEnemy(entry.visual, entry.state, false);
+      }
     }
-    this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    if (!changed) return;
+    if (kills)
+      this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
+    this.stateSnapshot = undefined;
     this.refreshProtection();
-    this.focus.resolve(this.enemies.map((e) => e.state));
+    this.focus.resolve(this.states);
     this.view.setFocus(this.focus.targetId);
     this.kills += kills;
     if (this.run.status !== "running") {
@@ -662,14 +733,11 @@ export class CombatScene extends Phaser.Scene {
       this.finishRun();
       return;
     }
-    this.synergies.advance(
-      0,
-      this.enemies.map((e) => e.state),
-    );
+    this.synergies.advance(0, this.states);
     if (buildChanged) this.refreshBuild();
     this.progression.gainXp(xp);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
-    this.renderProgression();
+    if (hits || kills) this.renderProgression();
     if (this.choosing) this.showChoices();
     else if (this.ultimateRemainingMs === 0) this.flushNotices();
     this.renderBurst();
@@ -765,10 +833,7 @@ export class CombatScene extends Phaser.Scene {
       this.notices.push(
         `시너지 활성화 · ${prototypeSynergyDefinitions[id].title}`,
       );
-    this.synergies.advance(
-      0,
-      this.enemies.map((e) => e.state),
-    );
+    this.synergies.advance(0, this.states);
     this.rifle.setConfig(deriveMarineWeaponConfig(this.progression.growth));
 
     this.stimpack.setUpgrades(
@@ -812,7 +877,7 @@ export class CombatScene extends Phaser.Scene {
     return {
       weapons: this.progression.special.weapons,
       growth: this.progression.growth,
-      enemies: this.enemies.map((e) => e.state),
+      enemies: this.states,
       focusId: this.focus.targetId,
       random: Math.random,
       relics: this.relics.owned,
@@ -834,6 +899,7 @@ export class CombatScene extends Phaser.Scene {
           : (siegeBossBalance.spawnMs - this.run.elapsedMs) *
               runBalance.combatTempo,
       );
+      if (step > 0) this.frameSubsteps++;
       this.refreshProtection();
       for (const entry of this.enemies) {
         if (entry.state.boss) {
@@ -853,7 +919,6 @@ export class CombatScene extends Phaser.Scene {
           }
           if (entry.state.boss!.phase === "final-charge")
             this.director.bossPhase = "final";
-          this.view.renderEnemy(entry.visual, entry.state, false);
           if (this.run.status !== "running") break;
           continue;
         }
@@ -879,14 +944,11 @@ export class CombatScene extends Phaser.Scene {
         );
         entry.attackElapsedMs = attack.elapsedMs;
         this.takeWallDamage(attack.damage);
-        this.view.renderEnemy(entry.visual, entry.state, false);
         if (this.run.status !== "running") break;
       }
+      this.stateSnapshot = undefined;
       this.director.advance(step, step / runBalance.combatTempo);
-      this.synergies.advance(
-        step,
-        this.enemies.map((e) => e.state),
-      );
+      this.synergies.advance(step, this.states);
 
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step / runBalance.combatTempo);
@@ -897,11 +959,7 @@ export class CombatScene extends Phaser.Scene {
       ) {
         const result = this.specialWeapons.advance(step, this.specialContext());
         this.view.showSpecialEffects(result.effects);
-        if (
-          result.enemies.some(
-            (state, index) => state !== this.enemies[index]?.state,
-          )
-        )
+        if (result.enemies !== this.states)
           this.applyEnemyStates(result.enemies);
       }
       if (this.choosing) break;
@@ -910,7 +968,6 @@ export class CombatScene extends Phaser.Scene {
         this.spawnBatch();
       }
     }
-    this.view.renderWall(this.run.wallHp, this.wallMaxHp);
     return Math.max(0, deltaMs) - remaining;
   }
 }

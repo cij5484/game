@@ -31,12 +31,17 @@ const combatVisual = {
   minimumTouchSize: 44,
   flashMs: 75,
   marineX: 360,
+  // ponytail: excess cosmetic flashes are omitted; raise these only after profiling.
+  flashesPerFrame: 16,
+  activeFlashes: 64,
+  impactTargetsPerFrame: 96,
 };
 const colors: Record<EnemyKind, number> = {
   grunt: 0x6cb2e8,
   runner: 0xffc66d,
   shield: 0xb69cff,
 };
+type EnemyVisualPoint = { x: number; y: number; scaleX: number };
 
 export class EnemyPressureView {
   private readonly world: Phaser.GameObjects.Container;
@@ -69,6 +74,53 @@ export class EnemyPressureView {
   private readonly gestureText: Phaser.GameObjects.Text;
   private farY = field.farY;
   private focusId: number | null = null;
+  private readonly flashPool: Phaser.GameObjects.Graphics[] = [];
+  private activeFlashes = 0;
+  private frameFlashes = 0;
+  private frameImpactTargets = 0;
+
+  get combatVfxCount(): number {
+    return this.activeFlashes;
+  }
+
+  beginFrame(): void {
+    this.frameFlashes = 0;
+    this.frameImpactTargets = 0;
+  }
+
+  private reserveFlash(): boolean {
+    if (
+      this.frameFlashes >= combatVisual.flashesPerFrame ||
+      this.activeFlashes >= combatVisual.activeFlashes
+    )
+      return false;
+    this.frameFlashes++;
+    this.activeFlashes++;
+    return true;
+  }
+
+  private flash(durationMs: number): Phaser.GameObjects.Graphics | undefined {
+    if (!this.reserveFlash()) return;
+    const graphics = this.flashPool.pop() ?? this.scene.add.graphics();
+    if (!graphics.parentContainer) this.world.add(graphics);
+    graphics.clear().setActive(true).setVisible(true);
+    this.world.bringToTop(graphics);
+    this.scene.time.delayedCall(durationMs, () => {
+      graphics.clear().setActive(false).setVisible(false);
+      this.activeFlashes--;
+      this.flashPool.push(graphics);
+    });
+    return graphics;
+  }
+
+  private impactCount(requested: number): number {
+    const count = Math.min(
+      requested,
+      combatVisual.impactTargetsPerFrame - this.frameImpactTargets,
+    );
+    this.frameImpactTargets += count;
+    return count;
+  }
 
   setFocus(id: number | null): void {
     this.focusId = id;
@@ -365,10 +417,16 @@ export class EnemyPressureView {
   }
 
   showSpecialEffects(effects: readonly SpecialEffect[]): void {
-    if (!effects.length) return;
-    const graphics = this.scene.add.graphics();
-    this.world.add(graphics);
-    for (const effect of effects) {
+    if (
+      !effects.length ||
+      this.frameImpactTargets >= combatVisual.impactTargetsPerFrame
+    )
+      return;
+    const graphics = this.flash(160);
+    if (!graphics) return;
+    const count = this.impactCount(effects.length);
+    for (let index = 0; index < count; index++) {
+      const effect = effects[index]!;
       const p = this.specialPoint(effect.x, effect.y);
       const color =
         effect.weapon === "grenade"
@@ -403,11 +461,13 @@ export class EnemyPressureView {
         if (effect.kind === "pull") graphics.strokeCircle(p.x, p.y, 10);
       }
     }
-    // Visual-only flash duration: simulation projectile/effect lifetime is owned by SpecialWeapons.
-    this.scene.time.delayedCall(160, () => graphics.destroy());
   }
 
-  createEnemy(enemy: EnemyState, slowed = false): Phaser.GameObjects.Container {
+  createEnemy(
+    enemy: EnemyState,
+    slowed = false,
+    renderImmediately = true,
+  ): Phaser.GameObjects.Container {
     const shape = this.scene.add.rectangle(
       0,
       0,
@@ -476,7 +536,7 @@ export class EnemyPressureView {
       this.attackSlots.delete(enemy.id);
     });
     this.world.add(visual);
-    this.renderEnemy(visual, enemy, slowed);
+    if (renderImmediately) this.renderEnemy(visual, enemy, slowed);
     return visual;
   }
 
@@ -485,6 +545,12 @@ export class EnemyPressureView {
     enemy: EnemyState,
     slowed = false,
   ): void {
+    const point = this.enemyVisualPoint(enemy);
+    visual.setPosition(point.x, point.y).setScale(point.scaleX);
+    this.renderEnemyStatus(visual, enemy, slowed);
+  }
+
+  enemyVisualPoint(enemy: EnemyState): EnemyVisualPoint {
     let x = field.left + laneX(enemy.lane, field.width, enemy.offset01);
     let y = this.farY + (this.wallY - this.farY) * enemy.progress01;
     // Gravity can move an attacker into another lane; release its old visual slot.
@@ -511,17 +577,21 @@ export class EnemyPressureView {
       x = field.left + laneCenterX(enemy.lane, field.width) + offset.x;
       y = Math.max(32, this.wallY + offset.y);
     }
-    visual
-      .setPosition(x, y)
-      .setScale(perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1));
+    const scaleX =
+      perspectiveScale(enemy.progress01) * (enemy.elite ? 1.15 : 1);
     if (enemy.boss) {
       // Visual inset keeps the large silhouette in the field; logical progress is unchanged.
-      visual.setY(
-        Math.max(
-          185 * visual.scaleY,
-          Math.min(y, this.wallY - 58 * visual.scaleY),
-        ),
-      );
+      y = Math.max(185 * scaleX, Math.min(y, this.wallY - 58 * scaleX));
+    }
+    return { x, y, scaleX };
+  }
+
+  renderEnemyStatus(
+    visual: Phaser.GameObjects.Container,
+    enemy: EnemyState,
+    slowed = false,
+  ): void {
+    if (enemy.boss) {
       const boss = enemy.boss;
       const charge = boss.phase === "siege-charge";
       const stagger = boss.phase === "stagger";
@@ -566,9 +636,10 @@ export class EnemyPressureView {
       this.world.bringToTop(visual);
       return;
     }
-    (visual.getAt(1) as Phaser.GameObjects.Text).setText(
-      `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
-    );
+    if (this.debugVisible)
+      (visual.getAt(1) as Phaser.GameObjects.Text).setText(
+        `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
+      );
     const bar = visual.getData("shieldBar") as
       Phaser.GameObjects.Rectangle | undefined;
     bar?.setDisplaySize(
@@ -667,7 +738,19 @@ export class EnemyPressureView {
     echo = false,
     reinforcement = false,
   ): void {
-    const effect = this.scene.add.graphics();
+    if (this.frameImpactTargets >= combatVisual.impactTargetsPerFrame) return;
+    const effect = this.flash(combatVisual.flashMs);
+    if (!effect) return;
+    this.impactCount(1);
+    this.drawShot(effect, target, echo, reinforcement);
+  }
+
+  private drawShot(
+    effect: Phaser.GameObjects.Graphics,
+    target: EnemyVisualPoint,
+    echo: boolean,
+    reinforcement: boolean,
+  ): void {
     effect.lineStyle(echo ? 4 : 2, echo ? 0xd3a5ff : 0xffe69a, 0.9);
     effect.lineBetween(
       combatVisual.marineX + (reinforcement ? 70 : 0),
@@ -683,11 +766,10 @@ export class EnemyPressureView {
         9,
       );
     effect.fillCircle(target.x, target.y, 6);
-    this.world.add(effect);
-    this.scene.time.delayedCall(combatVisual.flashMs, () => effect.destroy());
   }
 
   renderStimpack(phase: string, multiplier: number): void {
+    if (!this.debugVisible) return;
     const tint: Record<string, string> = {
       normal: "#ffffff",
       boost: "#77ffb0",
@@ -725,7 +807,7 @@ export class EnemyPressureView {
   }
 
   showPrimary(
-    targets: readonly Phaser.GameObjects.Container[],
+    targets: readonly EnemyVisualPoint[],
     ricochetIds: readonly number[],
     hitIds: readonly number[],
     evolved = false,
@@ -736,13 +818,20 @@ export class EnemyPressureView {
     echo = false,
     reinforcement = false,
   ): void {
-    if (!targets.length) return;
-    for (const [index, target] of targets.entries()) {
+    if (
+      !targets.length ||
+      this.frameImpactTargets >= combatVisual.impactTargetsPerFrame
+    )
+      return;
+    const effect = this.flash(180);
+    if (!effect) return;
+    const count = this.impactCount(targets.length);
+    const shots = this.flash(combatVisual.flashMs);
+    for (let index = 0; shots && index < count; index++) {
+      const target = targets[index]!;
       if (index === 0 || shotTargetIds.includes(hitIds[index]!))
-        this.showShot(target, echo, reinforcement);
+        this.drawShot(shots, target, echo, reinforcement);
     }
-    const effect = this.scene.add.graphics();
-    this.world.add(effect);
     const evolution = evolutionRecipes[0]!;
     if (evolved) {
       effect.lineStyle(
@@ -758,7 +847,7 @@ export class EnemyPressureView {
       );
     }
     let previous = targets[0]!;
-    for (let index = 1; index < targets.length; index++) {
+    for (let index = 1; index < count; index++) {
       const target = targets[index]!;
       effect.lineStyle(
         evolved ? evolution.effects.tracerWidth : 3,
@@ -774,7 +863,9 @@ export class EnemyPressureView {
         effect.strokeCircle(target.x, target.y, 28);
       previous = target;
     }
-    for (const [index, target] of targets.entries()) {
+    let criticalTarget: EnemyVisualPoint | undefined;
+    for (let index = 0; index < count; index++) {
+      const target = targets[index]!;
       if (explosionIds.includes(hitIds[index]!)) {
         effect.lineStyle(4, 0xff9e5f, 0.95);
         effect.strokeCircle(target.x, target.y, 44 * target.scaleX);
@@ -784,11 +875,10 @@ export class EnemyPressureView {
       }
       if (criticalIds.includes(hitIds[index]!)) {
         effect.lineStyle(4, 0xfff28d).strokeCircle(target.x, target.y, 18);
+        criticalTarget ??= target;
       }
     }
-    if (criticalIds.length) {
-      const criticalTarget =
-        targets[hitIds.indexOf(criticalIds[0]!)] ?? targets[0]!;
+    if (criticalTarget && this.reserveFlash()) {
       const label = this.scene.add
         .text(criticalTarget.x, criticalTarget.y - 35, display.critical, {
           fontFamily: "sans-serif",
@@ -797,9 +887,11 @@ export class EnemyPressureView {
         })
         .setOrigin(0.5);
       this.world.add(label);
-      this.scene.time.delayedCall(220, () => label.destroy());
+      this.scene.time.delayedCall(220, () => {
+        label.destroy();
+        this.activeFlashes--;
+      });
     }
-    this.scene.time.delayedCall(180, () => effect.destroy());
   }
 
   // BuildBar owns the visible relic inventory; retained until scene integration.
@@ -807,20 +899,25 @@ export class EnemyPressureView {
     kind: "frost" | "lightning" | "emergency",
     targets: readonly Phaser.GameObjects.Container[],
   ): void {
-    if (!targets.length) return;
-    const effect = this.scene.add.graphics();
-    this.world.add(effect);
+    if (
+      !targets.length ||
+      this.frameImpactTargets >= combatVisual.impactTargetsPerFrame
+    )
+      return;
+    const effect = this.flash(350);
+    if (!effect) return;
+    const count = this.impactCount(Math.min(targets.length, 12));
     effect.lineStyle(
       5,
       kind === "emergency" ? 0x75ffc7 : kind === "frost" ? 0x93eeff : 0xffffbd,
       0.9,
     );
-    for (const target of targets.slice(0, 12)) {
+    for (let index = 0; index < count; index++) {
+      const target = targets[index]!;
       effect.strokeCircle(target.x, target.y, 70 * target.scaleX);
       if (kind === "lightning")
         effect.lineBetween(target.x - 12, target.y - 140, target.x, target.y);
     }
-    this.scene.time.delayedCall(350, () => effect.destroy());
   }
 
   showNotice(title: string): void {
@@ -841,10 +938,11 @@ export class EnemyPressureView {
   }
 
   renderDirector(status: string): void {
-    this.directorText.setText(status);
+    if (this.debugVisible) this.directorText.setText(status);
   }
 
   renderMagic(frostMs: number, chainMs: number, fieldMs: number): void {
+    if (!this.debugVisible) return;
     const remaining = remainingLabel;
     this.magicText.setText(
       fieldMs > 0
@@ -858,16 +956,27 @@ export class EnemyPressureView {
     kind: "frost-nova" | "chain-lightning",
     targets: readonly Phaser.GameObjects.Container[],
   ): void {
-    const effect = this.scene.add.graphics();
-    this.world.add(effect);
+    if (
+      !targets.length ||
+      this.frameImpactTargets >= combatVisual.impactTargetsPerFrame
+    )
+      return;
+    const effect = this.flash(300);
+    if (!effect) return;
+    const count = this.impactCount(
+      kind === "frost-nova" ? targets.length : Math.min(targets.length, 12),
+    );
     if (kind === "frost-nova") {
       effect.lineStyle(4, 0xb2f7ff, 0.9);
-      for (const target of targets)
+      for (let index = 0; index < count; index++) {
+        const target = targets[index]!;
         effect.strokeCircle(target.x, target.y, 42 * target.scaleX);
+      }
     } else {
       effect.lineStyle(4, 0xe0c3ff, 1);
       let previous = { x: combatVisual.marineX, y: this.marineY };
-      for (const target of targets.slice(0, 12)) {
+      for (let index = 0; index < count; index++) {
+        const target = targets[index]!;
         const midX = (previous.x + target.x) / 2 + 14;
         const midY = (previous.y + target.y) / 2;
         effect.lineBetween(previous.x, previous.y, midX, midY);
@@ -875,19 +984,26 @@ export class EnemyPressureView {
         previous = target;
       }
     }
-    this.scene.time.delayedCall(300, () => effect.destroy());
   }
 
-  showBarrage(targets: readonly Phaser.GameObjects.Container[]): void {
+  showBarrage(targets: readonly EnemyVisualPoint[]): void {
+    if (
+      !targets.length ||
+      this.frameImpactTargets >= combatVisual.impactTargetsPerFrame
+    )
+      return;
+    const effect = this.flash(600);
+    if (!effect) return;
     // Snapshot positions before damage removes the sprites.
-    const points = targets.map((target) => ({ x: target.x, y: target.y }));
-    const effect = this.scene.add.graphics();
-    this.world.add(effect);
+    const points = targets
+      .slice(0, combatVisual.impactTargetsPerFrame)
+      .map((target) => ({ x: target.x, y: target.y }));
     let pulse = 0;
     const draw = () => {
       effect.clear().lineStyle(4, 0xffe7a0, 0.85);
       for (const [index, point] of points.entries()) {
         if (index % 3 !== pulse % 3) continue;
+        if (!this.impactCount(1)) break;
         effect.lineBetween(
           combatVisual.marineX,
           this.marineY,
@@ -903,7 +1019,6 @@ export class EnemyPressureView {
     };
     draw();
     this.scene.time.addEvent({ delay: 80, repeat: 5, callback: draw });
-    this.scene.time.delayedCall(600, () => effect.destroy());
   }
 
   showGesture(
