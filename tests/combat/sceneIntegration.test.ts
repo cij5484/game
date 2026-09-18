@@ -60,7 +60,7 @@ interface SceneHarness {
 const noop = () => {};
 const enemy = (id: number): EnemyState => ({
   ...createPrototypeEnemy("grunt", "center", id, 0.5),
-  progress01: 0.1,
+  progress01: 0.6,
   hp: 10000,
   maxHp: 10000,
 });
@@ -127,8 +127,8 @@ it("scene fires without input and repeated focus taps cannot increase automatic 
     spam.focusAt(1, 0);
     spam.update(0, i === 99 ? 9 : 10);
   }
-  expect(automatic.shotIndex).toBe(5);
-  expect(spam.shotIndex).toBe(5);
+  expect(automatic.shotIndex).toBe(2);
+  expect(spam.shotIndex).toBe(2);
   expect(spam.enemies.map((e) => e.state.hp)).toEqual(
     automatic.enemies.map((e) => e.state.hp),
   );
@@ -136,22 +136,22 @@ it("scene fires without input and repeated focus taps cannot increase automatic 
 });
 it("focused target survives across shots, blank tap releases it and death resumes smart targeting", () => {
   const test = scene();
-  test.enemies[1]!.state.progress01 = 0.5;
+  test.enemies[1]!.state.progress01 = 0.8;
   test.focusAt(1, 0);
   test.update(0, 400);
   expect(test.enemies[0]!.state.hp).toBeLessThan(10000);
   expect(test.enemies[1]!.state.hp).toBe(10000);
   const farHp = test.enemies[0]!.state.hp;
   test.focusAt(-1, 0);
-  test.update(0, 200);
+  test.update(0, 400);
   expect(test.enemies[0]!.state.hp).toBe(farHp);
   expect(test.enemies[1]!.state.hp).toBeLessThan(10000);
   test.focusAt(1, 0);
   test.enemies[0]!.state.hp = 1;
-  test.update(0, 200);
+  test.update(0, 800);
   expect(test.enemies.some((e) => e.state.id === 1)).toBe(false);
   const nearHp = test.enemies[0]!.state.hp;
-  test.update(0, 200);
+  test.update(0, 800);
   expect(test.focus.targetId).toBeNull();
   expect(test.enemies[0]!.state.hp).toBeLessThan(nearHp);
 });
@@ -230,7 +230,7 @@ it("choice and manual pause halt world, automatic rifle and ability clocks", () 
 it("echo level-up before a pending shot pauses without consuming that shot or extra world time", () => {
   const test = scene();
   test.update(0, 0);
-  test.rifle.advance(190, noop);
+  test.rifle.advance(790, noop);
   test.progression.xp = test.progression.threshold - 1;
   test.enemies[1]!.state.hp = 1;
   test.echoRounds = [
@@ -268,9 +268,9 @@ it("recovery uses the exact continuous fire-rate integral across fractional boun
   test.stimpack.activate();
   test.stimpack.advance(30);
   test.update(0, 2500);
-  // Recovery contributes500 weapon-ms; subsequent1500ms total2000ms ⇒ shots0..2000/200.
-  expect(test.shotIndex).toBe(11);
-  expect(test.rifle.timeToEventMs).toBeCloseTo(200);
+  // Recovery contributes500 weapon-ms; subsequent1500ms total2000ms => shots at0/800/1600.
+  expect(test.shotIndex).toBe(3);
+  expect(test.rifle.timeToEventMs).toBeCloseTo(400);
   expect(test.run.elapsedMs).toBeCloseTo(2500);
 });
 it("scene commits a kill reward once when external states are applied again", () => {
@@ -385,4 +385,35 @@ it("ultimate visuals never suspend automatic fire, focus input, or ready abiliti
   expect(presenting.focus.targetId).toBe(2);
   expect(presenting.castMagic("frost-nova")).toBe(true);
   expect(presenting.activateStim()).toBe(true);
+});
+
+it("waits outside range without consuming readiness, then fires once on entry", () => {
+  const test = scene();
+  test.enemies.forEach((e) => {
+    e.state.progress01 = 0.1;
+  });
+  test.update(0, 100);
+  expect(test.shotIndex).toBe(0);
+  expect(test.rifle.timeToEventMs).toBe(0);
+  test.enemies[0]!.state.progress01 = 0.55;
+  test.update(0, 0);
+  expect(test.shotIndex).toBe(1);
+  test.update(0, 799);
+  expect(test.shotIndex).toBe(1);
+  test.update(0, 1);
+  expect(test.shotIndex).toBe(2);
+});
+it("out-of-range focus blocks in-range auto fire until entry or blank tap", () => {
+  const test = scene();
+  test.enemies[0]!.state.progress01 = 0.1;
+  test.enemies[1]!.state.progress01 = 0.8;
+  test.focusAt(1, 0);
+  test.update(0, 100);
+  expect(test.shotIndex).toBe(0);
+  expect(test.focus.targetId).toBe(1);
+  test.focusAt(-1, 0);
+  test.update(0, 0);
+  expect(test.shotIndex).toBe(1);
+  expect(test.enemies[0]!.state.hp).toBe(10000);
+  expect(test.enemies[1]!.state.hp).toBe(9990);
 });

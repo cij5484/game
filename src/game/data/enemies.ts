@@ -3,7 +3,7 @@ import type { EnemyConfig, EnemyKind } from "../model/types";
 // Every numeric field below is a prototype tuning value, not approved balance.
 export const enemyConfigs = {
   grunt: {
-    hp: 30,
+    hp: 8, // prototype M1: normal Gauss one-shot, including early spawn HP scaling
     progressPerSecond: 0.032,
     wallAttackDamage: 5,
     wallAttackIntervalMs: 1000,

@@ -32,6 +32,7 @@ export function primaryAttack(
   } = {},
   evolutionIds: readonly string[] = [],
   context: {
+    minTargetProgress01?: number;
     shotIndex: number;
     random: () => number;
     synergyMultiplier?: number;
@@ -97,7 +98,10 @@ export function primaryAttack(
       .sort((a, b) => a.distance - b.distance || a.enemy.id - b.enemy.id)
       .map(({ enemy }) => enemy);
   };
-  const roots: EnemyState[] = target.hp > 0 ? [target] : [];
+  const roots: EnemyState[] =
+    target.hp > 0 && target.progress01 >= (context.minTargetProgress01 ?? 0)
+      ? [target]
+      : [];
   if (roots.length) {
     const angle = direction(target);
     const extra =
@@ -106,6 +110,7 @@ export function primaryAttack(
     const options = living.filter(
       (enemy) =>
         enemy.id !== target.id &&
+        enemy.progress01 >= (context.minTargetProgress01 ?? 0) &&
         Math.abs(direction(enemy) - angle) <= traits.multishotSpreadRadians,
     );
     // Distinct, spread-out aim rays. Logical angles never depend on screen aspect ratio.

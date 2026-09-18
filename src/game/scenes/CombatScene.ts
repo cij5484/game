@@ -396,6 +396,15 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private advanceCombat(deltaMs: number): number {
+    // Keep a ready weapon ready while waiting for range/focus; world movement still advances.
+    if (
+      this.rifle.timeToEventMs === 0 &&
+      !this.focus.resolve(
+        this.enemies.map((entry) => entry.state),
+        marineConfig.primaryMinProgress01,
+      )
+    )
+      return this.advanceWorld(deltaMs);
     const speed = this.relicCombat.primaryModifiersFor(
       this.run.wallHp / runBalance.wallMaxHp,
       this.stimpack.phase === "boost",
@@ -422,13 +431,22 @@ export class CombatScene extends Phaser.Scene {
         consumed === this.stimpack.timeToBoundaryMs
       )
     ) {
-      this.rifle.advance(0, () => this.firePrimary());
+      if (
+        this.focus.resolve(
+          this.enemies.map((entry) => entry.state),
+          marineConfig.primaryMinProgress01,
+        )
+      )
+        this.rifle.advance(0, () => this.firePrimary());
     }
     return consumed;
   }
 
   private firePrimary(): void | boolean {
-    const target = this.focus.resolve(this.enemies.map((entry) => entry.state));
+    const target = this.focus.resolve(
+      this.enemies.map((entry) => entry.state),
+      marineConfig.primaryMinProgress01,
+    );
     this.view.setFocus(this.focus.targetId);
     if (target) {
       this.shotIndex++;
@@ -459,6 +477,7 @@ export class CombatScene extends Phaser.Scene {
         {
           branches: this.progression.branches,
           activeSynergyIds: this.progression.activeSynergyIds,
+          minTargetProgress01: marineConfig.primaryMinProgress01,
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -752,7 +771,11 @@ export class CombatScene extends Phaser.Scene {
       const candidates = this.enemies
         .map((e) => e.state)
         .filter((e) => e.id !== pending.volley.targetId);
-      const target = resolveAttackTarget(null, candidates);
+      const target = resolveAttackTarget(
+        null,
+        candidates,
+        marineConfig.primaryMinProgress01,
+      );
       if (!target) continue;
       const result = primaryAttack(
         target,
@@ -764,6 +787,7 @@ export class CombatScene extends Phaser.Scene {
         {
           branches: pending.volley.branches ?? {},
           activeSynergyIds: pending.volley.activeSynergyIds ?? new Set(),
+          minTargetProgress01: marineConfig.primaryMinProgress01,
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,

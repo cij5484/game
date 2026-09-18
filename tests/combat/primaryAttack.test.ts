@@ -452,3 +452,19 @@ it("secondary explosions require an actual lethal initial hit within the splash 
   expect(result.enemies.at(-1)!.hp).toBe(1);
   expect(result.explosionIds).toEqual([1]);
 });
+
+it("multishot does not acquire additional aim targets outside primary range", () => {
+  const near = enemy(1, 0.8),
+    far = enemy(2, 0.2);
+  const result = primaryAttack(
+    near,
+    [near, far],
+    { multishot: 1 },
+    10,
+    {},
+    [],
+    { ...noCrit, minTargetProgress01: 0.55 },
+  );
+  expect(result.shotTargetIds).toEqual([1]);
+  expect(result.enemies[1]!.hp).toBe(100);
+});

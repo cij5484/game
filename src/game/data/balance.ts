@@ -5,6 +5,7 @@ export { gaussRifleBalance } from "./weapons";
 
 export const marineConfig = {
   id: "marine",
+  primaryMinProgress01: 0.55, // prototype: wall-side 45% of logical depth, all lanes
   primaryAttackId: "gauss-rifle",
   secondaryAbilityId: "stimpack",
   burstId: "marine-burst",

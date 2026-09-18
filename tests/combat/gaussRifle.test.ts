@@ -7,7 +7,7 @@ it("fires continuously without requests and keeps a stable fire rate", () => {
   rifle.advance(1000, () => {
     rounds++;
   });
-  expect(rounds).toBe(6);
+  expect(rounds).toBe(2);
 });
 it("does not fire at a held simulation endpoint and resumes exactly once", () => {
   const rifle = new GaussRifle(gaussRifleBalance);
@@ -16,7 +16,7 @@ it("does not fire at a held simulation endpoint and resumes exactly once", () =>
     rounds++;
   });
   rifle.advance(
-    200,
+    800,
     () => {
       rounds++;
     },
