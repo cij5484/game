@@ -1,0 +1,118 @@
+.meta-hub {
+  box-sizing: border-box;
+  height: 100dvh;
+  overflow: auto;
+  padding: max(24px, env(safe-area-inset-top))
+    max(18px, calc((100vw - 900px) / 2)) max(32px, env(safe-area-inset-bottom));
+  background: #14242d;
+  color: #ecf5f7;
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+  touch-action: pan-y;
+  user-select: text;
+  -webkit-user-select: text;
+  color-scheme: dark;
+}
+.meta-hub h1 {
+  margin: 4px 0 12px;
+  font-size: 36px;
+}
+.meta-hub h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+.meta-hub h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.meta-hub p {
+  margin: 8px 0;
+}
+.meta-hub small,
+.meta-secondary {
+  color: #bfd0d5;
+  font-size: 13px;
+}
+.meta-eyebrow {
+  color: #8dcbb2;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.meta-wallet {
+  color: #ffe1a1;
+  font-size: 19px;
+}
+.meta-hub button {
+  min-height: 44px;
+  padding: 10px 18px;
+  color: inherit;
+  background: #304b56;
+  border: 1px solid #698d99;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.meta-hub button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.meta-hub :focus-visible {
+  outline: 3px solid #9ef3c4;
+  outline-offset: 3px;
+}
+.meta-hub .meta-launch {
+  margin: 12px 0;
+  width: 100%;
+  background: #226247;
+  font-weight: 700;
+  font-size: 18px;
+}
+.meta-notice {
+  min-height: 24px;
+  color: #9ef3c4;
+}
+.meta-notice[data-error="true"] {
+  color: #ffb3a3;
+}
+.meta-section {
+  border: 1px solid #516873;
+  border-radius: 8px;
+  margin: 18px 0;
+  padding: 16px;
+}
+.meta-section summary {
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 32px;
+}
+.meta-research-group {
+  margin-top: 24px;
+}
+.meta-research-row {
+  border-top: 1px solid #3b505b;
+  padding: 16px 0;
+}
+.meta-research-row button {
+  min-width: 100px;
+}
+.meta-hub textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0 12px;
+  padding: 12px;
+  font:
+    13px/1.5 ui-monospace,
+    monospace;
+  color: inherit;
+  background: #0e1d25;
+  border: 1px solid #698d99;
+  border-radius: 6px;
+  resize: vertical;
+}
+.meta-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

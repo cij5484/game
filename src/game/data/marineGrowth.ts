@@ -4,6 +4,7 @@ import type { UpgradeRanks, UpgradeRarity } from "./upgrades";
 import type { GaussRifleConfig } from "../model/types";
 import { gaussRifleBalance } from "./weapons";
 import { marineConfig } from "./balance";
+import type { MetaModifiers } from "./meta";
 
 export const marineTraitIds = [
   "penetration",
@@ -22,6 +23,7 @@ export interface MarineGrowthState {
   ranks: MarineRanks;
   quality: Partial<Record<MarineUpgradeId, number>>;
   legendary: ReadonlySet<MarineTraitId>;
+  readonly meta?: Readonly<MetaModifiers>;
 }
 export interface MarineUpgradeDefinition {
   id: MarineUpgradeId;
@@ -222,21 +224,33 @@ export function rollMarineRarity(
 export function getMarineStats(state: MarineGrowthState) {
   const strength = (id: MarineUpgradeId) => marineStrength(state, id);
   const crit = strength("crit-chance");
+  const criticalChance = Math.min(
+    1 - Number.EPSILON,
+    marineGrowthBalance.baseCritChance +
+      ((1 - marineGrowthBalance.baseCritChance) * crit) / (1 + crit),
+  );
   return {
     primaryDamageMultiplier:
       (1 + strength("primary-damage")) *
       (1 + marineModBalance.heavyDamagePerQuality * strength("heavy")) *
-      (1 + marineModBalance.burstDamagePerQuality * strength("burst")),
-    attackSpeedMultiplier: 1 + strength("attack-speed"),
+      (1 + marineModBalance.burstDamagePerQuality * strength("burst")) *
+      (state.meta?.primaryDamageMultiplier ?? 1),
+    attackSpeedMultiplier:
+      (1 + strength("attack-speed")) *
+      (state.meta?.primarySpeedMultiplier ?? 1),
     criticalChance: Math.min(
-      1 - Number.EPSILON,
-      marineGrowthBalance.baseCritChance +
-        ((1 - marineGrowthBalance.baseCritChance) * crit) / (1 + crit),
+      1,
+      criticalChance + (state.meta?.criticalChanceBonus ?? 0),
     ),
-    criticalMultiplier: marineGrowthBalance.criticalMultiplier,
+    criticalMultiplier:
+      marineGrowthBalance.criticalMultiplier +
+      (state.meta?.criticalMultiplierBonus ?? 0),
     minTargetProgress01: Math.max(
       0.25,
-      marineConfig.primaryMinProgress01 - strength("range"),
+      marineConfig.primaryMinProgress01 -
+        (1 - marineConfig.primaryMinProgress01) *
+          ((state.meta?.rangeMultiplier ?? 1) - 1) -
+        strength("range"),
     ),
   };
 }

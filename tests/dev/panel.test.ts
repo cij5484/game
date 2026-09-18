@@ -149,6 +149,10 @@ beforeEach(() => {
   state.overrides = {};
   state.listeners.clear();
   state.stop.mockClear();
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), { confirm: vi.fn(() => true) }),
+  );
   const saved = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => saved.get(key) ?? null,
@@ -164,7 +168,43 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
+});
+
+it("keeps dev Meta grants and confirmed reset separate from balance overrides", () => {
+  const remove = vi.spyOn(window, "removeEventListener");
+  const cleanup = mountBalancePanel(
+    new ElementStub() as unknown as HTMLElement,
+  );
+  change("balance-run.combatTempo", "2");
+  button("Gold +1000").click();
+  button("Credits +100").click();
+  expect(byId("balance-meta-state").textContent).toContain(
+    "Gold 1000 · Credits 100",
+  );
+  button("모든 값 기본값으로").click();
+  expect(byId("balance-meta-state").textContent).toContain("Gold 1000");
+  change("balance-run.combatTempo", "2");
+  vi.mocked(window.confirm).mockReturnValue(false);
+  button("메타 저장 초기화").click();
+  expect(byId("balance-meta-state").textContent).toContain("Gold 1000");
+  vi.mocked(window.confirm).mockReturnValue(true);
+  button("메타 저장 초기화").click();
+  expect(byId("balance-meta-state").textContent).toContain(
+    "Gold 0 · Credits 0",
+  );
+  expect(state.overrides["run.combatTempo"]).toBe(2);
+  cleanup();
+  expect(remove).toHaveBeenCalledWith("storage", expect.any(Function));
+});
+
+it("does not create Meta test grants outside development", () => {
+  vi.stubEnv("DEV", false);
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  expect(elements.some((node) => node.textContent === "Gold +1000")).toBe(
+    false,
+  );
 });
 
 it("renders Korean tooltips, searches fields, applies values and releases subscriptions", () => {

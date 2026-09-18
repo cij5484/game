@@ -1,9 +1,13 @@
 import { applyEffectDamage } from "./damage";
 import { burstBalance } from "../data/burst";
 import type { EnemyState } from "../enemies/enemySimulation";
+import type { MetaModifiers } from "../data/meta";
 
 /** Hitscan suppression volley; independent of primary upgrades and Shield armor. */
-export function suppressiveBarrage(enemies: readonly EnemyState[]) {
+export function suppressiveBarrage(
+  enemies: readonly EnemyState[],
+  meta?: Readonly<MetaModifiers>,
+) {
   const { targets, damage } = burstBalance.ultimate;
   const hitIds = enemies
     .filter((enemy) => enemy.hp > 0)
@@ -14,7 +18,15 @@ export function suppressiveBarrage(enemies: readonly EnemyState[]) {
   return {
     hitIds,
     enemies: enemies.map((enemy) =>
-      hits.has(enemy.id) ? applyEffectDamage(enemy, damage) : enemy,
+      hits.has(enemy.id)
+        ? applyEffectDamage(
+            enemy,
+            damage *
+              (enemy.elite || enemy.boss
+                ? (meta?.eliteBossDamageMultiplier ?? 1)
+                : 1),
+          )
+        : enemy,
     ),
   };
 }
