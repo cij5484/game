@@ -97,3 +97,31 @@ it("ignores shield protection and weak knockback without blocking body damage", 
     applyImpact([boss], [hit], new Set(["impact"]), () => 0)[0]!.progress01,
   ).toBe(boss.progress01);
 });
+
+it("observes actual boss mechanics without changing combat results", () => {
+  const events: string[] = [];
+  const watch = (kind: string) => events.push(kind);
+  const initial = { ...createSiegeBoss(10), progress01: tune.siegeProgress01 };
+  const observed = advanceSiegeBoss(initial, tune.chargeMs * 2 + 1, watch);
+  expect(observed).toEqual(advanceSiegeBoss(initial, tune.chargeMs * 2 + 1));
+  expect(events).toEqual([
+    "siege-charge",
+    "wall-hit",
+    "siege-charge",
+    "wall-hit",
+    "siege-charge",
+  ]);
+  events.length = 0;
+  const low = { ...createSiegeBoss(11), hp: tune.hp * 0.25, progress01: 1 };
+  const rush = advanceSiegeBoss(low, tune.finalWallIntervalMs * 2, watch);
+  expect(rush).toEqual(advanceSiegeBoss(low, tune.finalWallIntervalMs * 2));
+  expect(events).toEqual([
+    "reinforcement",
+    "final-charge",
+    "wall-hit",
+    "wall-hit",
+  ]);
+  events.length = 0;
+  advanceSiegeBoss({ ...low, hp: 0 }, 10000, watch);
+  expect(events).toEqual([]);
+});

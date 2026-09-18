@@ -606,6 +606,11 @@ it("M6 core applies immediately, queues armament before relic reward, and commit
   }));
   test.applyEnemyStates(states);
   expect(test.progression.core).toBe("armament");
+  expect(
+    test.telemetry
+      .report()
+      .v2!.growthEvents.filter((e) => e.kind === "core-acquisition"),
+  ).toEqual([expect.objectContaining({ id: "armament", nextLevel: 1 })]);
   expect(test.progression.special.capacity).toBe(3);
   expect(test.progression.special.offer()?.kind).toBe("acquire");
   expect(test.relics.pendingRewards).toBe(1);
@@ -1003,6 +1008,13 @@ it("M12 a synergy activated by a mastery unlock is saved before the next frame o
   });
   (test as unknown as { trackOperations(): void }).trackOperations();
   expect(test.synergies.active.has("hunt")).toBe(true);
+  expect(
+    test.telemetry
+      .report()
+      .v2!.growthEvents.filter(
+        (e) => e.kind === "synergy-activation" && e.id === "hunt",
+      ),
+  ).toHaveLength(1);
   expect(store.read().characters.marine.completedOperationRecords).toEqual(
     expect.arrayContaining(["first-completion", "first-synergy"]),
   );
@@ -1035,6 +1047,23 @@ it("M12 mod branch pauses all combat even after the ordinary choice was consumed
   select("b");
   expect(test.progression.ranks.burst).toBe(6);
   expect(test.progression.branches).toEqual({ burst: "b" });
+  expect(test.telemetry.report().v2!.growthEvents).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "basic-mod-branch",
+        id: "burst",
+        previousLevel: 5,
+        nextLevel: 6,
+        choice: expect.stringContaining("b:"),
+      }),
+      expect.objectContaining({
+        kind: "basic-mod-growth",
+        id: "burst",
+        previousLevel: 5,
+        nextLevel: 6,
+      }),
+    ]),
+  );
   test.update(0, 0);
   expect(test.shotIndex).toBe(1);
 });
@@ -1072,7 +1101,7 @@ it("telemetry observes actual Gauss loss once and X8 uses the same Stage clock",
   const a = normal.telemetry.report()!,
     b = fast.telemetry.report()!;
   expect(a.metrics.stageMs).toBeCloseTo(1000);
-  expect(b.metrics).toEqual(a.metrics);
+  expect(b.metrics).toEqual({ ...a.metrics, speed: 8 });
   const damage =
     startHp - normal.enemies.reduce((sum, entry) => sum + entry.state.hp, 0);
   expect(a.metrics.sourceDps.Gauss * a.metrics.windowSeconds).toBeCloseTo(
@@ -1106,4 +1135,127 @@ it("telemetry integrates wall pressure and first mod acquisitions without repeat
   expect(
     test.telemetry.report()!.modEvents.filter((e) => e.id === "burst"),
   ).toHaveLength(1);
+});
+
+it("telemetry v2 connects spawned lifetimes, near-wall thresholds and active-only frame performance", () => {
+  const test = scene();
+  Object.assign(test, { game: { loop: { actualFps: 60 } } });
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  test.gameSpeed = 8;
+  test.enemies[0]!.state.progress01 = 0.75;
+  test.enemies[1]!.state.progress01 = 0.9;
+  test.update(0, 125);
+  expect(test.telemetry.report().metrics).toMatchObject({
+    nearWall75: 2,
+    nearWall90: 1,
+    speed: 8,
+  });
+  const first = test.telemetry.report().v2!.performance;
+  expect(first).toMatchObject({
+    frames: 1,
+    averageFps: 60,
+    minFps: 60,
+    effectiveSpeed: 8,
+  });
+  expect(first.maxSubsteps).toBeGreaterThan(1);
+  test.manualPaused = true;
+  now = 10000;
+  test.update(0, 10000);
+  expect(test.telemetry.report().v2!.performance).toEqual(first);
+  test.manualPaused = false;
+  now += 125;
+  test.update(0, 125);
+  expect(test.telemetry.report().v2!.performance.effectiveSpeed).toBeCloseTo(8);
+  const add = test as unknown as { addEnemy(enemy: EnemyState): void };
+  const spawned = { ...enemy(999), kind: "runner" as const, hp: 1 };
+  add.addEnemy(spawned);
+  test.run = { ...test.run, elapsedMs: test.run.elapsedMs + 2000 };
+  test.applyEnemyStates(
+    test.enemies.map((e) =>
+      e.state.id === 999 ? { ...e.state, hp: 0 } : e.state,
+    ),
+  );
+  const report = test.telemetry.report();
+  expect(report.metrics.spawns).toBe(1);
+  expect(report.metrics.kills).toBe(1);
+  expect(report.v2!.enemyLifetime.Runner).toMatchObject({
+    count: 1,
+    averageSeconds: 2,
+  });
+});
+
+it("telemetry v2 distinguishes boss HP crossings from mechanics actually executed", () => {
+  const test = scene();
+  test.enemies = [];
+  test.run = { ...test.run, elapsedMs: siegeBossBalance.spawnMs };
+  test.advanceWorld(1);
+  const boss = test.enemies.find((e) => e.state.boss)!;
+  expect(boss).toBeDefined();
+  test.applyEnemyStates([{ ...boss.state, hp: boss.state.maxHp! * 0.2 }]);
+  test.advanceWorld(1);
+  test.applyEnemyStates(test.enemies.map((e) => ({ ...e.state, hp: 0 })));
+  const report = test.telemetry.report().v2!.bossEvents;
+  const kinds = report.events.map((e) => e.kind);
+  expect(kinds).toEqual(
+    expect.arrayContaining([
+      "spawn",
+      "first-hit",
+      "hp-65",
+      "hp-25",
+      "reinforcement",
+      "final-charge",
+      "death",
+    ]),
+  );
+  expect(kinds).not.toContain("siege-charge");
+  expect(kinds).not.toContain("wall-hit");
+  expect(report.fightDuration).toBeGreaterThan(0);
+});
+
+it("telemetry records actual relic selection, replacement and skip callbacks", () => {
+  const test = scene();
+  const ui = {
+    showPrototypeRelics: vi.fn(),
+    showRelicReplacement: vi.fn(),
+    hide: noop,
+  };
+  Object.assign(test, { choices: ui });
+  const show = (CombatScene.prototype as unknown as { showChoices(): void })
+    .showChoices;
+  for (let reward = 0; reward < 4; reward++) {
+    test.relics.pendingRewards++;
+    show.call(test);
+    const offered = test.relics.offer();
+    const select = ui.showPrototypeRelics.mock.lastCall![1] as (
+      id: string,
+    ) => void;
+    select(offered[0]!.id);
+    if (test.relics.pendingReplacement) {
+      show.call(test);
+      if (reward === 2) {
+        const replace = ui.showRelicReplacement.mock.lastCall![2] as (
+          id: string,
+        ) => void;
+        replace([...test.relics.owned][0]!);
+      } else {
+        const skip = ui.showRelicReplacement.mock.lastCall![3] as () => void;
+        skip();
+      }
+    }
+  }
+  const report = test.telemetry.report().v2!;
+  expect(report.growthEvents.map((e) => e.kind)).toEqual([
+    "relic-acquisition",
+    "relic-acquisition",
+    "relic-selection",
+    "relic-replacement",
+    "relic-selection",
+    "relic-skip",
+  ]);
+  expect(report.powerSpikeObservations.map((o) => o.event.kind)).toEqual([
+    "relic-acquisition",
+    "relic-acquisition",
+    "relic-replacement",
+  ]);
 });

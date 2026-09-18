@@ -25,8 +25,15 @@ type RunState = {
   wallMaxHp: number;
   enemies: number;
   build: string[];
+  nearWall75?: number;
+  nearWall90?: number;
+  fps?: number;
+  substeps?: number;
+  speed?: number;
 };
 export interface BalanceMetrics extends Omit<RunState, "build"> {
+  spawns?: number;
+  spawnPerMin?: number;
   wallPercent: number;
   avgEnemies: number;
   windowSeconds: number;
@@ -58,8 +65,83 @@ export interface TimelineSnapshot {
   metrics: BalanceMetrics;
   build: string[];
 }
+type EnemyGroup = "Grunt" | "Runner" | "Shield" | "Elite";
+const groups: EnemyGroup[] = ["Grunt", "Runner", "Shield", "Elite"];
+const groupOf = (enemy: EnemyState): EnemyGroup =>
+  enemy.elite
+    ? "Elite"
+    : enemy.kind === "runner"
+      ? "Runner"
+      : enemy.kind === "shield"
+        ? "Shield"
+        : "Grunt";
+const emptyKinds = () =>
+  Object.fromEntries(groups.map((k) => [k, { spawns: 0, kills: 0 }])) as Record<
+    EnemyGroup,
+    { spawns: number; kills: number }
+  >;
+export interface GrowthInput {
+  kind: string;
+  id: string;
+  name: string;
+  level: number;
+  previousLevel: number | null;
+  nextLevel: number | null;
+  rarity: string | null;
+  choice?: string;
+  offered?: { id: string; name: string; rarity: string | null }[] | undefined;
+}
+export interface GrowthEvent extends GrowthInput {
+  stageMs: number;
+}
+interface Observation {
+  dps: number;
+  kpm: number;
+  avgEnemies: number;
+  nearWall75: number;
+  nearWall90: number;
+}
+interface PowerObservation {
+  event: GrowthEvent;
+  pre: Observation;
+  post: Observation | null;
+}
+export interface BalanceV2 {
+  timeline5s: BalanceMetrics[];
+  growthEvents: GrowthEvent[];
+  powerSpikeObservations: PowerObservation[];
+  weaponContribution: Record<DamageSource, { dps: number; percent: number }>;
+  spawnKillPressure: {
+    spawns: number;
+    kills: number;
+    spawnPerMin: number;
+    killPerMin: number;
+    byKind: ReturnType<typeof emptyKinds>;
+  };
+  enemyLifetime: Record<
+    EnemyGroup,
+    { count: number; totalSeconds: number; averageSeconds: number | null }
+  >;
+  bossEvents: {
+    events: { kind: string; stageMs: number; count: number }[];
+    counts: Record<string, number>;
+    combatTtk: number | null;
+    fightDuration: number | null;
+  };
+  performance: {
+    frames: number;
+    configuredSpeed: number | null;
+    averageSpeed: number | null;
+    averageFps: number | null;
+    minFps: number | null;
+    averageSubsteps: number | null;
+    maxSubsteps: number | null;
+    effectiveSpeed: number | null;
+  };
+}
 export interface BalanceReport {
   version: 1;
+  v2?: BalanceV2;
   result: string;
   metrics: BalanceMetrics;
   build: string[];
@@ -71,6 +153,8 @@ export interface BalanceReport {
   snapshots: TimelineSnapshot[];
 }
 type Bucket = {
+  byKind: ReturnType<typeof emptyKinds>;
+  spawns: number;
   second: number;
   damage: Record<DamageSource, number>;
   kills: number;
@@ -93,7 +177,12 @@ export class BalanceTelemetry {
     build: [],
   };
   private buckets: Bucket[] = [];
-  private samples: { second: number; count: number }[] = [];
+  private samples: {
+    second: number;
+    count: number;
+    nearWall75: number;
+    nearWall90: number;
+  }[] = [];
   private firstHit = new Map<number, number>();
   private reached = new Set<number>();
   private eliteSamples: number[] = [];
@@ -108,6 +197,175 @@ export class BalanceTelemetry {
   private snapshots: TimelineSnapshot[] = [];
   private nextMilestone = 0;
   private result = "in-progress";
+  private alive = new Map<number, { stageMs: number; kind: EnemyGroup }>();
+  private lifetime = Object.fromEntries(
+    groups.map((k) => [k, { count: 0, totalSeconds: 0 }]),
+  ) as Record<EnemyGroup, { count: number; totalSeconds: number }>;
+  private timeline5s: BalanceMetrics[] = [];
+  private lastTimelineSlot = 0;
+  private growthEvents: GrowthEvent[] = [];
+  private observations: PowerObservation[] = [];
+  private pendingGrowth: {
+    observation: PowerObservation;
+    damage: number;
+    kills: number;
+    sampleCount: number;
+    enemies: number;
+    nearWall75: number;
+    nearWall90: number;
+  }[] = [];
+  private totalKills = 0;
+  private bossDetails: { kind: string; stageMs: number; count: number }[] = [];
+  private bossCounts: Record<string, number> = {};
+  private bossId: number | null = null;
+  private bossSpawnMs: number | null = null;
+  private bossDeathMs: number | null = null;
+  private performance = {
+    frames: 0,
+    speed: 0,
+    fps: 0,
+    minFps: Infinity,
+    substeps: 0,
+    maxSubsteps: 0,
+    realMs: 0,
+    stageMs: 0,
+    configuredSpeed: null as number | null,
+  };
+
+  spawn(enemy: EnemyState) {
+    if (
+      !this.enabled ||
+      this.result !== "in-progress" ||
+      this.alive.has(enemy.id)
+    )
+      return;
+    if (enemy.boss) {
+      if (this.bossId !== enemy.id) {
+        this.bossId = enemy.id;
+        this.bucket().spawns++;
+      }
+      return;
+    }
+    const kind = groupOf(enemy);
+    this.alive.set(enemy.id, { stageMs: this.state.stageMs, kind });
+    const b = this.bucket();
+    b.spawns++;
+    b.byKind[kind].spawns++;
+  }
+  growth(input: GrowthInput, observe = true) {
+    if (!this.enabled || this.result !== "in-progress") return;
+    const event: GrowthEvent = {
+      ...input,
+      offered: input.offered?.slice(0, 4).map((c) => ({ ...c })),
+      stageMs: this.state.stageMs,
+    };
+    append(this.growthEvents, event);
+    if (!observe) return;
+    const cutoff = Math.floor(this.state.stageMs / 1000) - 14;
+    const seconds = Math.min(15, this.state.stageMs / 1000);
+    const buckets = this.buckets.filter((b) => b.second >= cutoff);
+    const samples = this.samples.filter((b) => b.second >= cutoff);
+    const mean = (key: "count" | "nearWall75" | "nearWall90") =>
+      samples.length
+        ? samples.reduce((n, b) => n + b[key], 0) / samples.length
+        : 0;
+    const observation: PowerObservation = {
+      event,
+      pre: {
+        dps: seconds
+          ? buckets.reduce(
+              (n, b) => n + sources.reduce((n, s) => n + b.damage[s], 0),
+              0,
+            ) / seconds
+          : 0,
+        kpm: seconds
+          ? (buckets.reduce((n, b) => n + b.kills, 0) * 60) / seconds
+          : 0,
+        avgEnemies: mean("count"),
+        nearWall75: mean("nearWall75"),
+        nearWall90: mean("nearWall90"),
+      },
+      post: null,
+    };
+    append(this.observations, observation);
+    append(this.pendingGrowth, {
+      observation,
+      damage: this.totalDamage,
+      kills: this.totalKills,
+      sampleCount: 0,
+      enemies: 0,
+      nearWall75: 0,
+      nearWall90: 0,
+    });
+  }
+  bossEvent(kind: string, count = 1) {
+    if (
+      !this.enabled ||
+      this.result !== "in-progress" ||
+      !Number.isFinite(count) ||
+      count <= 0
+    )
+      return;
+    // Fixed vocabulary keeps aggregate keys bounded even if callers make mistakes.
+    if (
+      ![
+        "spawn",
+        "first-hit",
+        "hp-65",
+        "reinforcement",
+        "hp-25",
+        "final-charge",
+        "siege-charge",
+        "siege-interrupt",
+        "wall-hit",
+        "death",
+      ].includes(kind)
+    )
+      return;
+    if (
+      [
+        "spawn",
+        "first-hit",
+        "hp-65",
+        "reinforcement",
+        "hp-25",
+        "final-charge",
+        "death",
+      ].includes(kind) &&
+      this.bossCounts[kind]
+    )
+      return;
+    this.bossCounts[kind] = (this.bossCounts[kind] ?? 0) + count;
+    append(this.bossDetails, { kind, stageMs: this.state.stageMs, count });
+    if (kind === "spawn") this.bossSpawnMs = this.state.stageMs;
+    if (kind === "death") this.bossDeathMs = this.state.stageMs;
+  }
+  performanceFrame(frame: {
+    speed: number;
+    fps: number;
+    substeps: number;
+    realMs: number;
+    stageMs: number;
+  }) {
+    if (
+      !this.enabled ||
+      this.result !== "in-progress" ||
+      !Object.values(frame).every(Number.isFinite) ||
+      frame.realMs <= 0 ||
+      frame.stageMs <= 0
+    )
+      return;
+    const p = this.performance;
+    p.frames++;
+    p.configuredSpeed = frame.speed;
+    p.speed += frame.speed;
+    p.fps += frame.fps;
+    p.minFps = Math.min(p.minFps, frame.fps);
+    p.substeps += frame.substeps;
+    p.maxSubsteps = Math.max(p.maxSubsteps, frame.substeps);
+    p.realMs += frame.realMs;
+    p.stageMs += frame.stageMs;
+  }
 
   constructor(enabled = import.meta.env.DEV) {
     this.enabled = enabled;
@@ -120,6 +378,18 @@ export class BalanceTelemetry {
       !Number.isFinite(stageMs)
     )
       return;
+    if (this.pendingGrowth.length)
+      this.pendingGrowth = this.pendingGrowth.filter((p) => {
+        if (stageMs < p.observation.event.stageMs + 15000) return true;
+        p.observation.post = {
+          dps: (this.totalDamage - p.damage) / 15,
+          kpm: (this.totalKills - p.kills) * 4,
+          avgEnemies: p.sampleCount ? p.enemies / p.sampleCount : 0,
+          nearWall75: p.sampleCount ? p.nearWall75 / p.sampleCount : 0,
+          nearWall90: p.sampleCount ? p.nearWall90 / p.sampleCount : 0,
+        };
+        return false;
+      });
     const priorSecond = Math.floor(this.state.stageMs / 1000);
     this.state.stageMs = Math.max(this.state.stageMs, stageMs);
     // Mature before this frame's damage, so a hit beyond 15s cannot enter the post window.
@@ -143,6 +413,8 @@ export class BalanceTelemetry {
     if (!b || b.second !== second) {
       b = {
         second,
+        spawns: 0,
+        byKind: emptyKinds(),
         damage: emptyDamage(),
         kills: 0,
         wallDamage: 0,
@@ -164,7 +436,31 @@ export class BalanceTelemetry {
     this.totalDamage += loss;
     if ((before.elite || before.boss) && !this.firstHit.has(before.id))
       this.firstHit.set(before.id, this.state.stageMs);
+    if (before.boss) {
+      this.bossEvent("first-hit");
+      const maxHp = before.maxHp;
+      if (maxHp && before.hp > maxHp * 0.65 && after.hp <= maxHp * 0.65)
+        this.bossEvent("hp-65");
+      if (maxHp && before.hp > maxHp * 0.25 && after.hp <= maxHp * 0.25)
+        this.bossEvent("hp-25");
+      if (
+        before.boss.phase === "siege-charge" &&
+        after.boss?.phase === "stagger"
+      )
+        this.bossEvent("siege-interrupt");
+      if (after.hp <= 0) this.bossEvent("death");
+    }
     if (after.hp > 0) return;
+    this.totalKills++;
+    if (!before.boss) {
+      this.bucket().byKind[groupOf(before)].kills++;
+      const alive = this.alive.get(before.id);
+      if (alive) {
+        const stat = this.lifetime[alive.kind];
+        stat.count++;
+        stat.totalSeconds += (this.state.stageMs - alive.stageMs) / 1000;
+      }
+    }
     this.bucket().kills++;
     const first = this.firstHit.get(before.id);
     if (first !== undefined) {
@@ -204,6 +500,7 @@ export class BalanceTelemetry {
     this.bucket().reaches++;
   }
   removeEnemy(id: number) {
+    this.alive.delete(id);
     this.firstHit.delete(id);
     this.reached.delete(id);
   }
@@ -213,8 +510,27 @@ export class BalanceTelemetry {
     this.setTime(state.stageMs);
     this.state = { ...state, stageMs: this.state.stageMs };
     const second = Math.floor(this.state.stageMs / 1000);
-    if (this.samples.at(-1)?.second !== second)
-      this.samples.push({ second, count: state.enemies });
+    if (this.samples.at(-1)?.second !== second) {
+      this.samples.push({
+        second,
+        count: state.enemies,
+        nearWall75: state.nearWall75 ?? 0,
+        nearWall90: state.nearWall90 ?? 0,
+      });
+      for (const p of this.pendingGrowth) {
+        p.sampleCount++;
+        p.enemies += state.enemies;
+        p.nearWall75 += state.nearWall75 ?? 0;
+        p.nearWall90 += state.nearWall90 ?? 0;
+      }
+    }
+    const slot = Math.floor(this.state.stageMs / 5000);
+    if (slot > this.lastTimelineSlot) {
+      // A skipped frame does not fabricate historical state for missing intervals.
+      if (this.timeline5s.length === 512) this.timeline5s.shift();
+      this.timeline5s.push(this.metrics());
+      this.lastTimelineSlot = slot;
+    }
     while (
       this.nextMilestone < milestones.length &&
       this.state.stageMs >= milestones[this.nextMilestone]! * 1000
@@ -258,6 +574,7 @@ export class BalanceTelemetry {
 
   bossSpawn() {
     if (!this.enabled || this.result !== "in-progress") return;
+    this.bossEvent("spawn");
     append(this.events, {
       stageMs: this.state.stageMs,
       type: "boss-spawn",
@@ -269,11 +586,13 @@ export class BalanceTelemetry {
   private metrics(): BalanceMetrics {
     const sourceDps = emptyDamage();
     const windowSeconds = Math.min(30, this.state.stageMs / 1000);
+    let spawns = 0;
     let kills = 0,
       wallDamage = 0,
       reaches = 0;
     for (const b of this.buckets) {
       for (const source of sources) sourceDps[source] += b.damage[source];
+      spawns += b.spawns;
       kills += b.kills;
       wallDamage += b.wallDamage;
       reaches += b.reaches;
@@ -284,6 +603,10 @@ export class BalanceTelemetry {
     const { build: _build, ...state } = this.state;
     return {
       ...state,
+      nearWall75: state.nearWall75 ?? 0,
+      nearWall90: state.nearWall90 ?? 0,
+      spawns,
+      spawnPerMin: windowSeconds > 0 ? (spawns * 60) / windowSeconds : 0,
       wallPercent:
         state.wallMaxHp > 0 ? (state.wallHp / state.wallMaxHp) * 100 : 0,
       avgEnemies: this.samples.length
@@ -309,7 +632,77 @@ export class BalanceTelemetry {
   }
 
   report(): BalanceReport {
+    const m = this.metrics(),
+      p = this.performance;
+    const byKind = emptyKinds();
+    for (const b of this.buckets)
+      for (const k of groups) {
+        byKind[k].spawns += b.byKind[k].spawns;
+        byKind[k].kills += b.byKind[k].kills;
+      }
+    const v2: BalanceV2 = {
+      timeline5s: this.timeline5s.map((m) => ({
+        ...m,
+        sourceDps: { ...m.sourceDps },
+      })),
+      growthEvents: this.growthEvents.map((e) => ({
+        ...e,
+        offered: e.offered?.map((c) => ({ ...c })),
+      })),
+      powerSpikeObservations: this.observations.map((o) => ({
+        event: { ...o.event, offered: o.event.offered?.map((c) => ({ ...c })) },
+        pre: { ...o.pre },
+        post: o.post ? { ...o.post } : null,
+      })),
+      weaponContribution: Object.fromEntries(
+        sources.map((s) => [
+          s,
+          {
+            dps: m.sourceDps[s],
+            percent: m.totalDps ? (m.sourceDps[s] * 100) / m.totalDps : 0,
+          },
+        ]),
+      ) as BalanceV2["weaponContribution"],
+      spawnKillPressure: {
+        spawns: m.spawns ?? 0,
+        kills: m.kills,
+        spawnPerMin: m.spawnPerMin ?? 0,
+        killPerMin: m.kpm,
+        byKind,
+      },
+      enemyLifetime: Object.fromEntries(
+        groups.map((k) => [
+          k,
+          {
+            ...this.lifetime[k],
+            averageSeconds: this.lifetime[k].count
+              ? this.lifetime[k].totalSeconds / this.lifetime[k].count
+              : null,
+          },
+        ]),
+      ) as BalanceV2["enemyLifetime"],
+      bossEvents: {
+        events: this.bossDetails.map((e) => ({ ...e })),
+        counts: { ...this.bossCounts },
+        combatTtk: this.bossTtk,
+        fightDuration:
+          this.bossDeathMs !== null && this.bossSpawnMs !== null
+            ? (this.bossDeathMs - this.bossSpawnMs) / 1000
+            : null,
+      },
+      performance: {
+        frames: p.frames,
+        configuredSpeed: p.configuredSpeed,
+        averageSpeed: p.frames ? p.speed / p.frames : null,
+        averageFps: p.frames ? p.fps / p.frames : null,
+        minFps: p.frames ? p.minFps : null,
+        averageSubsteps: p.frames ? p.substeps / p.frames : null,
+        maxSubsteps: p.frames ? p.maxSubsteps : null,
+        effectiveSpeed: p.realMs ? p.stageMs / p.realMs : null,
+      },
+    };
     return {
+      v2,
       version: 1,
       result: this.result,
       metrics: this.metrics(),
@@ -350,7 +743,7 @@ const metricText = (m: BalanceMetrics) =>
   `${formatTime(m.stageMs)} | Lv${m.level} | Wall ${m.wallHp}/${m.wallMaxHp} (${value(m.wallPercent)}%) | Enemy ${m.enemies} (평균 ${value(m.avgEnemies)})\nDPS ${value(m.totalDps)} (${sources.map((s) => `${s} ${value(m.sourceDps[s])}`).join(", ")}) | KPM ${value(m.kpm)} | Wall 피해 ${value(m.wallDamage)} | 도달/min ${value(m.wallReachPerMin)}`;
 export function formatBalanceReport(r: BalanceReport): string {
   return [
-    `Balance Report v1 — ${r.result}`,
+    `Balance Report ${r.v2 ? "v2" : "v1"} — ${r.result}`,
     "Stage time 기준 · 1초 집계의 최근 30초 관찰값",
     metricText(r.metrics),
     "",
@@ -427,6 +820,15 @@ export function parseBalanceReport(input: unknown): BalanceReport | null {
         m.wallDamage,
         m.wallReachPerMin,
       ].every(finite) &&
+      [
+        m.spawns,
+        m.spawnPerMin,
+        m.nearWall75,
+        m.nearWall90,
+        m.fps,
+        m.substeps,
+        m.speed,
+      ].every((x) => x === undefined || finite(x)) &&
       nullable(m.lastEliteTtk) &&
       nullable(m.bossTtk) &&
       m.sourceDps &&
@@ -485,8 +887,148 @@ export function parseBalanceReport(input: unknown): BalanceReport | null {
       )
     )
       return null;
+    if (r.v2 !== undefined) {
+      const v = r.v2;
+      const bounded = (a: unknown, check: (x: any) => boolean, cap = CAP) =>
+        Array.isArray(a) && a.length <= cap && a.every(check);
+      const event = (e: GrowthEvent) =>
+        e &&
+        finite(e.stageMs) &&
+        [e.kind, e.id, e.name].every((x) => typeof x === "string") &&
+        finite(e.level) &&
+        nullable(e.previousLevel) &&
+        nullable(e.nextLevel) &&
+        (e.rarity === null || typeof e.rarity === "string") &&
+        (e.choice === undefined || typeof e.choice === "string") &&
+        (e.offered === undefined ||
+          bounded(
+            e.offered,
+            (c) =>
+              c &&
+              typeof c.id === "string" &&
+              typeof c.name === "string" &&
+              (c.rarity === null || typeof c.rarity === "string"),
+            4,
+          ));
+      const observation = (o: Observation) =>
+        o &&
+        [o.dps, o.kpm, o.avgEnemies, o.nearWall75, o.nearWall90].every(finite);
+      if (
+        !v ||
+        !bounded(v.timeline5s, metrics, 512) ||
+        !bounded(v.growthEvents, event) ||
+        !bounded(
+          v.powerSpikeObservations,
+          (o) =>
+            o &&
+            event(o.event) &&
+            observation(o.pre) &&
+            (o.post === null || observation(o.post)),
+        ) ||
+        !sources.every(
+          (s) =>
+            v.weaponContribution?.[s] &&
+            finite(v.weaponContribution[s].dps) &&
+            finite(v.weaponContribution[s].percent),
+        )
+      )
+        return null;
+      if (
+        !v.spawnKillPressure ||
+        ![
+          v.spawnKillPressure.spawns,
+          v.spawnKillPressure.kills,
+          v.spawnKillPressure.spawnPerMin,
+          v.spawnKillPressure.killPerMin,
+        ].every(finite) ||
+        !groups.every(
+          (k) =>
+            v.spawnKillPressure.byKind?.[k] &&
+            finite(v.spawnKillPressure.byKind[k].spawns) &&
+            finite(v.spawnKillPressure.byKind[k].kills) &&
+            v.enemyLifetime?.[k] &&
+            finite(v.enemyLifetime[k].count) &&
+            finite(v.enemyLifetime[k].totalSeconds) &&
+            nullable(v.enemyLifetime[k].averageSeconds),
+        )
+      )
+        return null;
+      if (
+        !v.bossEvents ||
+        !bounded(
+          v.bossEvents.events,
+          (e) =>
+            e &&
+            typeof e.kind === "string" &&
+            finite(e.stageMs) &&
+            finite(e.count),
+        ) ||
+        !v.bossEvents.counts ||
+        Object.keys(v.bossEvents.counts).length > 10 ||
+        !Object.values(v.bossEvents.counts).every(finite) ||
+        !nullable(v.bossEvents.combatTtk) ||
+        !nullable(v.bossEvents.fightDuration)
+      )
+        return null;
+      if (
+        !v.performance ||
+        !finite(v.performance.frames) ||
+        ![
+          v.performance.configuredSpeed,
+          v.performance.averageSpeed,
+          v.performance.averageFps,
+          v.performance.minFps,
+          v.performance.averageSubsteps,
+          v.performance.maxSubsteps,
+          v.performance.effectiveSpeed,
+        ].every(nullable)
+      )
+        return null;
+    }
     return r;
   } catch {
     return null;
   }
+}
+
+/** Structured observations, not causal claims about a particular upgrade. */
+export function formatAiBalanceReport(r: BalanceReport): string {
+  const v = r.v2;
+  return JSON.stringify(
+    {
+      RunSummary: {
+        version: v ? 2 : 1,
+        result: r.result,
+        stageMs: r.metrics.stageMs,
+        level: r.metrics.level,
+        wallPercent: r.metrics.wallPercent,
+      },
+      FinalBuild: r.build,
+      Final30s: r.metrics,
+      WeaponContribution: v?.weaponContribution ?? null,
+      Timeline5s: v?.timeline5s ?? [],
+      GrowthEvents: v?.growthEvents ?? [],
+      PowerSpikeObservations: {
+        caveat:
+          "15-second pre/post observations include other growth and enemy-density effects; no causal attribution. Null post means the window is incomplete.",
+        observations: v?.powerSpikeObservations ?? r.modEvents,
+      },
+      SpawnKillPressure: v?.spawnKillPressure ?? null,
+      NearWallPressure: {
+        nearWall75: r.metrics.nearWall75 ?? null,
+        nearWall90: r.metrics.nearWall90 ?? null,
+      },
+      EnemyLifetime: v?.enemyLifetime ?? null,
+      EliteTTK: {
+        count: r.eliteSampleCount,
+        average: r.eliteAverageTtk,
+        recent: r.metrics.lastEliteTtk,
+        samples: r.eliteSamples,
+      },
+      BossEvents: v?.bossEvents ?? null,
+      Performance: v?.performance ?? null,
+    },
+    null,
+    2,
+  );
 }

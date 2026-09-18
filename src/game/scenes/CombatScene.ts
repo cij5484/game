@@ -1,3 +1,11 @@
+import {
+  captureGrowth,
+  recordGrowthChanges,
+  type GrowthInput,
+  type GrowthChoiceContext,
+} from "../dev/growthTelemetry";
+import { specialWeaponDefinitions } from "../data/specialWeapons";
+import { marineUpgrades } from "../data/marineGrowth";
 import { BalanceTelemetry } from "../dev/BalanceTelemetry";
 import {
   operationRecords,
@@ -100,6 +108,10 @@ export class CombatScene extends Phaser.Scene {
   }
   private telemetry = new BalanceTelemetry();
   private telemetryBuild: string[] = [];
+  private telemetryFrameNow: number | null = null;
+  private readonly observeBossEvent = (
+    kind: "reinforcement" | "final-charge" | "siege-charge" | "wall-hit",
+  ) => this.telemetry.bossEvent(kind);
   private wallMaxHp = runBalance.wallMaxHp;
   private run = createRunState(this.wallMaxHp);
   private result!: ResultView;
@@ -193,6 +205,7 @@ export class CombatScene extends Phaser.Scene {
   private prepareRun(): void {
     this.telemetry = new BalanceTelemetry();
     this.telemetryBuild = [];
+    this.telemetryFrameNow = null;
     this.runTicket = metaStore.beginRun();
     this.unlocks = this.runTicket.unlocks;
     this.operationEvidence = {};
@@ -415,6 +428,10 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private addEnemy(state: EnemyState): void {
+    if (import.meta.env.DEV) {
+      this.telemetry.setTime(this.run.elapsedMs);
+      this.telemetry.spawn(state);
+    }
     this.enemies.push({
       state,
       attackElapsedMs: 0,
@@ -463,12 +480,19 @@ export class CombatScene extends Phaser.Scene {
 
   update(_time: number, deltaMs: number): void {
     if (this.startupError) return;
+    const frameNow = import.meta.env.DEV ? performance.now() : 0;
+    const realMs =
+      this.telemetryFrameNow === null
+        ? deltaMs
+        : frameNow - this.telemetryFrameNow;
+    if (import.meta.env.DEV) this.telemetryFrameNow = frameNow;
     this.time.timeScale = this.gameSpeed * runBalance.combatTempo;
     this.frameSubsteps = 0;
     this.view.beginFrame();
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
     this.inFrame = true;
+    const stageBefore = this.run.elapsedMs;
     // Sole combat tempo owner. Stage time removes base tempo; developer speed affects both.
     let remaining =
       Math.max(0, deltaMs) * this.gameSpeed * runBalance.combatTempo;
@@ -500,6 +524,19 @@ export class CombatScene extends Phaser.Scene {
       }
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
     this.inFrame = false;
+    if (import.meta.env.DEV) {
+      const stageDelta = this.run.elapsedMs - stageBefore;
+      // Only the consumed fraction of a frame counts if a card or finish stops combat.
+      const activeFraction =
+        deltaMs > 0 ? Math.min(1, stageDelta / (deltaMs * this.gameSpeed)) : 0;
+      this.telemetry.performanceFrame({
+        speed: this.gameSpeed,
+        fps: this.game?.loop.actualFps ?? 0,
+        substeps: this.frameSubsteps,
+        realMs: Math.max(0, realMs) * activeFraction,
+        stageMs: stageDelta,
+      });
+    }
     this.updateTelemetry();
     const second = Math.floor(this.run.elapsedMs / 1000);
     if (second !== this.lastOperationSecond) {
@@ -834,6 +871,19 @@ export class CombatScene extends Phaser.Scene {
           );
           if (core) {
             this.progression.applyCore(core.id);
+            if (import.meta.env.DEV) {
+              this.telemetry.setTime(this.run.elapsedMs);
+              this.telemetry.growth({
+                kind: "core-acquisition",
+                id: core.id,
+                name: core.title,
+                level: this.progression.level,
+                previousLevel: 0,
+                nextLevel: 1,
+                rarity: null,
+                choice: "automatic drop",
+              });
+            }
             this.notices.push(`${core.title}\n${core.description}`);
             buildChanged = true;
           }
@@ -982,7 +1032,28 @@ export class CombatScene extends Phaser.Scene {
     if (modBranch) {
       this.time.paused = true;
       this.choices.showModBranch(modBranch, (id) => {
-        if (this.progression.chooseModBranch(id)) this.applyBuildChoice();
+        const before = import.meta.env.DEV
+          ? captureGrowth(this.progression)
+          : undefined;
+        if (this.progression.chooseModBranch(id))
+          this.applyBuildChoice(
+            before,
+            import.meta.env.DEV
+              ? {
+                  kind: "basic-mod-branch",
+                  id: modBranch.traitId,
+                  name: marineUpgrades[modBranch.traitId].title,
+                  level: this.progression.level,
+                  previousLevel: before?.ranks[modBranch.traitId] ?? 5,
+                  nextLevel: this.progression.ranks[modBranch.traitId] ?? 5,
+                  rarity:
+                    this.progression.history.findLast(
+                      (entry) => entry.id === modBranch.traitId,
+                    )?.rarity ?? null,
+                  choice: `${id}: ${modBranch.choices.find((choice) => choice.id === id)?.title ?? id}`,
+                }
+              : undefined,
+          );
       });
       return;
     }
@@ -990,20 +1061,83 @@ export class CombatScene extends Phaser.Scene {
     if (specialOffer) {
       this.time.paused = true;
       this.choices.showSpecial(specialOffer, (id) => {
-        if (this.progression.special.choose(id)) this.applyBuildChoice();
+        const before = import.meta.env.DEV
+          ? captureGrowth(this.progression)
+          : undefined;
+        if (this.progression.special.choose(id))
+          this.applyBuildChoice(
+            before,
+            import.meta.env.DEV && specialOffer.weaponId
+              ? {
+                  kind: `special-${specialOffer.kind}`,
+                  id: specialOffer.weaponId,
+                  name: specialWeaponDefinitions[specialOffer.weaponId].title,
+                  level: this.progression.level,
+                  previousLevel:
+                    before?.weapons.find(
+                      (weapon) => weapon.id === specialOffer.weaponId,
+                    )?.level ?? null,
+                  nextLevel:
+                    this.progression.special.weapons.find(
+                      (weapon) => weapon.id === specialOffer.weaponId,
+                    )?.level ?? null,
+                  rarity:
+                    this.progression.special.history.findLast(
+                      (entry) => entry.weaponId === specialOffer.weaponId,
+                    )?.rarity ?? null,
+                  choice: `${id}: ${specialOffer.choices.find((choice) => choice.id === id)?.title ?? id}`,
+                }
+              : undefined,
+            import.meta.env.DEV
+              ? {
+                  choice: `${id}: ${specialOffer.choices.find((choice) => choice.id === id)?.title ?? id}`,
+                }
+              : undefined,
+          );
       });
       return;
     }
     if (this.relics.pendingReplacement) {
       this.time.paused = true;
+      const replacement = this.relics.pendingReplacement;
       this.choices.showRelicReplacement(
-        prototypeRelics[this.relics.pendingReplacement],
+        prototypeRelics[replacement],
         [...this.relics.owned].map((id) => prototypeRelics[id]),
         (id) => {
-          if (this.relics.replace(id)) this.applyBuildChoice();
+          if (this.relics.replace(id))
+            this.applyBuildChoice(
+              undefined,
+              import.meta.env.DEV
+                ? {
+                    kind: "relic-replacement",
+                    id: replacement,
+                    name: prototypeRelics[replacement].title,
+                    level: this.progression.level,
+                    previousLevel: 0,
+                    nextLevel: 1,
+                    rarity: null,
+                    choice: `replace ${id}: ${prototypeRelics[id].title}`,
+                  }
+                : undefined,
+            );
         },
         () => {
-          if (this.relics.skip()) this.applyBuildChoice();
+          if (this.relics.skip())
+            this.applyBuildChoice(
+              undefined,
+              import.meta.env.DEV
+                ? {
+                    kind: "relic-skip",
+                    id: replacement,
+                    name: prototypeRelics[replacement].title,
+                    level: this.progression.level,
+                    previousLevel: 0,
+                    nextLevel: 0,
+                    rarity: null,
+                    choice: "skip",
+                  }
+                : undefined,
+            );
         },
       );
       return;
@@ -1012,7 +1146,24 @@ export class CombatScene extends Phaser.Scene {
     if (relicOffer.length) {
       this.time.paused = true;
       this.choices.showPrototypeRelics(relicOffer, (id) => {
-        if (this.relics.choose(id)) this.applyBuildChoice();
+        if (this.relics.choose(id))
+          this.applyBuildChoice(
+            undefined,
+            import.meta.env.DEV
+              ? {
+                  kind: this.relics.pendingReplacement
+                    ? "relic-selection"
+                    : "relic-acquisition",
+                  id,
+                  name: prototypeRelics[id].title,
+                  level: this.progression.level,
+                  previousLevel: 0,
+                  nextLevel: this.relics.owned.has(id) ? 1 : 0,
+                  rarity: null,
+                  choice: id,
+                }
+              : undefined,
+          );
       });
       return;
     }
@@ -1029,6 +1180,9 @@ export class CombatScene extends Phaser.Scene {
       offered,
       this.progression.ranks,
       (id) => {
+        const before = import.meta.env.DEV
+          ? captureGrowth(this.progression)
+          : undefined;
         if (!this.progression.choose(id)) return;
         const selected = offered.find((card) => card.id === id);
         if (selected?.rarity === "EPIC" || selected?.rarity === "LEGENDARY")
@@ -1037,7 +1191,20 @@ export class CombatScene extends Phaser.Scene {
           this.notices.push(
             `대성공! · +${this.progression.lastSelection.levels}레벨${this.progression.lastSelection.levels < 2 ? " (최대 레벨 도달)" : ""}`,
           );
-        this.applyBuildChoice();
+        this.applyBuildChoice(
+          before,
+          undefined,
+          import.meta.env.DEV
+            ? {
+                choice: `${id}: ${selected?.title ?? id}`,
+                offered: offered.map((card) => ({
+                  id: card.id,
+                  name: card.title,
+                  rarity: card.rarity ?? null,
+                })),
+              }
+            : undefined,
+        );
       },
       this.progression.traitLimit,
       {
@@ -1056,7 +1223,26 @@ export class CombatScene extends Phaser.Scene {
     this.notices = [];
   }
 
-  private applyBuildChoice(): void {
+  private applyBuildChoice(
+    before?: ReturnType<typeof captureGrowth>,
+    event?: GrowthInput,
+    context?: GrowthChoiceContext,
+  ): void {
+    if (import.meta.env.DEV) {
+      this.telemetry.setTime(this.run.elapsedMs);
+      if (event)
+        this.telemetry.growth(
+          event,
+          event.kind !== "relic-skip" && event.kind !== "relic-selection",
+        );
+      if (before)
+        recordGrowthChanges(
+          this.progression,
+          before,
+          (growth, observe) => this.telemetry.growth(growth, observe),
+          context,
+        );
+    }
     this.refreshBuild();
     this.trackOperations();
     this.renderProgression();
@@ -1073,10 +1259,23 @@ export class CombatScene extends Phaser.Scene {
       this.progression.growth,
       this.progression.special.weapons,
       this.unlocks?.synergySystem ?? true,
-    ))
+    )) {
       this.notices.push(
         `시너지 활성화 · ${prototypeSynergyDefinitions[id].title}`,
       );
+      if (import.meta.env.DEV) {
+        this.telemetry.setTime(this.run.elapsedMs);
+        this.telemetry.growth({
+          kind: "synergy-activation",
+          id,
+          name: prototypeSynergyDefinitions[id].title,
+          level: this.progression.level,
+          previousLevel: 0,
+          nextLevel: 1,
+          rarity: null,
+        });
+      }
+    }
     this.synergies.advance(0, this.states);
     this.rifle.setConfig(deriveMarineWeaponConfig(this.progression.growth));
 
@@ -1119,7 +1318,19 @@ export class CombatScene extends Phaser.Scene {
 
   private updateTelemetry(): void {
     if (!import.meta.env.DEV) return;
+    let nearWall75 = 0;
+    let nearWall90 = 0;
+    for (const { state } of this.enemies) {
+      if (state.hp <= 0) continue;
+      if (state.progress01 >= 0.75) nearWall75++;
+      if (state.progress01 >= 0.9) nearWall90++;
+    }
     this.telemetry.update({
+      nearWall75,
+      nearWall90,
+      fps: this.game?.loop.actualFps ?? 0,
+      substeps: this.frameSubsteps,
+      speed: this.gameSpeed,
       stageMs: this.run.elapsedMs,
       level: this.progression.level,
       wallHp: this.run.wallHp,
@@ -1186,7 +1397,11 @@ export class CombatScene extends Phaser.Scene {
       this.refreshProtection();
       for (const entry of this.enemies) {
         if (entry.state.boss) {
-          const boss = advanceSiegeBoss(entry.state, step);
+          const boss = advanceSiegeBoss(
+            entry.state,
+            step,
+            import.meta.env.DEV ? this.observeBossEvent : undefined,
+          );
           entry.state = boss.enemy;
           if (import.meta.env.DEV && entry.state.progress01 >= 1)
             this.telemetry.wallReach(entry.state.id);

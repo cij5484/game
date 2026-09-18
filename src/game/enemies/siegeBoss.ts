@@ -32,6 +32,9 @@ export function createSiegeBoss(id: number): EnemyState {
 export function advanceSiegeBoss(
   enemy: EnemyState,
   deltaMs: number,
+  onEvent?: (
+    kind: "reinforcement" | "final-charge" | "siege-charge" | "wall-hit",
+  ) => void,
 ): {
   enemy: EnemyState;
   wallDamage: number;
@@ -44,9 +47,13 @@ export function advanceSiegeBoss(
   const hpRatio = enemy.hp / (enemy.maxHp ?? tune.hp);
   const reinforcement =
     !boss.reinforcementCalled && hpRatio <= tune.reinforcementHpRatio;
-  if (reinforcement) boss.reinforcementCalled = true;
+  if (reinforcement) {
+    boss.reinforcementCalled = true;
+    onEvent?.("reinforcement");
+  }
   if (hpRatio <= tune.finalHpRatio && boss.phase !== "final-charge") {
     boss.phase = "final-charge";
+    onEvent?.("final-charge");
     boss.phaseRemainingMs = 0;
     boss.interruptDamage = 0;
   }
@@ -69,6 +76,7 @@ export function advanceSiegeBoss(
       remaining -= travelMs;
       if (!final) {
         boss.phase = "siege-charge";
+        onEvent?.("siege-charge");
         boss.phaseRemainingMs = tune.chargeMs;
         boss.interruptDamage = 0;
       } else {
@@ -76,6 +84,7 @@ export function advanceSiegeBoss(
         boss.wallAttackRemainingMs -= remaining;
         while (boss.wallAttackRemainingMs <= 0) {
           wallDamage += tune.finalWallDamage;
+          onEvent?.("wall-hit");
           boss.wallAttackRemainingMs += tune.finalWallIntervalMs;
         }
         break;
@@ -87,6 +96,8 @@ export function advanceSiegeBoss(
       if (boss.phaseRemainingMs <= 0) {
         if (boss.phase === "siege-charge") {
           wallDamage += tune.siegeWallDamage;
+          onEvent?.("wall-hit");
+          onEvent?.("siege-charge");
           boss.phaseRemainingMs = tune.chargeMs;
           boss.interruptDamage = 0;
         } else {
