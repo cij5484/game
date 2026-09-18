@@ -178,7 +178,8 @@ export class CombatScene extends Phaser.Scene {
   private get choosing(): boolean {
     return (
       this.ultimateRemainingMs === 0 &&
-      (this.progression.special.pending ||
+      (this.progression.modBranchPending ||
+        this.progression.special.pending ||
         this.progression.pendingChoices > 0 ||
         this.relics.pending)
     );
@@ -663,6 +664,7 @@ export class CombatScene extends Phaser.Scene {
         const action: PrimaryAction = {
           growth: {
             ranks: { ...growth.ranks },
+            branches: { ...growth.branches },
             meta: this.progression.meta,
             quality: { ...growth.quality },
             legendary: new Set(growth.legendary),
@@ -944,6 +946,14 @@ export class CombatScene extends Phaser.Scene {
 
   private showChoices(): void {
     this.cancelInput();
+    const modBranch = this.progression.offerModBranch();
+    if (modBranch) {
+      this.time.paused = true;
+      this.choices.showModBranch(modBranch, (id) => {
+        if (this.progression.chooseModBranch(id)) this.applyBuildChoice();
+      });
+      return;
+    }
     const specialOffer = this.progression.special.offer();
     if (specialOffer) {
       this.time.paused = true;

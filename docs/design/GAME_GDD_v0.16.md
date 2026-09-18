@@ -4,7 +4,7 @@
 
 작성일: 2026-09-18. [GDD v0.15](GAME_GDD_v0.15.md)의 전체 목표 설계·Prototype 수치·Future·역사 기록을 승계하며 원본은 수정하지 않는다. M11은 [PR26](https://github.com/cij5484/game/pull/26) / main `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`로 병합했다. M12 작업 branch는 `codex/prototype-m12-mastery-unlocks`이며 **commit/push까지만 진행하고 main merge 및 다음 Milestone 자동 시작은 하지 않는다.**
 
-M12의 우선 규칙은 **§1.27 / §2.12 / §3.14 / §5**이며, 최종 실행 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)을 따른다. 작전 기록·숙련·점진 해금·연구 공개가 미구현/Future라는 이전 문구, 개발용 전체 해금/기본 특수 슬롯2를 신규 계정에 적용하던 규칙, Lv3/Lv20 세 후보를 항상 공개하던 규칙은 이번 명시 범위에서 대체한다. 기존 전투 수치·M11 연구 효과/비용·M10 미사일·M9 성능 구조는 유지한다. **M12 통합 check: 62파일/448테스트·TypeScript·Vite build 통과. 아래 M11 이하 통과 숫자는 역사 기록이다.**
+M12의 우선 규칙은 **§1.27 / §1.28 / §2.12 / §3.14 / §3.15 / §5**이며, 최종 실행 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)을 따른다. 작전 기록·숙련·점진 해금·연구 공개가 미구현/Future라는 이전 문구, 개발용 전체 해금/기본 특수 슬롯2를 신규 계정에 적용하던 규칙, Lv3/Lv20 세 후보를 항상 공개하던 규칙은 이번 명시 범위에서 대체한다. 기존 전투 수치·M11 연구 효과/비용·M10 미사일·M9 성능 구조는 유지한다. **M12 보완 포함 통합 check: 66파일/479테스트·TypeScript·Vite build 통과. 아래 M11 이하 통과 숫자는 역사 기록이다.**
 
 **아래 v0.15 서문은 Historical / Superseded 기록이다.** M11 당시의 진행 상태·향후 계획을 보존한 것으로, 현재 M12 구현 제외 선언으로 해석하지 않는다.
 
@@ -174,7 +174,7 @@ Lv20 Overclock 초기 5종:
 
 처형탄은 기본 6종에서 제외한다. 향후 전설·유물·시너지 후보로 재평가할 수 있다.
 
-최초 획득 Lv1, 같은 개조 재획득 시 Level 증가, **Level 상한 없음**. Lv1~10 사이 행동을 단계적으로 강화하고 Lv10 전후 1차 완성, Lv11+ 숙련을 지속한다. 골고루 투자하거나 한 개조에 집중할 수 있다. 특수무기처럼 복잡한 Lv3/Lv6 선택 트리를 사용하지 않는다. 최종 성장표는 미정이다. M4의 실제 첫안 공식과 workload 상한은 §3.6 및 구현 기록에 분리한다.
+최초 획득 Lv1, 같은 개조 재획득 시 Level 증가, **Level 상한 없음**. Lv1~4 기본 성장 → **Lv5 단 한 번 A/B 필수 선택** → Lv6~9 선택 방향 강화 → **Lv10 해당 방향의 첫 완성형** → Lv11+ 선택 방향 숙련이다. 반대 분기는 해당 Run에서 잠긴다. 골고루 투자하거나 한 개조에 집중할 수 있으며 특수무기의 Lv3/Lv6 다중 분기는 사용하지 않는다. 여섯 분기의 확정 정체성은 §1.28, 세부 첫안 수치와 안전 상한은 Prototype Tuning이다. M4의 분기 없는 공식은 과거 기준이며 M12 분기 효과가 추가된다.
 
 다중탄+관통+폭발탄처럼 자연스럽게 함께 적용되는 조합을 모두 이름 붙은 Synergy로 만들지 않는다.
 
@@ -200,7 +200,7 @@ Pool: 공용 강화, 기본무기 전용 사거리 성장, 신규 기본무기 �
 
 신규 Basic Modification Acquisition과 Owned Basic Modification Growth는 각각 하나의 Category다. 먼저 Category를 추첨하고 내부 유효 개조 하나를 선택한다. 한 Offer에서 두 Category를 합쳐 개조 관련 최대1장만 제시한다. Range는 별도 카드라 이 제한에 포함하지 않는다. 개조3종이 차면 신규 Category를 제외하고 개조 확장 Core로4슬롯이 열리면 다시 허용한다. 공용 공격력/공격속도/치명타 카드가 일반 Pool의 기본 뼈대다.
 
-이미 투자한 방향은 조금 더 잘 등장할 수 있다. 기본 개조 성장 내부 후보의 Investment Bias만 최대×1.4로 완화하고 특수무기 등 다른 성장의 기존 최대×2는 유지한다. 구조는 `base weight × investment bonus`이며 보장이 아니다. **투자 가중치는 희귀도 확률을 바꾸지 않는다.** 강제 pity, N회 실패 후 보장, 고정 완성 순서는 두지 않는다. 시너지는 별도 카드를 뽑지 않고 조건 완성 시 자동 활성화한다. 현재 코드의 해금 시너지 한 자리 보장은 폐기 대상이다.
+이미 투자한 방향은 조금 더 잘 등장할 수 있다. 기본 개조 내부 Investment Bias 최대×1.4는 유지하고 보유 특수무기 내부 Bias는 최대×1.5로 낮춘다. 특수 성장은 **고정 weight0.65의 단일 Category**를 먼저 뽑고, 그 안에서 보유 무기만 내부 추첨한다. 무기가2~3종이어도 Category weight를 합산하지 않는다. 보유 개조 성장0.60, 신규 개조0.45이며 이 숫자는 Prototype Tuning이다. 한 Offer에 Mod 합계≤1, Special Growth≤1, Acquisition≤1, Range는 별도다. 내부 구조는 `base weight × investment bonus`이며 보장이 아니다. **투자 가중치는 희귀도 확률을 바꾸지 않는다.** 강제 pity, N회 실패 후 보장, 고정 완성 순서는 두지 않는다. 시너지는 별도 카드를 뽑지 않고 조건 완성 시 자동 활성화한다. 현재 코드의 해금 시너지 한 자리 보장은 폐기 대상이다.
 
 ### 1.11 대성공과 선택 Queue
 
@@ -563,6 +563,27 @@ Relic은 시스템이 잠겼을 때 Elite 처치로 선택 이벤트나 Drop RNG
 해금은 전투를 Pause하지 않는다. 완료 순간에만 “작전 기록 완료 / 기록 이름”과 필요한 해금 한 줄을 짧게 표시한다. HUD에 진행 숫자를 상시 추가하거나 반복 Popup을 띄우지 않는다. 이미 열린 일반·특수·유물 Offer는 그대로 유지하고 새 콘텐츠는 **다음 Offer부터** 적용한다. 기존 카드 선택의 Pause는 유지한다.
 
 Hub는 작전 기록과 무장/해금 현황을 제공한다. 숙련 합·완료/전체 수, Category별 이름/설명/진행/Point/직접 보상, 각 개조·무기·슬롯·Relic Pool·Core·Synergy 및 공개 가능한 잠금 조건을 표시한다. Result는 이번 Run 완료 기록·획득 숙련 Point·새 해금을 M11 보상과 함께 정리한다. 별도 Claim·검색/복잡한 Filter는 추가하지 않는다.
+
+### 1.28 M12 보완 — 기본 개조 단일 분기와 성장 후보 분리
+
+이 보완은 새 Milestone이 아니다. 기본 개조6종은 **Lv5에서 A/B를 한 번만 선택**, Lv10에서 선택 방향의 이름 있는 완성형, Lv11+에서는 상한 없이 숙련 성장한다. 특수무기 트리처럼 Lv3/Lv6 추가 분기를 만들지 않는다. 선택 후 반대 방향은 해당 Run에서 잠긴다.
+
+| 개조 | Lv5 A → Lv10 완성형 | Lv5 B → Lv10 완성형 |
+| --- | --- | --- |
+| 관통 | 심층 관통 → **관통 폭주**: 직선으로 관통하는 적 수 강화 | 잔존 운동에너지 → **운동에너지 관통탄**: 후방 피해 유지율 강화 |
+| 도탄 | 연쇄 도탄 → **도탄 연쇄**: Bounce 횟수·탐색 거리 강화 | 중량 도탄 → **충격 도탄**: 적은 횟수의 높은 도탄 피해 |
+| 점사 | 확장 점사 → **완전 점사**: 한 Action의 발수 증가 | 고속 점사 → **초고속 점사**: 내부 탄 간격 단축·집중 화력 |
+| 다중탄 | 광역 다중탄 → **전방위 사격**: 넓은 Spread·추가 Target 분산 | 집중 다중탄 → **집중 일제사격**: 좁은 Spread·효율 높은 보조탄의 소수/단일 표적 집중 |
+| 폭발탄 | 광역 폭발 → **폭발 지대**: 작은 광역의 Radius 확대 | 고폭탄 → **고폭 탄두**: 좁고 강한 폭발 피해 |
+| 고위력 단발 | 공성탄 → **초중량 공성탄**: 큰 단발 피해와 더 큰 Cycle 대가 | 경량화 고위력탄 → **고속 중량탄**: 피해는 완만하게 키우며 Cycle 대가 완화 |
+
+Lv6~9는 위 방향을 강화한다. Lv10은 숫자/행동 차이가 전투에 반영되는 첫 완성이며 추가 카드를 고르는 이벤트가 아니다. 폭발탄은 수류탄의 대형 공간 폭격을 대체할 정도로 범위를 늘리지 않는다. 고위력은 점사·다중탄과 계속 자유 조합한다. 반복 Level은 피해·효율 숙련으로 이어지고 발수/피해 계산량·최소 주기에는 안전 상한을 둔다.
+
+**Branch / Rarity / Legendary / Great Success는 독립**이다. 관통 A Lv10+전설 끝점 충격파, 점사 B+전설 마무리탄, 폭발탄 A/B+전설 처치 재폭발이 함께 적용된다. 나머지 개조의 새 전설 행동은 추가하지 않는다.
+
+대성공 Lv4 +2는 Lv5에서 반드시 멈춘다. **A/B 선택 → 보류한 +1과 해당 희귀도 강도 적용 → Lv6**으로 이어진다. Lv5 분기 자체는 일반 선택을 추가 소비하지 않고 희귀도/Great Success를 재추첨하지 않는다. 품질 개방 Core는 이미 적용한 Level만 소급하고 보류 성장에는 승급된 강도를 한 번만 적용한다. 분기 대기 중 전투·다음 일반 선택·Reroll을 멈추며 기존 가로 Card UI의 두 후보를 사용한다.
+
+Gauss Slot 아래 개조 Level·선택 방향 Badge·Lv10 완성 Badge·Legendary 상태를 서로 구분한다. 긴 행동 설명은 상세 화면에서 확인하며 상단에 새 패널을 추가하지 않는다. 자동 사격은 여전히 무기 시계가 결정하고 공격 시작 Snapshot은 분기까지 포함하여 진행 중 점사/복제 공격을 뒤늦게 바꾸지 않는다.
 
 ## 2. Prototype Scope — Stage 1 Gameplay Loop
 
@@ -948,6 +969,8 @@ Gauss는 기본 성장의 최대8발에 Saturation +2발을 허용하는10발 �
 
 ### 3.9 M7 — 승계한 Prototype 기본값
 
+**성장 weight의 역사 기록:** 아래 Owned Mod0.35와 개별 Special Growth1.3×최대2는 M12 보완 §3.15로 대체한다. 나머지 M7 획득/Boss 규칙은 유지한다.
+
 공용 강화 카드 하나의 base weight1.0을 기준으로 한다. 아래 값은 최종 등장 확률(%)이 아니라 현재 유효 Pool에서 정규화하는 상대 weight다. 무기/개조 개수로 Category 전체 등장 weight가 늘어나지 않는다.
 
 | Category / 항목 | M7 첫값과 규칙 |
@@ -1102,6 +1125,23 @@ Gold 연구 공개는 효과 수식과 분리한다. 초기3종(기본 피해·�
 
 기존 Relic 첫 Elite 기회 보장/이후32%, Core약3%는 **시스템 해금 후** 적용한다. 잠금 중의 Elite Kill은 XP 등 일반 전투 보상을 그대로 지급하고 해당 시스템 RNG만 생략한다. 런타임 수치 조정과 계정 해금은 별개다.
 
+### 3.15 M12 보완 — 성장 Category Prototype Tuning
+
+공용 강화 한 장의 base weight1.0 기준이다. 아래는 고정 등장 확률(%)이 아니며 자동 등장률/경제 분석으로 적정성을 확정하지 않는다.
+
+| Category / 내부 규칙 | 첫 Prototype 값 |
+| --- | --- |
+| New Basic Mod Category | **0.45 유지** |
+| Owned Basic Mod Growth Category | **0.35 → 0.60** |
+| Basic Mod 내부 Investment Bias | **최대×1.4 유지**, `min(1.4,1+0.1×rank)` |
+| Owned Special Weapon Growth Category | **0.65 고정**, 무기 수에 무관 |
+| Special 내부 Investment Bias | **최대×1.5**, `min(1.5,1+0.1×(WeaponLevel−1))` |
+| Offer 제한 | Basic Mod 합계≤1 / Special Growth≤1 / Acquisition≤1 / Range 별도 |
+
+보유 Special Growth는 Category가 당첨된 다음 실제 보유 무기 중 하나를 뽑는다. 개별 무기의 이전 `1.3×investment`를 일반 Pool에 각각 더하지 않는다. 새 Mod·Special Acquisition은 M12 계정 잠금을 유지하며 Growth는 실제 보유 무기만 대상으로 한다. 이미 열린 카드는 설정/해금 때문에 바뀌지 않는다. 공용 강화가 Pool의 기본 뼈대를 유지하도록 하는 첫안이며 실제 빈도는 사용자 Playtest로 판단한다.
+
+6개 분기의 피해·대상 수·간격·Radius·Penalty 계수는 `marineGrowth.ts`의 분기 데이터와 구현 기록을 따르는 **Prototype Tuning**이다. Lv5/Lv10/Lv11+ 구조와 A/B 정체성은 확정, 최종 세부 수치는 미확정이다. 기존 계정 저장/작전 기록/해금 Threshold/Meta 효과/적·Stage 밸런스를 변경하지 않는다.
+
 ## 4. Future / Not in Prototype 및 미정
 
 **M12 이후 범위 구분 — 아래 역사 문구보다 우선:** M11 Meta 기능에 더해 §1.27·§2.12·§3.14의 작전 기록28개·숙련·실제 Pool 해금·해금 현황 UX·연구 점진 공개는 현재 구현 범위다. 아래의 “실제 작전 기록/점진 해금 제외” 및 조건 미정 예시는 historical/superseded로 남기며, M12에서 확정하지 않은 추가 기록·Challenge·전체 콘텐츠/경제 확장만 Future다. 과거 직접 해금 후보인 수류탄 누적 처치→Tactical 등은 현재 조건을 대체하지 않는다.
@@ -1174,7 +1214,7 @@ Awakening은 단순 공격력+50%가 아니라 캐릭터 기본 규칙 하나를
 
 ## 5. Current Implementation Gap
 
-현재 기반은 M11 [PR26](https://github.com/cij5484/game/pull/26) merge `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`, 작업 branch는 `codex/prototype-m12-mastery-unlocks`다. M12는 아래 범위를 구현하며 최종 통합 check와 브라우저 확인 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)에 기록한다. **M12 통합 검사: 62파일/448테스트·TypeScript·Vite build 통과, 기존 Phaser chunk 경고 유지.** M11 이하 결과를 M12 통과 증거로 사용하지 않는다. commit/push 이후 정지하며 main merge는 하지 않는다.
+현재 기반은 M11 [PR26](https://github.com/cij5484/game/pull/26) merge `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`, 작업 branch는 `codex/prototype-m12-mastery-unlocks`다. M12는 아래 범위를 구현하며 최종 통합 check와 브라우저 확인 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)에 기록한다. **M12 보완 포함 통합 검사: 66파일/479테스트·TypeScript·Vite build 통과, 기존 Phaser chunk 경고 유지.** M11 이하 결과를 M12 통과 증거로 사용하지 않는다. commit/push 이후 정지하며 main merge는 하지 않는다.
 
 | 영역 | M12 구현 범위 / 남은 확인 |
 | --- | --- |
@@ -1185,6 +1225,7 @@ Awakening은 단순 공격력+50%가 아니라 캐릭터 기본 규칙 하나를
 | Save/Migration | payload v2·기존 storage key 유지, M11 재화/연구/효과/구매 연구 접근 보존, 증명 가능한 과거 자연 종료/Clear만 기록 복원 |
 | Hub/HUD/Result | Category 기록·진행/Point/보상·무장 잠금 조건·슬롯3상태, 완료 순간 비차단 알림, Result 이번 완료/Point/신규 해금 요약 |
 | 연구/DEV | 연구11종 점진 공개, 기존 비용/효과 유지. DEV 기록 완료/전체 해금/진행 초기화/슬롯0·1·2, Balance Override와 분리 |
+| 기본 개조 보완 | Lv5 단일 A/B·대성공 보류·Lv10 완성·Lv11+ 숙련·전설 독립·Gauss 소유 HUD. 성장 Category 조정은 §3.15, 최종 보완 check는 구현 기록 참조 |
 | 검증 | Fresh 흐름·실제 필터링·직접/Threshold 해금·중복 방지·저장/재로드/Migration·Result·DEV의 필수 correctness와 `npm run check` 최종 결과는 M12 기록 참조 |
 | 사용자 Playtest/Future | 해금 속도·Build 체감·난이도는 직접 플레이로 판단. 자동 장기 Run/평균 해금 시점/경제 판단 없음. Challenge·Endless·Stage2+·추가 캐릭터·Awakening·대형 상점·신규 전체 Pool은 미구현 |
 

@@ -1,4 +1,7 @@
-import type { MarineLevelChoice } from "../progression/marineProgression";
+import type {
+  MarineLevelChoice,
+  MarineModBranchSelection,
+} from "../progression/marineProgression";
 import type { SpecialSelection } from "../progression/specialProgression";
 import {
   marineTraitIds,
@@ -148,6 +151,27 @@ export class LevelUpView {
           selection.kind === "acquire" ? "특수무기 획득" : "특수무기 개조",
       })),
       select,
+    );
+  }
+
+  showModBranch(
+    selection: MarineModBranchSelection,
+    select: (id: string) => void,
+  ) {
+    const mod = marineUpgrades[selection.traitId];
+    this.render(
+      `${mod.title} · ${levelLabel(5)} 분기 선택`,
+      selection.choices.map((choice) => ({
+        id: choice.id,
+        title: `${choice.id.toUpperCase()} · ${choice.title}`,
+        level: `${levelLabel(5)} 필수 선택 · 일반 강화 소모 없음`,
+        symbol: mod.symbol,
+        compact: `${choice.description}\n${levelLabel(10)} 완성 · ${choice.completion}`,
+        description: `${choice.description} · ${levelLabel(10)} 완성: ${choice.completion}`,
+        category: "기본무기 개조 · 가우스",
+      })),
+      select,
+      "이 Run에서 한 방향만 선택합니다. 선택한 분기는 이후 성장과 완성형에 적용됩니다.",
     );
   }
 

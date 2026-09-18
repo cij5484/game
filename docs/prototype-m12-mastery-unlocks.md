@@ -92,7 +92,7 @@ v1 이전 시 실제 완료 Run 기록은 첫 작전, 실제 Stage Clear는 첫 
 
 ## 검증
 
-`npm.cmd run check`: **62개 파일 / 448개 테스트 통과**, TypeScript 및 Vite production build 통과. 기존 Phaser 500kB 초과 chunk 경고는 유지한다. 신규 correctness는 Save/해금 풀/실제 특수무기 evidence/Scene 행동 귀속·정산/Hub·Result·DEV·슬롯 UI에 추가했다.
+보완 전 `70019d5` 검증 — `npm.cmd run check`: **62개 파일 / 448개 테스트 통과**, TypeScript 및 Vite production build 통과. 기존 Phaser 500kB 초과 chunk 경고는 유지한다. 신규 correctness는 Save/해금 풀/실제 특수무기 evidence/Scene 행동 귀속·정산/Hub·Result·DEV·슬롯 UI에 추가했다.
 
 브라우저는 별도 테스트 origin `127.0.0.2:5173`에서 Fresh 0Point/0슬롯·연구 잠금·28기록·직접 조건·출격 후 잠긴 특수 슬롯과 Stimpack/V를 확인했다. `/dev` 특정 기록 완료→1Point/슬롯1, 전체 해금→Point유지/슬롯2·유물/Core/Synergy 활성화를 확인했다. DEV 콘솔 오류 없음. 테스트 탭은 종료했고 사용자 `localhost` Meta/Balance는 조작하지 않았다. 자연 종료→다음 Run 해금과 Result는 자동 통합 테스트에서 확인했으며 브라우저 전체 Run Playtest로 표현하지 않는다.
 
@@ -101,3 +101,30 @@ v1 이전 시 실제 완료 Run 기록은 첫 작전, 실제 Stage Clear는 첫 
 ## 범위 밖
 
 Challenge, Endless, Stage2+, 신규 캐릭터/Awakening, 희귀 재화 소비, Variant, Credits 대형 상점, Final Art, Ranking/Backend, 전체 Relic10/Core5/Synergy6 확장은 구현하지 않는다. M12 코드는 기존 Prototype Pool을 점진 개방하는 범위다.
+
+## M12 보완 — Lv5 기본 개조 분기 / 성장 Category
+
+`70019d5` 이후 같은 M12 브랜치에서 추가한다. 위 62파일/448테스트는 보완 전 기록이며 아래 최종 검사와 구분한다. 새 GDD 버전이나 다음 Milestone을 만들지 않고 v0.16 §1.7/1.10/1.28/3.15를 보완했다.
+
+- 6개 개조 모두 Lv1~4 성장 → Lv5 A/B 필수 선택 → Lv6~9 강화 → Lv10 선택 방향 완성 → Lv11+ 숙련. 반대 분기는 Run 동안 잠긴다.
+- 관통: 수량/후방 피해 유지, 도탄: 연결 수·거리/강한 단발 도탄, 점사: 발수/내부 간격, 다중탄: 넓은 분산/좁은 집중, 폭발탄: 범위/피해, 고위력: 높은 피해·느린 주기/주기 대가 완화.
+- 대성공 Lv4+2는5에서 멈춰 선택 후 남은1을 적용한다. 같은 history에 적용된 Level을 추적해 품질 Core 소급과 보류 성장 강도가 중복되지 않는다. 분기 선택은 추가 일반 선택/GS/Rarity/Reroll을 소비하지 않는다.
+- Legendary 끝점 충격파/마무리탄/재폭발은 분기와 함께 유지한다. 공격 시작 시 분기도 Snapshot해 이미 시작한 점사·복제 공격을 바꾸지 않는다.
+- Special Growth는 고정0.65 Category 하나→보유 무기 내부 추첨, 내부 Bias 최대1.5. 무기 수가 늘어도 Category 전체 weight는 증가하지 않고 한 Offer 최대1장이다.
+- Owned Mod0.60 / New Mod0.45 / 내부 Bias1.4, 합계 최대1장. Acquisition≤1/Range별도/계정잠금은 유지한다. `/dev`에 Special Category weight·내부 Bias를 연결했다. 기존 사용자 Override는 보존하므로 Override가 있으면 코드 기본값보다 우선한다.
+- Gauss 소유 영역에 분기 A/B와 Lv10 완성 Badge를 추가하고 긴 설명은 상세 화면으로 보낸다. 선택은 기존 중앙 가로2장 UI를 사용한다.
+
+첫 분기 수치 예시(해당 개조만 일반 품질로 Lv10, Meta/전설 제외)는 아래와 같다. 최종 밸런스 확정값이 아니다.
+
+| 개조 | A | B |
+| --- | --- | --- |
+| 관통 | 추가 관통 대상12 | 추가 관통 대상7 / 후방 피해 유지100% |
+| 도탄 | 최대9회 / 탐색거리 보너스140 | 최대5회 / 도탄 피해 유지계수 강화 |
+| 점사 | 7발 / 완성 피해×1.2 | 6발 / 내부 간격45ms |
+| 다중탄 | 보조탄8 / spread1.5rad | 보조탄5 / spread0.15rad / 보조 피해계수1.84 / 최대2표적에 집중 |
+| 폭발탄 | 반경130 / Lv10 폭발 피해×1.10 | 반경96 / 폭발 피해계수2.2 |
+| 고위력 | 개별 피해×9.9 / raw 주기1310.4ms | 개별 피해×6.325 / raw 주기831.2ms |
+
+세부 계수는 Prototype Tuning이며 자동 확률 Simulation이나 밸런스 적정성 결론을 내리지 않는다. 처리량 상한은 추가 관통12·도탄10·보조탄8·전설 포함 점사8·폭발 반경130이며 상한 이후에도 품질 기반 숙련이 이어진다. 실제 X1 시간은 기존 CombatTempo/연구/Build 배율을 합성한다.
+
+보완 검증: 신규 분기·UI·Scene 연결 테스트의 실패를 확인한 뒤 구현했다. **`npm.cmd run check`: 66파일 / 479테스트 통과, TypeScript 및 Vite build 성공.** Lv5 대성공 보류/선택 재개·반대 분기 잠금·Lv10 효과·Lv11+·전설 동시 적용·집중탄 실제 피해·고정 Category/내부 편향/Offer 제한·기존 계정 필터링을 확인했다. 기존 Phaser 500kB 초과 chunk 경고는 유지된다. 이번 보완에서는 새 브라우저/실기기 Playtest나 장시간 확률 검증을 실행하지 않았고, 위 브라우저 기록은 보완 전 결과다.

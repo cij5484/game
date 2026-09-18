@@ -901,3 +901,54 @@ it("M12 a synergy activated by a mastery unlock is saved before the next frame o
     expect.arrayContaining(["first-completion", "first-synergy"]),
   );
 });
+
+it("M12 mod branch pauses all combat even after the ordinary choice was consumed", () => {
+  const test = scene();
+  test.progression.ranks.burst = 4;
+  test.progression.quality.burst = 4;
+  test.progression.pendingChoices = 1;
+  vi.mocked(Math.random).mockReturnValue(0.99999);
+  expect(test.progression.offer().some((card) => card.id === "burst")).toBe(
+    true,
+  );
+  vi.mocked(Math.random).mockReturnValue(0);
+  expect(test.progression.choose("burst")).toBe(true);
+  expect(test.progression.pendingChoices).toBe(0);
+  expect(test.progression.ranks.burst).toBe(5);
+  const before = test.run.elapsedMs;
+  test.update(0, 500);
+  expect(test.run.elapsedMs).toBe(before);
+  expect(test.shotIndex).toBe(0);
+  const ui = { showModBranch: vi.fn(), hide: vi.fn() };
+  Object.assign(test, { choices: ui });
+  const show = (CombatScene.prototype as unknown as { showChoices(): void })
+    .showChoices;
+  show.call(test);
+  expect(ui.showModBranch).toHaveBeenCalledTimes(1);
+  const select = ui.showModBranch.mock.calls[0]![1] as (id: string) => void;
+  select("b");
+  expect(test.progression.ranks.burst).toBe(6);
+  expect(test.progression.branches).toEqual({ burst: "b" });
+  test.update(0, 0);
+  expect(test.shotIndex).toBe(1);
+});
+it("M12 primary action snapshots mod branches for the entire burst", () => {
+  const test = scene();
+  test.progression.ranks.burst = 5;
+  test.progression.quality.burst = 5;
+  Object.assign(test.progression.branches, { burst: "a" });
+  test.refreshBuild();
+  test.update(0, 0);
+  const actions = (
+    test as unknown as {
+      primaryActions: Map<
+        unknown,
+        { growth: { branches?: { burst?: string } } }
+      >;
+    }
+  ).primaryActions;
+  const started = [...actions.values()][0]!;
+  expect(started.growth.branches).toEqual({ burst: "a" });
+  Object.assign(test.progression.branches, { burst: "b" });
+  expect(started.growth.branches).toEqual({ burst: "a" });
+});

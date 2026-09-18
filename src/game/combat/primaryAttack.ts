@@ -1,6 +1,7 @@
 import {
   getMarineStats,
   getMarineTraitEffects,
+  getMarineModBranch,
   type MarineGrowthState,
 } from "../data/marineGrowth";
 import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
@@ -116,6 +117,8 @@ export function primaryAttack(
     target.hp > 0 && target.progress01 >= (context.minTargetProgress01 ?? 0)
       ? [target]
       : [];
+  const focusedMultishot =
+    context.growth && getMarineModBranch(context.growth, "multishot") === "b";
   if (roots.length) {
     const angle = direction(target);
     const extra =
@@ -127,8 +130,18 @@ export function primaryAttack(
         enemy.progress01 >= (context.minTargetProgress01 ?? 0) &&
         Math.abs(direction(enemy) - angle) <= traits.multishotSpreadRadians,
     );
+    if (focusedMultishot) {
+      // Concentrate on at most two close aim lines; remaining rounds can hit them again.
+      options.sort(
+        (a, b) =>
+          Math.abs(direction(a) - angle) - Math.abs(direction(b) - angle) ||
+          a.id - b.id,
+      );
+      const focused = [target, ...options.slice(0, 1)];
+      for (let i = 0; i < extra; i++) roots.push(focused[i % focused.length]!);
+    }
     // Distinct, spread-out aim rays. Logical angles never depend on screen aspect ratio.
-    for (let i = 0; i < extra && options.length; i++) {
+    for (let i = 0; !focusedMultishot && i < extra && options.length; i++) {
       const rayAngle =
         angle +
         traits.multishotSpreadRadians *
@@ -151,6 +164,7 @@ export function primaryAttack(
   const explosionCenters = new Set<number>();
   // Reserve the selected roots so a large secondary chain cannot starve its own volley.
   const factors = new Map<number, number>(roots.map((root) => [root.id, 0]));
+  let focusedDirectFactors: Map<number, number> | undefined;
   let splashBudget: number = primaryAttackBalance.roundSplashBudget;
   // Merge intersecting effects by strongest damage once per enemy/round.
   const register = (
@@ -158,12 +172,18 @@ export function primaryAttack(
     factor: number,
     kind: "direct" | "bounce" | "splash",
     critical = false,
+    additiveDirect = false,
   ) => {
     if (
       !factors.has(enemy.id) &&
       factors.size >= primaryAttackBalance.roundTargetBudget
     )
       return false;
+    if (additiveDirect) {
+      focusedDirectFactors ??= new Map();
+      factor += focusedDirectFactors.get(enemy.id) ?? 0;
+      focusedDirectFactors.set(enemy.id, factor);
+    }
     factors.set(enemy.id, Math.max(factors.get(enemy.id) ?? 0, factor));
     if (kind === "splash") splashes.add(enemy.id);
     else hits.add(enemy.id);
@@ -234,9 +254,11 @@ export function primaryAttack(
     factor: number,
     kind: "direct" | "bounce",
     critical: boolean,
+    additiveDirect = false,
   ) => {
     const multiplier = critical ? stats.criticalMultiplier : 1;
-    if (!register(enemy, factor * multiplier, kind, critical)) return;
+    if (!register(enemy, factor * multiplier, kind, critical, additiveDirect))
+      return;
     const maximumHp = enemy.maxHp ?? enemyConfigs[enemy.kind].hp;
     if (
       traits.executionThreshold > 0 &&
@@ -272,7 +294,7 @@ export function primaryAttack(
   const pierceRetention = traits.pierceDamageRetention;
   for (const [rootIndex, root] of roots.entries()) {
     const rootFactor =
-      root.id === target.id
+      rootIndex === 0
         ? traits.multishotPrimaryFactor
         : rootIndex <= traits.multishotTargets
           ? traits.multishotDamageFactor
@@ -280,7 +302,7 @@ export function primaryAttack(
     const critical =
       context.random() <
       Math.min(1, stats.criticalChance + (context.criticalChanceBonus ?? 0));
-    criticalHit(root, rootFactor, "direct", critical);
+    criticalHit(root, rootFactor, "direct", critical, focusedMultishot);
     if (hasSynergy("focused-bombardment")) {
       // The central blast reaches a new ring; auxiliary blasts stay deliberately smaller.
       explosion(

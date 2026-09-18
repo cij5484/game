@@ -5,6 +5,7 @@ import {
   describeMarineUpgrade,
   getMarineStats,
   marineGrowthBalance,
+  marineModBranches,
   marineQualityIncrements,
   marineStrength,
   marineTraitIds,
@@ -13,6 +14,8 @@ import {
   marineRarityWeights,
   rollMarineRarity,
   type MarineGrowthState,
+  type MarineModBranch,
+  type MarineModBranches,
   type MarineRanks,
   type MarineTraitId,
   type MarineUpgradeDefinition,
@@ -73,9 +76,19 @@ type GrowthChoice = (MarineChoice | SpecialGrowthChoice) & {
   originalRarity: UpgradeRarity;
 };
 export type MarineLevelChoice = GrowthChoice | SpecialAcquisitionChoice;
+export interface MarineModBranchSelection {
+  traitId: MarineTraitId;
+  choices: {
+    id: MarineModBranch;
+    title: string;
+    description: string;
+    completion: string;
+  }[];
+}
 export interface MarineGrowthHistory {
   id: GrowthChoice["id"];
   levels: number;
+  appliedLevels: number;
   greatSuccess: boolean;
   originalRarity: UpgradeRarity;
   rarity: UpgradeRarity;
@@ -88,7 +101,12 @@ export class MarineProgression {
   readonly ranks: MarineRanks = {};
   readonly quality: MarineGrowthState["quality"] = {};
   readonly legendary = new Set<MarineTraitId>();
-  readonly branches = {};
+  readonly branches: MarineModBranches = {};
+  private pendingModBranch: {
+    traitId: MarineTraitId;
+    history: MarineGrowthHistory;
+    remainingLevels: number;
+  } | null = null;
   readonly activeSynergyIds = new Set<string>();
   traitLimit: number = marineGrowthBalance.traitLimit;
   readonly special: SpecialProgression;
@@ -131,6 +149,7 @@ export class MarineProgression {
       !this.choices?.length ||
       this.pendingChoices <= 0 ||
       this.special.pending ||
+      this.modBranchPending ||
       this.rerollsRemaining <= 0
     )
       return false;
@@ -145,6 +164,7 @@ export class MarineProgression {
       meta: this.meta,
       quality: this.quality,
       legendary: this.legendary,
+      branches: this.branches,
     };
   }
   get threshold() {
@@ -196,7 +216,7 @@ export class MarineProgression {
           const amount = marineQualityIncrements[upgradeId][entry.rarity];
           this.quality[upgradeId] =
             marineStrength(this.growth, upgradeId) +
-            entry.levels * (amount - entry.amount);
+            entry.appliedLevels * (amount - entry.amount);
           entry.amount = amount;
           if (
             entry.rarity === "LEGENDARY" &&
@@ -251,6 +271,7 @@ export class MarineProgression {
     return {
       ranks: { ...this.ranks, [id]: (this.ranks[id] ?? 0) + 1 },
       meta: this.meta,
+      branches: this.branches,
       quality: {
         ...this.quality,
         [id]:
@@ -330,7 +351,7 @@ export class MarineProgression {
       currentLevel: weapon.level,
       nextLevel: weapon.level + 1,
       maxRank: Infinity,
-      weight: 1.3,
+      weight: marineGrowthBalance.specialGrowthWeight,
       rarity,
       originalRarity,
       tag: weapon.id,
@@ -339,7 +360,7 @@ export class MarineProgression {
     };
   }
   offer(): MarineLevelChoice[] {
-    if (this.pendingChoices <= 0) return [];
+    if (this.pendingChoices <= 0 || this.modBranchPending) return [];
     if (this.choices) return this.choices;
     this.offeredGreatSuccessChance = marineGrowthBalance.greatSuccessChance;
     type Candidate =
@@ -354,7 +375,7 @@ export class MarineProgression {
         ).some((weight) => weight > 0),
     );
     const pool: {
-      kind: "card" | "mod" | "acquire";
+      kind: "card" | "mod" | "acquire" | "special-growth";
       weight: number;
       cards: Candidate[];
     }[] = eligible
@@ -378,16 +399,13 @@ export class MarineProgression {
       (card) => card.category === "weapon-growth",
     ))
       pool.push({ kind: "card", weight: card.weight, cards: [card] });
-    for (const weapon of this.special.weapons)
+    if (this.special.weapons.length)
       pool.push({
-        kind: "card",
-        weight:
-          1.3 *
-          Math.min(
-            marineGrowthBalance.maxInvestment,
-            1 + (weapon.level - 1) * marineGrowthBalance.investmentPerRank,
-          ),
-        cards: [this.specialCard(weapon, "COMMON")],
+        kind: "special-growth",
+        weight: marineGrowthBalance.specialGrowthWeight,
+        cards: this.special.weapons.map((weapon) =>
+          this.specialCard(weapon, "COMMON"),
+        ),
       });
     const owned = this.special.weapons.length;
     if (
@@ -450,7 +468,14 @@ export class MarineProgression {
           : pick(group.cards, (candidate) =>
               candidate.category === "weapon-trait"
                 ? marineUpgradeWeight(candidate, this.ranks)
-                : 1,
+                : candidate.category === "special-growth"
+                  ? Math.min(
+                      marineGrowthBalance.maxSpecialInvestment,
+                      1 +
+                        (candidate.currentLevel - 1) *
+                          marineGrowthBalance.investmentPerRank,
+                    )
+                  : 1,
             );
       for (let i = pool.length - 1; i >= 0; i--)
         if (
@@ -513,6 +538,17 @@ export class MarineProgression {
     }
     const greatSuccess = this.random() < this.offeredGreatSuccessChance;
     let levels = greatSuccess ? 2 : 1;
+    if (card.category !== "special-growth")
+      levels = Math.min(levels, card.maxRank - (this.ranks[card.id] ?? 0));
+    const entry: MarineGrowthHistory = {
+      id: card.id,
+      levels,
+      appliedLevels: 0,
+      greatSuccess,
+      rarity: card.rarity,
+      originalRarity: card.originalRarity,
+      amount: card.amount,
+    };
     if (card.category === "special-growth") {
       this.special.addLevels(
         card.weaponId,
@@ -520,26 +556,65 @@ export class MarineProgression {
         card.amount,
         card.originalRarity,
       );
+      entry.appliedLevels = levels;
     } else {
       const rank = this.ranks[card.id] ?? 0;
-      levels = Math.min(levels, card.maxRank - rank);
-      this.quality[card.id] =
-        marineStrength(this.growth, card.id) + levels * card.amount;
-      this.ranks[card.id] = rank + levels;
+      const needsBranch =
+        card.category === "weapon-trait" &&
+        !this.branches[card.id as MarineTraitId] &&
+        rank < 5 &&
+        rank + levels >= 5;
+      const applied = needsBranch ? 5 - rank : levels;
+      this.applyGrowth(card.id, applied, entry);
+      if (needsBranch)
+        this.pendingModBranch = {
+          traitId: card.id as MarineTraitId,
+          history: entry,
+          remainingLevels: levels - applied,
+        };
       if (card.rarity === "LEGENDARY" && card.category === "weapon-trait")
         this.legendary.add(card.id as MarineTraitId);
     }
-    this.lastSelection = {
-      id: card.id,
-      levels,
-      greatSuccess,
-      rarity: card.rarity,
-      originalRarity: card.originalRarity,
-      amount: card.amount,
-    };
+    this.lastSelection = entry;
     this.history.push(this.lastSelection);
     this.pendingChoices--;
     this.choices = null;
+    return true;
+  }
+  private applyGrowth(
+    id: MarineUpgradeId,
+    levels: number,
+    entry: MarineGrowthHistory,
+  ) {
+    this.quality[id] = marineStrength(this.growth, id) + levels * entry.amount;
+    this.ranks[id] = (this.ranks[id] ?? 0) + levels;
+    entry.appliedLevels += levels;
+  }
+  get modBranchPending(): boolean {
+    return this.pendingModBranch !== null;
+  }
+  offerModBranch(): MarineModBranchSelection | null {
+    const pending = this.pendingModBranch;
+    if (!pending) return null;
+    return {
+      traitId: pending.traitId,
+      choices: (["a", "b"] as const).map((id) => ({
+        id,
+        ...marineModBranches[pending.traitId][id],
+      })),
+    };
+  }
+  chooseModBranch(id: string): boolean {
+    const pending = this.pendingModBranch;
+    if (!pending || (id !== "a" && id !== "b")) return false;
+    this.branches[pending.traitId] = id;
+    this.pendingModBranch = null;
+    if (pending.remainingLevels)
+      this.applyGrowth(
+        pending.traitId,
+        pending.remainingLevels,
+        pending.history,
+      );
     return true;
   }
 }

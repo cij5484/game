@@ -28,7 +28,15 @@ Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It 
 - Hub has grouped operation records and unlock overview; research locked rows show conditions. Combat gives completion-only transient notice, Result summarizes thisRun points/records/unlocks. Slots distinguish Locked/Empty/Equipped.
 - `/dev` progression: current points, specific record completion, unlock all, confirmed progression-only reset, capacity0/1/2, lock states. Full Meta reset gives a fresh account. Progression-only reset preserves currencies/research; dev unlock-all is a flag, not fabricated mastery points. Development-only actions stay separate from balance tools.
 - M11 research still snapshots at launch; ordinary Reroll remains0~3 (50/150/400Credits). Unlocking a research row does not grant its purchased effects mid-Run. No Challenge/Endless/Stage2+/new characters/new full pools or Credits shop expansion.
-- M12 check: **62files/448tests, TypeScript and Vite build passed**, existing Phaser chunk warning remains. Isolated browser checked fresh Hub/locked combat slots and DEV record/unlock-all. See [implementation verification](docs/prototype-m12-mastery-unlocks.md#검증). Historical M11 check was59files/416tests plus TypeScript/Vite; do not reuse as M12 evidence. User playtest owns unlock pacing. No automatic multi-Run/economy/time-to-drone simulations.
+- Historical pre-supplement M12 check: **62files/448tests, TypeScript and Vite build passed**, existing Phaser chunk warning remains. Isolated browser checked fresh Hub/locked combat slots and DEV record/unlock-all. See [implementation verification](docs/prototype-m12-mastery-unlocks.md#검증). Historical M11 check was59files/416tests plus TypeScript/Vite; do not reuse as M12 evidence. User playtest owns unlock pacing. No automatic multi-Run/economy/time-to-drone simulations.
+
+### M12 supplement
+
+- Current supplement check: **66files/479tests, TypeScript and Vite build passed**. Existing Phaser chunk warning remains. No new browser/device playtest or long probability simulation.
+
+- Basic mods now branch once at Lv5(A/B), complete the chosen direction at Lv10, keep mastery beyond11. Great Success stops at5, resumes leftover growth after mandatory selection; branch has no RNG/reroll/extra normal choice. Legendary remains independent.
+- Special Growth fixed category.65 then owned-weapon internal bias max1.5; at most one per offer regardless of weapon count. Owned Mod.60/New Mod.45/internal bias1.4. Acquisition/range/account locks unchanged.
+- Gauss-owned branch/completion badges and existing detail/card UI; attack snapshots include branches. See the M12 implementation supplement for current check/tuning; no main merge.
 
 ### Preserved M10 missile baseline
 
@@ -56,7 +64,7 @@ Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It 
 ### Preserved M7 game baseline
 
 - No Lv5/Lv10 special weapon grants. Normal Level-Up offers can include one acquisition card: first Lv8+ with Category weight.30; later Lv14+ with one weapon owned, weight.20. Account capacity0→1→2 plus Core+1(max3), no pity, consumes one normal choice, always Weapon Lv1, no rarity/Great Success/quality promotion.
-- New basic modification Category.45 and owned-growth Category.35; at most one combined modification card per offer. Internal investment bias cap1.4. Mod slots3/Core4. Range remains separate/Rare+/max5/weight.25. Existing special growth weights and milestone Queue remain.
+- New basic modification Category.45 and owned-growth Category.60; at most one combined modification card per offer. Internal investment bias cap1.4. Mod slots3/Core4. Range remains separate/Rare+/max5/weight.25. Special Growth is now category.65/internal cap1.5; existing special milestone Queue remains.
 - Boss supply relief18:50, spawn19:00, HP30,000. Approach.025 progress/combat sec→charge at.60 for6000combat ms.1800 accumulated damage interrupts into3000ms vulnerability×1.5; failure hits Wall1800. Reinforcement at65%HP:24Grunts+8Runners once, queued if cap full. Final at25%HP: speed.09 and1000Wall damage every1800ms after arrival.
 - Warning/Boss Horde8 per1400combat ms, final32 per700ms, cap700. Suppress new elites from warning. Preserve M6 tuning before warning. Boss remains targetable and body-damageable, respects Gauss range and existing special ranges; resists weak knockback/gravity pull and cannot receive shield aura protection.
 - Boss kill is the only Stage Clear; Wall0 is failure and stays failed. Stage time continues beyond20min. M11 now settles natural Run rewards and persists completed Run/Stage 1 Clear records.
