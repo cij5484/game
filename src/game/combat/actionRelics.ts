@@ -27,8 +27,8 @@ export function applyImpact(
   after: readonly EnemyState[],
   owned: ReadonlySet<PrototypeRelicId>,
   random = Math.random,
-): EnemyState[] {
-  if (!owned.has("impact")) return [...after];
+): readonly EnemyState[] {
+  if (!owned.has("impact")) return after;
   const old = new Map(before.map((enemy) => [enemy.id, enemy]));
   return after.map((enemy) => {
     const previous = old.get(enemy.id);

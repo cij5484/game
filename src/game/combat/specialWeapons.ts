@@ -37,7 +37,7 @@ export interface SpecialContext {
   synergy?: PrototypeSynergies;
 }
 export interface SpecialResult {
-  enemies: EnemyState[];
+  enemies: readonly EnemyState[];
   effects: SpecialEffect[];
 }
 type Stats = ReturnType<typeof getSpecialWeaponStats>;
@@ -86,6 +86,11 @@ const branch = (w: SpecialWeaponState, id: string, path: "a" | "b") =>
 const grenadeTune = tune.grenadeBehavior;
 const missileTune = tune.missileBehavior;
 const droneTune = tune.droneBehavior;
+const indexEnemies = (enemies: readonly EnemyState[]) => {
+  const indices = new Map<number, number>();
+  for (let i = 0; i < enemies.length; i++) indices.set(enemies[i]!.id, i);
+  return indices;
+};
 const danger = (e: EnemyState) =>
   (e.elite ? tune.targeting.elite : 0) +
   (e.progress01 >= tune.targeting.wallProgress ? tune.targeting.wall : 0) +
@@ -96,7 +101,7 @@ const danger = (e: EnemyState) =>
       ? tune.targeting.shield
       : 0);
 
-/** Event targeting is O(N); in-flight missiles use the per-step ID map. */
+/** Event targeting is O(N); in-flight missiles reuse validated enemy indices. */
 export class SpecialWeapons {
   private serial = 0;
   private grenades: Grenade[] = [];
@@ -105,7 +110,14 @@ export class SpecialWeapons {
   private areas: Area[] = [];
   private cooldown = { grenade: 0, missile: 0 };
   private marks = new Map<number, { remaining: number; multiplier: number }>();
+  private enemyIndices = new Map<number, number>();
   private missilePressure = { targetId: -1, hits: 0 };
+
+  get activeUnitCount(): number {
+    let count = this.missiles.length + this.drones.length;
+    for (const grenade of this.grenades) if (grenade.delay <= 0) count++;
+    return count;
+  }
 
   get visuals(): SpecialVisual[] {
     return [
@@ -127,17 +139,28 @@ export class SpecialWeapons {
 
   advance(deltaMs: number, context: SpecialContext): SpecialResult {
     const result: SpecialResult = {
-      enemies: [...context.enemies],
+      enemies: context.enemies,
       effects: [],
     };
     if (!Number.isFinite(deltaMs) || deltaMs < 0) return result;
-    const indices = new Map(result.enemies.map((e, i) => [e.id, i]));
-    const livingIds = new Set(
-      result.enemies.filter((e) => e.hp > 0).map((e) => e.id),
-    );
+    let indexed = false;
+    const enemyIndex = (id: number) => {
+      const cached = this.enemyIndices.get(id);
+      if (cached !== undefined && result.enemies[cached]?.id === id)
+        return cached;
+      if (!indexed) {
+        this.enemyIndices = indexEnemies(result.enemies);
+        indexed = true;
+      }
+      return this.enemyIndices.get(id);
+    };
     for (const [id, mark] of this.marks) {
       mark.remaining -= deltaMs;
-      if (mark.remaining <= 0 || !livingIds.has(id)) this.marks.delete(id);
+      if (
+        mark.remaining <= 0 ||
+        !((result.enemies[enemyIndex(id) ?? -1]?.hp ?? 0) > 0)
+      )
+        this.marks.delete(id);
     }
     const drone = context.weapons.find((w) => w.id === "drone");
     this.prepareDrones(drone);
@@ -146,9 +169,8 @@ export class SpecialWeapons {
     do {
       const step = Math.min(50, remaining);
       for (const weapon of context.weapons) {
-        const stats = getSpecialWeaponStats(weapon, context.growth);
         if (weapon.id === "drone")
-          this.fireDrones(weapon, stats, step, context, result);
+          this.fireDrones(weapon, step, context, result);
         else {
           this.cooldown[weapon.id] = Math.max(
             0,
@@ -158,6 +180,7 @@ export class SpecialWeapons {
             this.cooldown[weapon.id] === 0 &&
             result.enemies.some((e) => e.hp > 0)
           ) {
+            const stats = getSpecialWeaponStats(weapon, context.growth);
             if (weapon.id === "grenade")
               this.throwGrenades(weapon, stats, context, result);
             else this.launchMissiles(weapon, stats, context, result);
@@ -166,7 +189,8 @@ export class SpecialWeapons {
       }
       this.advanceAreas(step, context, result);
       this.advanceGrenades(step, context, result);
-      this.advanceMissiles(step, context, result, indices);
+      if (this.missiles.length)
+        this.advanceMissiles(step, context, result, enemyIndex);
       remaining -= step;
     } while (remaining > 0);
     return result;
@@ -175,7 +199,7 @@ export class SpecialWeapons {
   /** Called only for a real Gauss round. Special damage never calls this hook. */
   onPrimary(targetId: number, context: SpecialContext): SpecialResult {
     const result: SpecialResult = {
-      enemies: [...context.enemies],
+      enemies: context.enemies,
       effects: [],
     };
     const weapon = context.weapons.find((w) => w.id === "drone");
@@ -185,9 +209,10 @@ export class SpecialWeapons {
     if (!mirror && !sync) return result;
     this.prepareDrones(weapon);
     const stats = getSpecialWeaponStats(weapon, context.growth);
+    const index = result.enemies.findIndex((e) => e.id === targetId);
     for (const drone of this.drones) {
-      const target = result.enemies.find((e) => e.id === targetId && e.hp > 0);
-      if (target)
+      const target = result.enemies[index];
+      if (target && target.hp > 0)
         this.droneHit(
           drone,
           target,
@@ -201,6 +226,21 @@ export class SpecialWeapons {
         );
     }
     return result;
+  }
+
+  private replaceEnemy(
+    result: SpecialResult,
+    context: SpecialContext,
+    index: number,
+    enemy: EnemyState,
+  ) {
+    // Only a changed result owns its array; input snapshots stay readonly.
+    const enemies =
+      result.enemies === context.enemies
+        ? [...result.enemies]
+        : (result.enemies as EnemyState[]);
+    enemies[index] = enemy;
+    result.enemies = enemies;
   }
 
   private critical(stats: Stats, context: SpecialContext) {
@@ -247,14 +287,14 @@ export class SpecialWeapons {
   private target(
     enemies: readonly EnemyState[],
     focusId: number | null,
-    excluded = new Set<number>(),
+    excluded?: ReadonlySet<number>,
     from?: Point,
     forward = false,
   ) {
     let best: EnemyState | undefined;
     let score = -Infinity;
     for (const enemy of enemies) {
-      if (enemy.hp <= 0 || excluded.has(enemy.id)) continue;
+      if (enemy.hp <= 0 || excluded?.has(enemy.id)) continue;
       const value =
         danger(enemy) +
         (enemy.id === focusId ? tune.targeting.focus : 0) +
@@ -682,12 +722,12 @@ export class SpecialWeapons {
     delta: number,
     context: SpecialContext,
     result: SpecialResult,
-    indices: Map<number, number>,
+    enemyIndex: (id: number) => number | undefined,
   ) {
     this.missiles = this.missiles.filter((missile) => {
       missile.lifetime -= delta;
       if (missile.lifetime <= 0) return false;
-      let target = result.enemies[indices.get(missile.targetId) ?? -1];
+      let target = result.enemies[enemyIndex(missile.targetId) ?? -1];
       if (!target || target.hp <= 0) {
         if (missile.retargets <= 0) return false;
         target = this.target(
@@ -742,7 +782,7 @@ export class SpecialWeapons {
         context,
         "missile",
       );
-      result.enemies[indices.get(target.id)!] = next;
+      this.replaceEnemy(result, context, enemyIndex(target.id)!, next);
       result.effects.push({
         kind: "explosion",
         weapon: "missile",
@@ -832,12 +872,12 @@ export class SpecialWeapons {
 
   private fireDrones(
     weapon: SpecialWeaponState,
-    stats: Stats,
     delta: number,
     context: SpecialContext,
     result: SpecialResult,
   ) {
-    const assigned = new Set<number>();
+    let assigned: Set<number> | undefined;
+    let stats: Stats | undefined;
     const packTarget =
       branch(weapon, "squadron", "b") &&
       this.drones.some((drone) => drone.cooldown <= delta)
@@ -866,13 +906,14 @@ export class SpecialWeapons {
         this.target(
           result.enemies,
           focus,
-          spread ? assigned : new Set(),
+          spread ? (assigned ??= new Set()) : undefined,
           drone,
           weapon.transcendence === "forward-deployment",
-        ) ?? this.target(result.enemies, focus, new Set(), drone);
+        ) ?? this.target(result.enemies, focus, undefined, drone);
       if (!target) continue;
-      assigned.add(target.id);
+      assigned?.add(target.id);
       drone.targetId = target.id;
+      stats ??= getSpecialWeaponStats(weapon, context.growth);
       this.droneHit(drone, target, weapon, stats, context, result, 1);
       let cycle = stats.cycleMs * this.cycleMultiplier(context);
       if (branch(weapon, "gunship", "a"))
@@ -926,7 +967,12 @@ export class SpecialWeapons {
     }
     const point = combatPosition(target);
     const index = result.enemies.findIndex((e) => e.id === target.id);
-    result.enemies[index] = this.hit(target, damage, bypass, context, "drone");
+    this.replaceEnemy(
+      result,
+      context,
+      index,
+      this.hit(target, damage, bypass, context, "drone"),
+    );
     result.effects.push({
       kind: "shot",
       weapon: "drone",

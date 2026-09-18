@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { GameStatus } from "../../src/game/dev/runtimeBridge";
 
 const state = vi.hoisted(() => ({
   values: {
@@ -10,7 +11,7 @@ const state = vi.hoisted(() => ({
   } as Record<string, number | boolean>,
   overrides: {} as Record<string, number | boolean>,
   listeners: new Set<() => void>(),
-  status: (_status: { connected: boolean; speed: number; level: number }) => {},
+  status: (_status: GameStatus) => {},
   stop: vi.fn(),
 }));
 vi.mock("../../src/game/dev/runtimeBalance", () => ({
@@ -146,7 +147,10 @@ beforeEach(() => {
     },
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 it("renders Korean tooltips, searches fields, applies values and releases subscriptions", () => {
   const cleanup = mountBalancePanel(
@@ -169,6 +173,100 @@ it("renders Korean tooltips, searches fields, applies values and releases subscr
   cleanup();
   expect(state.listeners.size).toBe(0);
   expect(state.stop).toHaveBeenCalledOnce();
+});
+
+it("shows read-only performance values and clears missing or disconnected measurements", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  expect(byId("balance-performance-fps").textContent).toBe("연결 대기 중");
+  const performance = {
+    fps: 59.94,
+    enemies: 120,
+    specialUnits: 3,
+    combatVfx: 0,
+    substeps: 4,
+  };
+  state.status({ connected: true, speed: 4, level: 20, performance });
+  for (const [key, value] of Object.entries(performance)) {
+    const node = byId(`balance-performance-${key}`);
+    expect(node.textContent).toBe(key === "fps" ? "59.9" : String(value));
+    expect(node.type).toBe("");
+  }
+  state.status({ connected: true, speed: 1, level: 1 });
+  expect(byId("balance-performance-fps").textContent).toBe("측정값 없음");
+  state.status({ connected: false, speed: 1, level: 1, performance });
+  expect(byId("balance-performance-enemies").textContent).toBe("연결 대기 중");
+  expect(state.overrides).toEqual({});
+});
+
+it("validates performance messages and keeps the one-second bridge cadence", async () => {
+  vi.useFakeTimers();
+  const { startBalanceBridge } = await vi.importActual<
+    typeof import("../../src/game/dev/runtimeBridge")
+  >("../../src/game/dev/runtimeBridge");
+  const channel = {
+    onmessage: (_event: { data: unknown }) => {},
+    postMessage: vi.fn(),
+    close: vi.fn(),
+  };
+  vi.stubGlobal(
+    "BroadcastChannel",
+    class {
+      constructor() {
+        return channel;
+      }
+    },
+  );
+  vi.stubGlobal("window", { setInterval, clearInterval });
+  const onStatus = vi.fn();
+  const stop = startBalanceBridge("panel", onStatus);
+  const performance = {
+    fps: 59.94,
+    enemies: 120,
+    specialUnits: 3,
+    combatVfx: 0,
+    substeps: 4,
+  };
+  const receive = (value: unknown) =>
+    channel.onmessage({
+      data: { type: "status", speed: 1, level: 1, performance: value },
+    });
+  receive(performance);
+  expect(onStatus).toHaveBeenLastCalledWith(
+    expect.objectContaining({ performance }),
+  );
+  for (const invalid of [
+    undefined,
+    null,
+    {},
+    { ...performance, fps: NaN },
+    { ...performance, enemies: -1 },
+    { ...performance, substeps: 1.5 },
+    { ...performance, combatVfx: "0" },
+  ]) {
+    receive(invalid);
+    expect(onStatus.mock.lastCall?.[0].performance).toBeUndefined();
+  }
+  expect(channel.postMessage).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(999);
+  expect(channel.postMessage).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(1);
+  expect(channel.postMessage).toHaveBeenCalledTimes(2);
+  vi.advanceTimersByTime(5000);
+  expect(onStatus.mock.lastCall?.[0].connected).toBe(false);
+  stop();
+  expect(channel.close).toHaveBeenCalledOnce();
+  channel.postMessage.mockClear();
+  const stopGame = startBalanceBridge("game", undefined, () => ({
+    speed: 1,
+    level: 1,
+    performance,
+  }));
+  expect(channel.postMessage).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: "status", performance }),
+  );
+  vi.advanceTimersByTime(1000);
+  expect(channel.postMessage).toHaveBeenCalledTimes(2);
+  stopGame();
 });
 
 it("preserves invalid rarity drafts until the complete group can apply, and handles toggles", () => {

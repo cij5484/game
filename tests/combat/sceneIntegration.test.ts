@@ -71,6 +71,11 @@ function scene(): SceneHarness {
     choices: { hide: noop },
     view: {
       createEnemy: () => ({ destroy: noop }),
+      enemyVisualPoint: (state: EnemyState) => ({
+        x: state.id,
+        y: state.progress01 * 900,
+        scaleX: 1,
+      }),
       showImpacts: noop,
       showSpecialEffects: noop,
       renderSpecialWeapons: noop,
@@ -80,6 +85,8 @@ function scene(): SceneHarness {
       showBarrage: noop,
       showGesture: noop,
       renderEnemy: noop,
+      renderEnemyStatus: noop,
+      beginFrame: noop,
       renderWall: noop,
       renderProgression: noop,
       setFocus: noop,
@@ -590,4 +597,85 @@ it("Boss killed by input-triggered Ultimate immediately shows Result exactly onc
   });
   test.update(0, 16);
   expect(result.show).toHaveBeenCalledTimes(1);
+});
+
+it("M9 renders each surviving enemy once per frame even across X4 combat substeps", () => {
+  const test = scene();
+  test.enemies = Array.from({ length: 700 }, (_, i) => ({
+    state: enemy(i + 1),
+    attackElapsedMs: 0,
+    visual: { destroy: noop },
+  }));
+  Object.assign(test, { gameSpeed: 4 });
+  const view = (
+    test as unknown as { view: { renderEnemy: ReturnType<typeof vi.fn> } }
+  ).view;
+  view.renderEnemy = vi.fn();
+  test.update(0, 64);
+  expect(view.renderEnemy).toHaveBeenCalledTimes(700);
+  for (let i = 0; i < 700; i++)
+    expect(view.renderEnemy.mock.calls[i]![1]).toBe(test.enemies[i]!.state);
+});
+it("M9 damage application and focus changes never redraw every enemy transform", () => {
+  const test = scene();
+  const view = (
+    test as unknown as {
+      view: {
+        renderEnemy: ReturnType<typeof vi.fn>;
+        renderEnemyStatus: ReturnType<typeof vi.fn>;
+      };
+    }
+  ).view;
+  view.renderEnemy = vi.fn();
+  view.renderEnemyStatus = vi.fn();
+  test.focusAt(1, 0);
+  test.focusAt(2, 0);
+  expect(view.renderEnemy).not.toHaveBeenCalled();
+  expect(view.renderEnemyStatus.mock.calls.length).toBeLessThanOrEqual(3);
+  test.applyEnemyStates(
+    test.enemies.map((e) =>
+      e.state.id === 1 ? { ...e.state, hp: e.state.hp - 1 } : e.state,
+    ),
+  );
+  expect(view.renderEnemy).not.toHaveBeenCalled();
+});
+
+it("M9 primary and Ultimate effects use current state snapshots before deferred rendering", () => {
+  const test = scene();
+  const view = (
+    test as unknown as {
+      view: {
+        enemyVisualPoint: (state: EnemyState) => {
+          x: number;
+          y: number;
+          scaleX: number;
+        };
+        showPrimary: ReturnType<typeof vi.fn>;
+        showBarrage: ReturnType<typeof vi.fn>;
+        renderEnemy: ReturnType<typeof vi.fn>;
+      };
+    }
+  ).view;
+  const point = vi.spyOn(view, "enemyVisualPoint");
+  view.showPrimary = vi.fn();
+  view.showBarrage = vi.fn();
+  view.renderEnemy = vi.fn();
+  test.update(0, 16);
+  expect(view.showPrimary).toHaveBeenCalled();
+  const first = view.showPrimary.mock.calls[0]![0][0];
+  expect(point.mock.results.some((result) => result.value === first)).toBe(
+    true,
+  );
+  expect(first).toEqual({ x: 1, y: 540, scaleX: 1 });
+  expect(view.showPrimary.mock.invocationCallOrder[0]).toBeLessThan(
+    view.renderEnemy.mock.invocationCallOrder[0]!,
+  );
+  point.mockClear();
+  view.renderEnemy.mockClear();
+  test.burst.credit({ eliteKills: 20 });
+  expect(test.activateUltimate()).toBe(true);
+  const points = view.showBarrage.mock.calls[0]![0];
+  expect(points).toEqual(point.mock.results.map((result) => result.value));
+  expect(points[0].y).toBeGreaterThan(540);
+  expect(view.renderEnemy).not.toHaveBeenCalled();
 });

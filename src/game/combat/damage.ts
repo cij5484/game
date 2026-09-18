@@ -36,35 +36,57 @@ export function applyEffectDamage(
   };
 }
 
-export function shieldProtection(enemies: readonly EnemyState[]): EnemyState[] {
-  const protectedBy = new Map<number, number>();
+export function shieldProtection(
+  enemies: readonly EnemyState[],
+): readonly EnemyState[] {
   const tune = eliteBalance.shield;
-  for (const guard of enemies) {
+  const guards = enemies.filter(
+    (e) => e.elite && e.kind === "shield" && e.hp > 0 && (e.shieldHp ?? 0) > 0,
+  );
+  let protectedBy: Map<number, number> | undefined;
+  if (guards.length) {
+    protectedBy = new Map();
+    const lanes: Record<EnemyState["lane"], EnemyState[]> = {
+      left: [],
+      center: [],
+      right: [],
+    };
+    for (const enemy of enemies)
+      if (!enemy.elite && !enemy.boss && enemy.hp > 0)
+        lanes[enemy.lane].push(enemy);
+    for (const lane of Object.values(lanes))
+      lane.sort((a, b) => b.progress01 - a.progress01 || a.id - b.id);
+    // Preserve guard order, nearest-behind priority, tie breaks and each guard's target budget.
+    for (const guard of guards) {
+      let count = 0;
+      for (const enemy of lanes[guard.lane]) {
+        if (enemy.progress01 > guard.progress01) continue;
+        if (
+          guard.progress01 - enemy.progress01 > tune.protectionBehind01 ||
+          count >= tune.protectionTargets
+        )
+          break;
+        if (!protectedBy.has(enemy.id)) protectedBy.set(enemy.id, guard.id);
+        count++;
+      }
+    }
+  }
+  let result: EnemyState[] | undefined;
+  for (let i = 0; i < enemies.length; i++) {
+    const enemy = enemies[i]!;
+    const guard = protectedBy?.get(enemy.id);
+    const multiplier = guard === undefined ? 1 : tune.damageMultiplier;
     if (
-      !guard.elite ||
-      guard.kind !== "shield" ||
-      guard.hp <= 0 ||
-      (guard.shieldHp ?? 0) <= 0
+      enemy.protectedBy === guard &&
+      enemy.incomingDamageMultiplier === multiplier
     )
       continue;
-    const behind = enemies
-      .filter(
-        (e) =>
-          !e.elite &&
-          !e.boss &&
-          e.hp > 0 &&
-          e.lane === guard.lane &&
-          e.progress01 <= guard.progress01 &&
-          guard.progress01 - e.progress01 <= tune.protectionBehind01,
-      )
-      .sort((a, b) => b.progress01 - a.progress01 || a.id - b.id)
-      .slice(0, tune.protectionTargets);
-    for (const e of behind)
-      if (!protectedBy.has(e.id)) protectedBy.set(e.id, guard.id);
+    result ??= [...enemies];
+    result[i] = {
+      ...enemy,
+      protectedBy: guard,
+      incomingDamageMultiplier: multiplier,
+    };
   }
-  return enemies.map((e) => ({
-    ...e,
-    protectedBy: protectedBy.get(e.id),
-    incomingDamageMultiplier: protectedBy.has(e.id) ? tune.damageMultiplier : 1,
-  }));
+  return result ?? enemies;
 }

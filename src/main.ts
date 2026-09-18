@@ -23,7 +23,13 @@ async function start() {
   const game = createGame(parent!);
   const stop = bridge?.startBalanceBridge("game", undefined, () => {
     const scene = game.scene.getScenes(true)[0] as
-      { developerStatus?: { speed: number; level: number } } | undefined;
+      | {
+          developerStatus?: Omit<
+            import("./game/dev/runtimeBridge").GameStatus,
+            "connected" | "appliedOverrides"
+          >;
+        }
+      | undefined;
     return scene?.developerStatus ?? { speed: 1, level: 1 };
   });
   import.meta.hot?.dispose(() => {

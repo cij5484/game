@@ -28,6 +28,61 @@ const context = (weapons: SpecialWeaponState[], enemies = [enemy(1)]) => ({
   focusId: null,
   random: () => 1,
 });
+it("keeps input snapshots when specials are idle or projectiles only move", () => {
+  const idle = new SpecialWeapons();
+  const ctx = context([]);
+  Object.freeze(ctx.enemies);
+  Object.freeze(ctx.enemies[0]);
+  expect(idle.advance(50, ctx).enemies).toBe(ctx.enemies);
+  expect(idle.onPrimary(1, ctx).enemies).toBe(ctx.enemies);
+  const missiles = new SpecialWeapons();
+  const flight = { ...ctx, weapons: [weapon("missile")] };
+  expect(missiles.advance(0, flight).enemies).toBe(ctx.enemies);
+  expect(missiles.advance(50, flight).enemies).toBe(ctx.enemies);
+  const drones = new SpecialWeapons();
+  const firing = { ...ctx, weapons: [weapon("drone")] };
+  const hit = drones.advance(0, firing);
+  expect(hit.enemies).not.toBe(ctx.enemies);
+  expect(hit.enemies[0]!.hp).toBeLessThan(ctx.enemies[0]!.hp);
+  expect(drones.advance(50, { ...firing, enemies: hit.enemies }).enemies).toBe(
+    hit.enemies,
+  );
+});
+
+it("counts only visible active units without creating visual snapshots", () => {
+  const runtime = new SpecialWeapons();
+  expect(runtime.activeUnitCount).toBe(0);
+  const ctx = context([
+    weapon("grenade", { level: 20, overclock: "barrage" }),
+    weapon("missile"),
+    weapon("drone"),
+  ]);
+  runtime.advance(0, ctx);
+  expect(runtime.activeUnitCount).toBe(runtime.visuals.length);
+  runtime.advance(200, ctx);
+  expect(runtime.activeUnitCount).toBe(runtime.visuals.length);
+});
+
+it("synchronized drones stop hitting a killed primary target and preserve other references", () => {
+  const runtime = new SpecialWeapons();
+  const ctx = context(
+    [
+      weapon("drone", {
+        level: 20,
+        tree: "squadron",
+        branch: "b",
+        overclock: "synchronization",
+      }),
+    ],
+    [{ ...enemy(1), hp: 1 }, enemy(2)],
+  );
+  const result = runtime.onPrimary(1, ctx);
+  expect(result.effects).toHaveLength(1);
+  expect(result.enemies[0]!.hp).toBe(0);
+  expect(result.enemies[1]).toBe(ctx.enemies[1]);
+  expect(ctx.enemies[0]!.hp).toBe(1);
+});
+
 it("saturation adds four carpet submunitions and three swarm missiles", () => {
   const synergy = new PrototypeSynergies();
   synergy.active.add("saturation");
@@ -190,6 +245,30 @@ it("missiles move visibly toward focus and reacquire a dead target with emergenc
     enemies: [{ ...enemy(1), hp: 0 }, enemy(2, 0.8)],
   });
   expect(result.enemies[1]!.hp).toBeLessThan(1000);
+});
+it("missile indices follow reordered snapshots and removed targets retarget in array order", () => {
+  const runtime = new SpecialWeapons();
+  const ctx = {
+    ...context(
+      [weapon("missile", { level: 15, transcendence: "emergency-retarget" })],
+      [enemy(1, 0.2), enemy(2, 0.8), enemy(3, 0.8)],
+    ),
+    focusId: 1,
+  };
+  runtime.advance(0, ctx);
+  const reordered = [ctx.enemies[2]!, ctx.enemies[0]!, ctx.enemies[1]!];
+  expect(
+    runtime.advance(50, { ...ctx, weapons: [], enemies: reordered }).enemies,
+  ).toBe(reordered);
+  const remaining = [reordered[0]!, reordered[2]!];
+  const result = runtime.advance(1000, {
+    ...ctx,
+    weapons: [],
+    enemies: remaining,
+  });
+  expect(result.enemies[0]!.hp).toBeLessThan(1000);
+  expect(result.enemies[1]).toBe(remaining[1]);
+  expect(remaining.every((target) => target.hp === 1000)).toBe(true);
 });
 it("drones persist and synchronization only fires from primary events", () => {
   const runtime = new SpecialWeapons();

@@ -99,6 +99,28 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   connection.append(status, gameState, gameLink);
   header.append(connection);
 
+  const performance = element("details", "", "balance-group");
+  performance.open = true;
+  performance.append(element("summary", "성능"));
+  const metrics = element("dl", "", "balance-performance");
+  const performanceValues = (
+    [
+      ["fps", "FPS"],
+      ["enemies", "적 수"],
+      ["specialUnits", "특수 유닛 수"],
+      ["combatVfx", "전투 효과 수"],
+      ["substeps", "프레임당 시뮬레이션 단계 수"],
+    ] as const
+  ).map(([key, label]) => {
+    const row = element("div");
+    const value = element("dd", "연결 대기 중");
+    value.id = `balance-performance-${key}`;
+    row.append(element("dt", label), value);
+    metrics.append(row);
+    return { key, value };
+  });
+  performance.append(metrics);
+
   const notice = element(
     "p",
     "숫자 입력 후 Enter 또는 다른 항목을 클릭하면 적용합니다.",
@@ -514,7 +536,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
           .join(" · ") +
         " · 다음 적 생성부터 적용";
   }
-  root.append(header, sticky, examples, groupsRoot, storage);
+  root.append(header, performance, sticky, examples, groupsRoot, storage);
   parent.append(root);
   refresh();
   attempt(() => refreshPresets());
@@ -525,6 +547,14 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     gameState.textContent = state.connected
       ? `개발 배속 X${state.speed} · 캐릭터 Lv${state.level}${state.appliedOverrides === undefined ? "" : ` · 게임 적용 ${state.appliedOverrides}개`}`
       : "같은 브라우저의 게임 창을 열어 주세요.";
+    for (const { key, value } of performanceValues)
+      value.textContent = !state.connected
+        ? "연결 대기 중"
+        : !state.performance
+          ? "측정값 없음"
+          : key === "fps"
+            ? state.performance[key].toFixed(1)
+            : String(state.performance[key]);
   });
   return () => {
     unsubscribe();
