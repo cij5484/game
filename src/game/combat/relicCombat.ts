@@ -1,3 +1,4 @@
+import { applyEffectDamage } from "./damage";
 import { combatPosition } from "../battlefield/combatGeometry";
 import { relicBalance, type RelicLevels } from "../data/relics";
 import { weaponTraitIds } from "../data/traits";
@@ -279,7 +280,7 @@ export class RelicCombat {
     result.hitIds = [...damaged];
     result.enemies = enemies.map((enemy) =>
       damaged.has(enemy.id)
-        ? { ...enemy, hp: Math.max(0, enemy.hp - this.effects.shatterDamage) }
+        ? applyEffectDamage(enemy, this.effects.shatterDamage)
         : enemy,
     );
     return result;
@@ -337,7 +338,7 @@ export class RelicCombat {
     return {
       enemies: enemies.map((enemy) =>
         arcIds.has(enemy.id)
-          ? { ...enemy, hp: Math.max(0, enemy.hp - this.effects.arcDamage) }
+          ? applyEffectDamage(enemy, this.effects.arcDamage)
           : enemy,
       ),
       hitIds: [...arcIds],

@@ -30,6 +30,7 @@ export interface StimpackConfig {
 
 export interface EnemyConfig {
   hp: number;
+  shieldHp?: number;
   /** Fraction of the spawn-to-wall distance travelled per second (0 to 1). */
   progressPerSecond: number;
   wallAttackDamage: number;

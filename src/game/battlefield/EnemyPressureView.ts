@@ -94,7 +94,7 @@ export class EnemyPressureView {
       this.xpFill,
     ]);
 
-    this.runText = text(654, 1131, "5:00", 25);
+    this.runText = text(654, 1131, "20:00", 25);
     this.hud.add(this.runText);
     this.stimText = text(360, 1040, "", 20);
     this.magicText = text(360, 1010, "", 16);
@@ -261,6 +261,13 @@ export class EnemyPressureView {
           .setOrigin(0.5),
       );
     }
+    if (enemy.maxShieldHp) {
+      const bar = this.scene.add
+        .rectangle(-28, 33, 56, 7, 0x7deaff)
+        .setOrigin(0, 0.5);
+      visual.add(bar);
+      visual.setData("shieldBar", bar);
+    }
     label.setVisible(this.debugVisible);
     this.enemyLabels.add(label);
     visual.once("destroy", () => {
@@ -303,23 +310,56 @@ export class EnemyPressureView {
     (visual.getAt(1) as Phaser.GameObjects.Text).setText(
       `${enemy.kind[0]!.toUpperCase()} ${Math.ceil(enemy.hp)} · ${enemy.progress01.toFixed(2)}`,
     );
+    const bar = visual.getData("shieldBar") as
+      Phaser.GameObjects.Rectangle | undefined;
+    bar?.setDisplaySize(
+      56 * ((enemy.shieldHp ?? 0) / (enemy.maxShieldHp ?? 1)),
+      7,
+    );
+    if (enemy.elite) {
+      (visual.getAt(2) as Phaser.GameObjects.Text).setText(
+        enemy.kind === "shield"
+          ? (enemy.shieldHp ?? 0) > 0
+            ? "◆ 중장 방패"
+            : "◆ 방패 파괴"
+          : enemy.chargePhase === "telegraph"
+            ? "⚠ 돌진 준비"
+            : enemy.chargePhase === "charging"
+              ? "▶ 돌진"
+              : "◆ 광폭 돌진병",
+      );
+    }
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
       .setFillStyle(
-        slowed ? 0xb2f7ff : enemy.elite ? 0xe8bd50 : colors[enemy.kind],
+        slowed
+          ? 0xb2f7ff
+          : enemy.chargePhase === "telegraph"
+            ? 0xff674c
+            : enemy.chargePhase === "charging"
+              ? 0xff3428
+              : enemy.kind === "shield" && !enemy.shieldHp
+                ? 0x766880
+                : enemy.elite
+                  ? 0xe8bd50
+                  : colors[enemy.kind],
       )
       .setStrokeStyle(
         enemy.id === this.focusId
           ? 7
-          : enemy.elite
-            ? 5
-            : enemy.phase === "attacking"
-              ? 4
-              : 0,
+          : enemy.protectedBy !== undefined
+            ? 4
+            : enemy.elite
+              ? 5
+              : enemy.phase === "attacking"
+                ? 4
+                : 0,
         enemy.id === this.focusId
           ? 0xffffff
-          : enemy.elite
-            ? 0xffedb5
-            : 0xff665f,
+          : enemy.protectedBy !== undefined
+            ? 0x7deaff
+            : enemy.elite
+              ? 0xffedb5
+              : 0xff665f,
       );
   }
 

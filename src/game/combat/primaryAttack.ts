@@ -2,7 +2,7 @@ import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
 import { primaryAttackBalance } from "../data/primaryAttack";
 import { getTraitEffects } from "../data/traits";
 import { getGeneralStats, type UpgradeRanks } from "../data/upgrades";
-import { eliteBalance } from "../data/elite";
+import { applyPrimaryDamage } from "./damage";
 import { gaussRifleBalance } from "../data/weapons";
 import { evolutionRecipes } from "../data/evolutions";
 import { activeSynergies } from "../progression/synergy";
@@ -171,11 +171,6 @@ export function primaryAttack(
     return impacted;
   };
   const damageAmount = (enemy: EnemyState, factor: number) => {
-    const armor = enemyConfigs[enemy.kind].primaryDamageMultiplier;
-    const bypass = Math.min(
-      1,
-      traits.shieldBypass + (relicModifiers.shieldBypass ?? 0),
-    );
     const shieldBonus =
       enemy.kind === "shield"
         ? (relicModifiers.shieldDamageMultiplier ?? 1)
@@ -185,7 +180,6 @@ export function primaryAttack(
       stats.primaryDamageMultiplier *
       (relicModifiers.damageMultiplier ?? 1) *
       factor *
-      (armor + (1 - armor) * bypass) *
       shieldBonus;
     return executions.has(enemy.id) ? Math.max(enemy.hp, amount) : amount;
   };
@@ -203,8 +197,11 @@ export function primaryAttack(
     for (const secondary of impacted
       .filter(
         (enemy) =>
-          enemy.hp <=
-          damageAmount(enemy, factor * traits.explosionDamageFactor),
+          applyPrimaryDamage(
+            enemy,
+            damageAmount(enemy, factor * traits.explosionDamageFactor),
+            traits.shieldBypass + (relicModifiers.shieldBypass ?? 0),
+          ).hp <= 0,
       )
       .slice(0, traits.explosionChainTargets)) {
       splash(
@@ -222,10 +219,7 @@ export function primaryAttack(
   ) => {
     const multiplier = critical ? stats.criticalMultiplier : 1;
     if (!register(enemy, factor * multiplier, kind, critical)) return;
-    const maximumHp =
-      enemy.maxHp ??
-      enemyConfigs[enemy.kind].hp *
-        (enemy.elite ? eliteBalance.hpMultiplier : 1);
+    const maximumHp = enemy.maxHp ?? enemyConfigs[enemy.kind].hp;
     if (
       traits.executionThreshold > 0 &&
       enemy.hp <= maximumHp * traits.executionThreshold
@@ -365,12 +359,13 @@ export function primaryAttack(
     for (const candidate of nearby(center, traits.executionSplashRadius)) {
       if (chainBudget <= 0) break;
       if (executions.has(candidate.id)) continue;
-      const maximumHp =
-        candidate.maxHp ??
-        enemyConfigs[candidate.kind].hp *
-          (candidate.elite ? eliteBalance.hpMultiplier : 1);
+      const maximumHp = candidate.maxHp ?? enemyConfigs[candidate.kind].hp;
       const factor = factors.get(candidate.id) ?? 0;
-      const remainingHp = candidate.hp - damageAmount(candidate, factor);
+      const remainingHp = applyPrimaryDamage(
+        candidate,
+        damageAmount(candidate, factor),
+        traits.shieldBypass + (relicModifiers.shieldBypass ?? 0),
+      ).hp;
       if (
         remainingHp <= 0 ||
         remainingHp > maximumHp * traits.executionThreshold
@@ -382,10 +377,12 @@ export function primaryAttack(
       }
     }
   }
-  const damage = (enemy: EnemyState, factor: number): EnemyState => ({
-    ...enemy,
-    hp: Math.max(0, enemy.hp - damageAmount(enemy, factor)),
-  });
+  const damage = (enemy: EnemyState, factor: number): EnemyState =>
+    applyPrimaryDamage(
+      enemy,
+      damageAmount(enemy, factor),
+      traits.shieldBypass + (relicModifiers.shieldBypass ?? 0),
+    );
   const result = enemies.map((enemy) =>
     factors.has(enemy.id) ? damage(enemy, factors.get(enemy.id)!) : enemy,
   );
