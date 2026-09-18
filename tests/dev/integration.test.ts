@@ -148,3 +148,40 @@ it("binds Korean missile tuning to live runtime values and rejects invalid count
   expect(JSON.stringify(specialWeaponBalance.grenade)).toBe(grenade);
   expect(JSON.stringify(specialWeaponBalance.drone)).toBe(drone);
 });
+
+it("migrates a legacy new-mod override to count keys while explicit new values win", () => {
+  setOverrides({
+    "marineGrowth.newModWeight": 0.22,
+    "marineGrowth.newModWeight1": 0.19,
+  });
+  expect(getOverrides()).toEqual({
+    "marineGrowth.newModWeight0": 0.22,
+    "marineGrowth.newModWeight1": 0.19,
+    "marineGrowth.newModWeight2": 0.22,
+    "marineGrowth.newModWeight3": 0.22,
+  });
+  const before = getOverrides();
+  expect(() => setOverrides({ "marineGrowth.newModWeight": -1 })).toThrow();
+  expect(getOverrides()).toEqual(before);
+});
+
+it("exports and reloads per-mod weights and derived efficiency once per runtime key", () => {
+  const settings = {
+    "marineModWeights.burst.acquisitionWeight": 0.45,
+    "marineModWeights.burst.growthWeight": 1.1,
+    "marineMods.burstAdditionalRoundDamageFactor": 0.4,
+    "marineMods.burstAdditionalRoundDamagePerQuality": 0.03,
+    "marineMods.burstAdditionalRoundDamageMax": 0.9,
+    "marineMods.heavyPenaltyBase": 1.1,
+    "marineGrowth.rangeWeight": 0.15,
+  };
+  setOverrides(settings);
+  const exported = JSON.stringify({ version: 1, overrides: getOverrides() });
+  resetOverrides();
+  loadPayload(JSON.parse(exported));
+  expect(getOverrides()).toEqual(settings);
+  expect(() =>
+    setOverrides({ "marineMods.burstAdditionalRoundDamageMax": 0.1 }),
+  ).toThrow();
+  expect(getOverrides()).toEqual(settings);
+});

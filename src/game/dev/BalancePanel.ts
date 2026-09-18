@@ -1,4 +1,5 @@
 import { balanceFields } from "./balanceFields";
+import { quickSections, detailCategories, detailCategory } from "./panelLayout";
 import {
   getValue,
   getDefault,
@@ -10,6 +11,12 @@ import {
 import { startBalanceBridge } from "./runtimeBridge";
 import { metaStore } from "../meta/metaSave";
 import { researchDefinitions } from "../data/meta";
+import {
+  getMasteryPoints,
+  getUnlocks,
+  operationRecords,
+  type OperationId,
+} from "../data/operations";
 import "./dev-panel.css";
 
 type Settings = { version: 1; overrides: Record<string, number | boolean> };
@@ -101,9 +108,9 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   connection.append(status, gameState, gameLink);
   header.append(connection);
 
-  const performance = element("details", "", "balance-group");
+  const performance = element("details", "", "balance-group balance-live");
   performance.open = true;
-  performance.append(element("summary", "성능"));
+  performance.append(element("summary", "실시간 상태"));
   const metrics = element("dl", "", "balance-performance");
   const performanceValues = (
     [
@@ -111,7 +118,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
       ["enemies", "적 수"],
       ["specialUnits", "특수 유닛 수"],
       ["combatVfx", "전투 효과 수"],
-      ["substeps", "프레임당 시뮬레이션 단계 수"],
+      ["substeps", "Substeps"],
     ] as const
   ).map(([key, label]) => {
     const row = element("div");
@@ -122,6 +129,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     return { key, value };
   });
   performance.append(metrics);
+  const liveDock = element("div");
 
   const notice = element(
     "p",
@@ -211,18 +219,60 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   const count = element("small");
   toolbar.append(searchLabel, search, count, apply, reset);
   const sticky = element("div", "", "balance-sticky");
-  sticky.append(toolbar, notice);
+  const tabs = element("div", "", "balance-tabs");
+  tabs.setAttribute("role", "tablist");
+  let activeView: "quick" | "detail" = "quick";
+  let activeQuick = "overview";
+  let activeCategory = "전체 게임";
+  const quickTab = button("간편 조정", "자주 바꾸는 대표값을 조절합니다.", () =>
+    switchView("quick"),
+  );
+  const detailTab = button("상세 설정", "전체 항목을 기능별로 찾습니다.", () =>
+    switchView("detail"),
+  );
+  quickTab.id = "balance-tab-quick";
+  detailTab.id = "balance-tab-detail";
+  for (const control of [quickTab, detailTab])
+    control.setAttribute("role", "tab");
+  tabs.append(quickTab, detailTab);
+  sticky.append(tabs, toolbar, notice);
+  const quickNav = element("nav", "", "balance-quick-nav");
+  quickNav.setAttribute("aria-label", "간편 조정 섹션");
+  const quickButtons = quickSections.map((section) => {
+    const control = button(section.title, `${section.title} 대표 설정`, () => {
+      activeQuick = section.id;
+      renderLayout();
+    });
+    control.id = `balance-quick-${section.id}`;
+    quickNav.append(control);
+    return { id: section.id, control };
+  });
+  const quickContent = element("section", "", "balance-quick-grid");
+  quickContent.id = "balance-quick-content";
+  quickContent.setAttribute("role", "tabpanel");
+  quickContent.setAttribute("aria-labelledby", quickTab.id);
+  const workspace = element("div", "", "balance-workspace");
+  const categoryNav = element("nav", "", "balance-category-nav");
+  categoryNav.setAttribute("aria-label", "상세 설정 카테고리");
+  const categoryPicker = element("div", "", "balance-category-picker");
+  const categoryLabel = element("label", "설정 카테고리");
+  categoryLabel.htmlFor = "balance-category";
+  const categorySelect = element("select");
+  categorySelect.id = categoryLabel.htmlFor;
+  categoryPicker.append(categoryLabel, categorySelect);
   const examples = element("p", "", "balance-hp-examples");
   const groupsRoot = element("section", "", "balance-groups");
   groupsRoot.setAttribute("aria-label", "밸런스 항목");
   const groups = new Map<string, HTMLDetailsElement>();
   const rows = balanceFields.map((field, index) => {
-    let group = groups.get(field.group);
+    const category = detailCategory(field);
+    let group = groups.get(category);
     if (!group) {
       group = element("details", "", "balance-group");
-      group.open = groups.size === 0;
-      group.append(element("summary", field.group));
-      groups.set(field.group, group);
+      group.open = true;
+      group.dataset.category = category;
+      group.append(element("summary", category));
+      groups.set(category, group);
       groupsRoot.append(group);
     }
     const row = element("div", "", "balance-field");
@@ -238,7 +288,13 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     );
     description.id = `balance-description-${index}`;
     const identity = element("div", "", "balance-identity");
-    identity.append(label, description, element("code", field.id));
+    const help = element("details", "", "balance-help");
+    help.append(
+      element("summary", "설명"),
+      description,
+      element("code", field.id),
+    );
+    identity.append(label, help);
     const input = element("input");
     input.id = label.htmlFor;
     input.title = `${field.description} ${field.apply}${cycleSeconds(field.id) ? " 현재 전투 속도에서 개발 배속 X1일 때의 실제 초입니다. 기본값 표시는 코드 기본 전투 속도로 환산합니다." : ""}`;
@@ -308,6 +364,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
       changed,
       restore,
       group,
+      category,
       isBoolean,
       unit,
     };
@@ -319,21 +376,8 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   empty.hidden = true;
   groupsRoot.append(empty);
   search.addEventListener("input", () => {
-    const query = search.value.trim().toLocaleLowerCase();
-    for (const { field, row, group } of rows) {
-      row.hidden =
-        !`${field.group} ${field.label} ${field.description} ${field.id}`
-          .toLocaleLowerCase()
-          .includes(query);
-      if (query && !row.hidden) group.open = true;
-    }
-    for (const group of groups.values())
-      group.hidden = !rows.some(
-        (row) => row.group === group && !row.row.hidden,
-      );
-    const visible = rows.filter(({ row }) => !row.hidden).length;
-    count.textContent = `${visible} / ${rows.length}개 항목`;
-    empty.hidden = visible > 0;
+    if (search.value.trim()) activeView = "detail";
+    renderLayout();
   });
 
   const storage = element("details", "", "balance-group balance-storage");
@@ -527,6 +571,9 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     const linear = "enemyLevelScaling.linear",
       quadratic = "enemyLevelScaling.quadratic";
     examples.hidden =
+      activeView !== "detail" ||
+      activeCategory !== "적 / Horde" ||
+      !!search.value.trim() ||
       !balanceFields.some((field) => field.id === linear) ||
       !balanceFields.some((field) => field.id === quadratic);
     if (!examples.hidden)
@@ -540,20 +587,31 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
           .join(" · ") +
         " · 다음 적 생성부터 적용";
   }
-  root.append(header, performance);
+  const specialPanels = new Map<string, HTMLElement>([
+    ["프리셋 / JSON", storage],
+  ]);
   let stopMeta = () => {};
   if (import.meta.env.DEV) {
     const meta = element("details", "", "balance-group");
     meta.open = true;
     meta.append(element("summary", "메타 진행"));
     const body = element("div", "", "balance-storage-body");
+    const unlock = element("details", "", "balance-group");
+    unlock.open = true;
+    unlock.append(element("summary", "해금 / 메타 저장"));
+    const unlockBody = element("div", "", "balance-storage-body");
     const state = element("p");
     state.id = "balance-meta-state";
     const levels = element("p");
     levels.id = "balance-meta-research";
+    const mastery = element("p");
+    mastery.id = "balance-meta-mastery";
     const refreshMeta = () => {
       try {
         const save = metaStore.read();
+        const unlocks = getUnlocks(save);
+        const records = save.characters.marine.completedOperationRecords;
+        mastery.textContent = `Marine 숙련 ${getMasteryPoints(records)} Point · 기록 ${records.length}/${operationRecords.length} · 특수 슬롯 ${unlocks.specialCapacity}/2 · 유물 ${unlocks.relicSystem ? "해금" : "잠김"} · 코어 ${unlocks.coreSystem ? "해금" : "잠김"} · 시너지 ${unlocks.synergySystem ? "해금" : "잠김"}`;
         state.textContent = `Gold ${save.account.gold} · Credits ${save.account.credits} · 새로고침 Lv${save.account.rerollLevel}/3`;
         levels.textContent = Object.values(researchDefinitions)
           .map(
@@ -565,6 +623,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
         state.textContent = `메타 저장 확인 필요: ${error instanceof Error ? error.message : String(error)}`;
         levels.textContent =
           "메인 화면의 저장 관리에서 백업 가져오기 또는 초기화를 진행하세요.";
+        mastery.textContent = "숙련 · 저장 확인 필요";
       }
     };
     body.append(
@@ -590,8 +649,11 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
           refreshMeta();
         },
       ),
+    );
+    unlockBody.append(
+      mastery,
       button(
-        "메타 저장 초기화",
+        "신규 계정 상태로 초기화",
         "확인 후 영구 진행만 초기화합니다. 개발 밸런스 설정은 유지합니다.",
         () => {
           if (
@@ -606,15 +668,196 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
         },
       ),
     );
+    const recordLabel = element("label", "완료할 작전 기록");
+    recordLabel.htmlFor = "balance-meta-record";
+    const recordSelect = element("select");
+    recordSelect.id = recordLabel.htmlFor;
+    for (const record of operationRecords) {
+      const option = element(
+        "option",
+        `${record.title} · 숙련 +${record.points}`,
+      );
+      option.value = record.id;
+      recordSelect.append(option);
+    }
+    recordSelect.value = operationRecords[0]!.id;
+    unlockBody.append(
+      recordLabel,
+      recordSelect,
+      button(
+        "선택 기록 완료",
+        "선택 기록과 직접 보상을 영구 저장합니다. 중복 Point는 지급하지 않습니다.",
+        () => {
+          metaStore.completeRecord(recordSelect.value as OperationId);
+          refreshMeta();
+        },
+      ),
+      button(
+        "모든 Prototype 콘텐츠 해금",
+        "개발 테스트용으로 모든 Prototype 콘텐츠의 해금 상태를 저장합니다.",
+        () => {
+          metaStore.unlockAll();
+          refreshMeta();
+        },
+      ),
+      button(
+        "점진 해금 상태 초기화",
+        "Gold·Credits·구매 연구는 보존하고 기록·해금 진행을 초기화합니다.",
+        () => {
+          if (
+            !window.confirm(
+              "작전 기록과 점진 해금을 초기화할까요? Gold·Credits·구매 연구는 보존됩니다.",
+            )
+          )
+            return;
+          metaStore.resetProgression();
+          refreshMeta();
+        },
+      ),
+      element(
+        "p",
+        "특수 슬롯 테스트 · 계정 해금과 별도로 강제 지정합니다. 새 출격에서 확인하세요.",
+      ),
+      ...([0, 1, 2] as const).map((capacity) =>
+        button(
+          `특수 슬롯 ${capacity}`,
+          `개발 테스트용 특수 슬롯 ${capacity}개로 설정합니다.`,
+          () => {
+            metaStore.setSpecialCapacity(capacity);
+            refreshMeta();
+          },
+        ),
+      ),
+    );
     meta.append(body);
-    root.append(meta);
+    unlock.append(unlockBody);
+    specialPanels.set("Meta Progression", meta);
+    specialPanels.set("Unlock / Save", unlock);
     refreshMeta();
     window.addEventListener("storage", refreshMeta);
     stopMeta = () => window.removeEventListener("storage", refreshMeta);
   }
-  root.append(sticky, examples, groupsRoot, storage);
+  const categoryButtons = detailCategories
+    .filter(
+      (category) =>
+        groups.has(category) ||
+        specialPanels.has(category) ||
+        category === "Performance / Debug",
+    )
+    .map((category) => {
+      const control = button(category, `${category} 전체 설정`, () =>
+        selectCategory(category),
+      );
+      control.dataset.category = category;
+      categoryNav.append(control);
+      const option = element("option", category);
+      option.value = category;
+      categorySelect.append(option);
+      return { category, control };
+    });
+  categorySelect.addEventListener("change", () =>
+    selectCategory(categorySelect.value),
+  );
+  for (const panel of specialPanels.values()) groupsRoot.append(panel);
+  groupsRoot.setAttribute("role", "tabpanel");
+  groupsRoot.setAttribute("aria-labelledby", detailTab.id);
+  workspace.append(categoryNav, groupsRoot);
+  root.append(
+    header,
+    liveDock,
+    sticky,
+    quickNav,
+    categoryPicker,
+    examples,
+    quickContent,
+    workspace,
+  );
+
+  function switchView(view: "quick" | "detail") {
+    activeView = view;
+    search.value = "";
+    renderLayout();
+  }
+  function selectCategory(category: string) {
+    activeView = "detail";
+    activeCategory = category;
+    search.value = "";
+    renderLayout();
+    refresh();
+  }
+  function renderLayout() {
+    const query = search.value.trim().toLocaleLowerCase();
+    const quick = activeView === "quick";
+    root.dataset.view = activeView;
+    quickTab.setAttribute("aria-selected", String(quick));
+    detailTab.setAttribute("aria-selected", String(!quick));
+    quickTab.setAttribute("aria-controls", quickContent.id);
+    quickNav.hidden = !quick;
+    quickContent.hidden = !quick;
+    workspace.hidden = quick;
+    categoryPicker.hidden = quick;
+    categorySelect.value = activeCategory;
+    for (const { category, control } of categoryButtons)
+      control.setAttribute(
+        "aria-current",
+        String(!query && category === activeCategory),
+      );
+    for (const { id, control } of quickButtons)
+      control.setAttribute("aria-current", String(id === activeQuick));
+    // Move existing rows; Quick and Detail always edit the same input and draft.
+    for (const { field, row, group, category } of rows) {
+      group.append(row);
+      row.hidden =
+        quick ||
+        (query
+          ? !`${category} ${field.group} ${field.label} ${field.description} ${field.id}`
+              .toLocaleLowerCase()
+              .includes(query)
+          : category !== activeCategory);
+    }
+    quickContent.replaceChildren();
+    if (quick) {
+      const section = quickSections.find(
+        (section) => section.id === activeQuick,
+      )!;
+      for (const card of section.cards) {
+        const fields = card.fields
+          .map((id) => rows.find((row) => row.field.id === id))
+          .filter((row) => row !== undefined);
+        if (!fields.length) continue;
+        const block = element("article", "", "balance-quick-card");
+        block.dataset.quickCard = card.id;
+        block.append(element("h2", card.title));
+        for (const { row } of fields) {
+          row.hidden = false;
+          block.append(row);
+        }
+        quickContent.append(block);
+      }
+    }
+    for (const [category, group] of groups) {
+      group.hidden =
+        quick ||
+        !rows.some((row) => row.category === category && !row.row.hidden);
+      if (query && !group.hidden) group.open = true;
+    }
+    for (const [category, panel] of specialPanels)
+      panel.hidden = quick || !!query || category !== activeCategory;
+    (quick ? liveDock : groupsRoot).append(performance);
+    performance.hidden =
+      !quick && (!!query || activeCategory !== "Performance / Debug");
+    const visible = rows.filter(({ row }) => !row.hidden).length;
+    count.textContent = `${visible} / ${rows.length}개 항목`;
+    empty.hidden = quick || !query || visible > 0;
+    examples.hidden =
+      quick ||
+      !!query ||
+      activeCategory !== "적 / Horde" ||
+      !examples.textContent;
+  }
   parent.append(root);
   refresh();
+  renderLayout();
   attempt(() => refreshPresets());
   const unsubscribe = subscribe(refresh);
   const stopBridge = startBalanceBridge("panel", (state) => {

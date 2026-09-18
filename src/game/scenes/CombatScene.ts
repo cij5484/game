@@ -1,4 +1,9 @@
 import {
+  operationRecords,
+  type OperationEvidence,
+  type UnlockState,
+} from "../data/operations";
+import {
   metaStore,
   type RunTicket,
   type RunSettlement,
@@ -64,6 +69,7 @@ interface PrimaryAction {
   damageMultiplier: number;
   criticalChanceBonus: number;
   reinforcement: boolean;
+  hitIds: Set<number>;
 }
 interface CopiedAttack {
   rifle: GaussRifle;
@@ -97,6 +103,11 @@ export class CombatScene extends Phaser.Scene {
   private kills = 0;
   private eliteKills = 0;
   private runTicket?: RunTicket;
+  private unlocks?: UnlockState;
+  private operationEvidence: OperationEvidence = {};
+  private latestOperationEvidence: OperationEvidence = {};
+  private lastOperationSecond = -1;
+  private operationSaveError = false;
   private bossSpawned = false;
   private bossKilled = false;
   private bossReinforcements: EnemyKind[] = [];
@@ -167,7 +178,8 @@ export class CombatScene extends Phaser.Scene {
   private get choosing(): boolean {
     return (
       this.ultimateRemainingMs === 0 &&
-      (this.progression.special.pending ||
+      (this.progression.modBranchPending ||
+        this.progression.special.pending ||
         this.progression.pendingChoices > 0 ||
         this.relics.pending)
     );
@@ -175,6 +187,11 @@ export class CombatScene extends Phaser.Scene {
 
   private prepareRun(): void {
     this.runTicket = metaStore.beginRun();
+    this.unlocks = this.runTicket.unlocks;
+    this.operationEvidence = {};
+    this.latestOperationEvidence = {};
+    this.lastOperationSecond = -1;
+    this.operationSaveError = false;
     this.wallMaxHp =
       runBalance.wallMaxHp * this.runTicket.modifiers.wallHpMultiplier;
     this.run = createRunState(this.wallMaxHp);
@@ -182,6 +199,7 @@ export class CombatScene extends Phaser.Scene {
       Math.random,
       this.runTicket.modifiers,
       this.runTicket.rerolls,
+      this.unlocks,
     );
   }
 
@@ -217,7 +235,7 @@ export class CombatScene extends Phaser.Scene {
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
-    this.relics = new PrototypeRelics();
+    this.relics = new PrototypeRelics(Math.random, this.unlocks);
     this.synergies = new PrototypeSynergies();
     this.companion = null;
     this.primaryActions.clear();
@@ -471,6 +489,11 @@ export class CombatScene extends Phaser.Scene {
       }
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
     this.inFrame = false;
+    const second = Math.floor(this.run.elapsedMs / 1000);
+    if (second !== this.lastOperationSecond) {
+      this.lastOperationSecond = second;
+      this.trackOperations();
+    }
     this.renderEnemies();
     this.renderCombat();
   }
@@ -511,6 +534,7 @@ export class CombatScene extends Phaser.Scene {
 
   private finishRun(): void {
     if (this.run.status === "running" || this.resultShown) return;
+    this.trackOperations();
     this.resultShown = true;
     this.time.paused = true;
     this.choices.hide();
@@ -518,13 +542,17 @@ export class CombatScene extends Phaser.Scene {
     let settlementError: string | undefined;
     if (this.runTicket) {
       try {
-        settlement = metaStore.settleRun(this.runTicket.id, {
-          status: this.run.status,
-          elapsedMs: this.run.elapsedMs,
-          kills: this.kills,
-          eliteKills: this.eliteKills,
-          bossKills: this.bossKilled ? 1 : 0,
-        });
+        settlement = metaStore.settleRun(
+          this.runTicket.id,
+          {
+            status: this.run.status,
+            elapsedMs: this.run.elapsedMs,
+            kills: this.kills,
+            eliteKills: this.eliteKills,
+            bossKills: this.bossKilled ? 1 : 0,
+          },
+          this.latestOperationEvidence,
+        );
       } catch (error) {
         settlementError =
           error instanceof Error ? error.message : String(error);
@@ -636,6 +664,7 @@ export class CombatScene extends Phaser.Scene {
         const action: PrimaryAction = {
           growth: {
             ranks: { ...growth.ranks },
+            branches: { ...growth.branches },
             meta: this.progression.meta,
             quality: { ...growth.quality },
             legendary: new Set(growth.legendary),
@@ -643,17 +672,20 @@ export class CombatScene extends Phaser.Scene {
           damageMultiplier: roll.damageMultiplier,
           criticalChanceBonus: precisionBonus(this.relics.owned),
           reinforcement: rifle === this.companion,
+          hitIds: new Set(),
         };
         this.primaryActions.set(rifle, action);
         if (roll.repeat)
           this.copiedAttacks.push({
             rifle: new GaussRifle(config),
-            action,
+            action: { ...action, hitIds: new Set() },
             rounds: config.burstRounds,
           });
       }
       const action = copy?.action ?? this.primaryActions.get(rifle)!;
-      rifle.advance(0, () => this.firePrimary(action, !!copy));
+      // GaussRifle advances its round cursor before invoking the firing callback.
+      const roundIndex = rifle.roundInBurst - 1;
+      rifle.advance(0, () => this.firePrimary(action, !!copy, roundIndex));
       if (copy && --copy.rounds === 0)
         this.copiedAttacks.splice(this.copiedAttacks.indexOf(copy), 1);
       if (this.choosing || this.run.status !== "running") break;
@@ -670,7 +702,11 @@ export class CombatScene extends Phaser.Scene {
     this.stateSnapshot = states;
   }
 
-  private firePrimary(action: PrimaryAction, copied: boolean): void {
+  private firePrimary(
+    action: PrimaryAction,
+    copied: boolean,
+    roundIndex: number,
+  ): void {
     this.refreshProtection();
     const target = this.primaryTarget();
     this.view.setFocus(this.focus.targetId);
@@ -699,6 +735,7 @@ export class CombatScene extends Phaser.Scene {
           );
         },
         shotIndex: this.shotIndex,
+        roundIndex,
         random: Math.random,
       },
     );
@@ -716,6 +753,12 @@ export class CombatScene extends Phaser.Scene {
       result.explosionIds,
       copied,
       action.reinforcement,
+    );
+    this.capturePrimaryEvidence(
+      action,
+      before,
+      result.enemies,
+      result.criticalIds,
     );
     const states = applyImpact(before, result.enemies, this.relics.owned);
     // Extra Marines and copied attacks repeat only Gauss; never duplicate special-weapon actions.
@@ -764,7 +807,11 @@ export class CombatScene extends Phaser.Scene {
           this.run = clearRun(this.run);
         } else xp += enemyConfigs[entry.state.kind].xpOnKill;
         if (entry.state.elite) {
-          const core = this.cores.tryDrop(this.progression.validCoreIds);
+          const core = this.cores.tryDrop(
+            this.progression.validCoreIds,
+            Math.random,
+            this.unlocks?.coreSystem ?? true,
+          );
           if (core) {
             this.progression.applyCore(core.id);
             this.notices.push(`${core.title}\n${core.description}`);
@@ -794,10 +841,105 @@ export class CombatScene extends Phaser.Scene {
     if (buildChanged) this.refreshBuild();
     this.progression.gainXp(xp * this.progression.meta.xpMultiplier);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
+    this.trackOperations();
     if (hits || kills) this.renderProgression();
     if (this.choosing) this.showChoices();
     else if (this.ultimateRemainingMs === 0) this.flushNotices();
     this.renderBurst();
+  }
+
+  private capturePrimaryEvidence(
+    action: PrimaryAction,
+    before: readonly EnemyState[],
+    after: readonly EnemyState[],
+    criticalIds: readonly number[],
+  ): void {
+    const critical = new Set(criticalIds);
+    for (let i = 0; i < before.length; i++) {
+      const old = before[i]!,
+        next = after[i]!;
+      if (
+        old.hp <= 0 ||
+        !(next.hp < old.hp || (next.shieldHp ?? 0) < (old.shieldHp ?? 0))
+      )
+        continue;
+      action.hitIds.add(old.id);
+      if (critical.has(old.id)) this.operationEvidence.criticalHits = 1;
+      if (next.hp <= 0) {
+        this.operationEvidence.primaryKills =
+          (this.operationEvidence.primaryKills ?? 0) + 1;
+        if (old.elite)
+          this.operationEvidence.primaryEliteKills =
+            (this.operationEvidence.primaryEliteKills ?? 0) + 1;
+      }
+    }
+    this.operationEvidence.gaussActionHits = Math.max(
+      this.operationEvidence.gaussActionHits ?? 0,
+      action.hitIds.size,
+    );
+  }
+
+  private trackOperations(): void {
+    if (!this.runTicket || this.resultShown) return;
+    const growth = this.progression;
+    const evidence: OperationEvidence = {
+      ...this.operationEvidence,
+      // Survival records use whole seconds; hits must not cause sub-frame save writes.
+      elapsedMs: Math.floor(this.run.elapsedMs / 1000) * 1000,
+      characterLevel: growth.level,
+      eliteKills: this.eliteKills,
+      bossEncountered: this.bossSpawned,
+      burstLevel: growth.ranks.burst ?? 0,
+      basicModCount: Object.keys(growth.traitLevels).length,
+      specialWeaponCount: growth.special.weapons.length,
+      specialLevels: Object.fromEntries(
+        growth.special.weapons.map((w) => [w.id, w.level]),
+      ),
+      overclocks: growth.special.weapons
+        .filter((w) => !!w.overclock)
+        .map((w) => w.id),
+      relicCount: this.relics.owned.size,
+      coreCount: this.cores.owned.size,
+      synergyCount: this.synergies.active.size,
+      missileRetargets: this.specialWeapons.totalRetargets,
+      criticalHits: Math.max(
+        this.operationEvidence.criticalHits ?? 0,
+        this.specialWeapons.totalCriticalHits,
+      ),
+    };
+    this.latestOperationEvidence = evidence;
+    try {
+      const result = metaStore.recordProgress(this.runTicket.id, evidence);
+      const changed =
+        JSON.stringify(this.unlocks) !== JSON.stringify(result.unlocks);
+      this.unlocks = result.unlocks;
+      if (changed) {
+        growth.setUnlocks(result.unlocks);
+        this.relics.setUnlocks(result.unlocks);
+        this.refreshBuild();
+      }
+      if (result.completed.length) {
+        const names = result.completed.map(
+          (id) => operationRecords.find((r) => r.id === id)!.title,
+        );
+        const brief = (items: string[]) =>
+          items.slice(0, 2).join(" · ") +
+          (items.length > 2 ? ` 외 ${items.length - 2}개` : "");
+        this.view.showNotice(
+          `작전 기록 완료\n${brief(names)}${result.unlocked.length ? `\n해금: ${brief(result.unlocked)}` : ""}`,
+        );
+      }
+      this.operationSaveError = false;
+      // Unlocking mastery can itself activate a synergy; persist that action before another choice/restart.
+      if (this.synergies.active.size > (evidence.synergyCount ?? 0))
+        this.trackOperations();
+    } catch (error) {
+      if (!this.operationSaveError)
+        this.view.showNotice(
+          `작전 기록 저장 실패 · 다음 기록 확인 시 재시도\n${error instanceof Error ? error.message : String(error)}`,
+        );
+      this.operationSaveError = true;
+    }
   }
 
   private renderProgression(): void {
@@ -811,6 +953,14 @@ export class CombatScene extends Phaser.Scene {
 
   private showChoices(): void {
     this.cancelInput();
+    const modBranch = this.progression.offerModBranch();
+    if (modBranch) {
+      this.time.paused = true;
+      this.choices.showModBranch(modBranch, (id) => {
+        if (this.progression.chooseModBranch(id)) this.applyBuildChoice();
+      });
+      return;
+    }
     const specialOffer = this.progression.special.offer();
     if (specialOffer) {
       this.time.paused = true;
@@ -855,6 +1005,9 @@ export class CombatScene extends Phaser.Scene {
       this.progression.ranks,
       (id) => {
         if (!this.progression.choose(id)) return;
+        const selected = offered.find((card) => card.id === id);
+        if (selected?.rarity === "EPIC" || selected?.rarity === "LEGENDARY")
+          this.operationEvidence.highRarityChoice = true;
         if (this.progression.lastSelection?.greatSuccess)
           this.notices.push(
             `대성공! · +${this.progression.lastSelection.levels}레벨${this.progression.lastSelection.levels < 2 ? " (최대 레벨 도달)" : ""}`,
@@ -880,6 +1033,7 @@ export class CombatScene extends Phaser.Scene {
 
   private applyBuildChoice(): void {
     this.refreshBuild();
+    this.trackOperations();
     this.renderProgression();
     this.showChoices();
   }
@@ -893,6 +1047,7 @@ export class CombatScene extends Phaser.Scene {
     for (const id of this.synergies.updateBuild(
       this.progression.growth,
       this.progression.special.weapons,
+      this.unlocks?.synergySystem ?? true,
     ))
       this.notices.push(
         `시너지 활성화 · ${prototypeSynergyDefinitions[id].title}`,

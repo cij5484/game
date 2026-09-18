@@ -15,6 +15,92 @@ export const marineTraitIds = [
   "heavy",
 ] as const;
 export type MarineTraitId = (typeof marineTraitIds)[number];
+export type MarineModBranch = "a" | "b";
+export type MarineModBranches = Partial<Record<MarineTraitId, MarineModBranch>>;
+export const marineModBranches: Record<
+  MarineTraitId,
+  Record<
+    MarineModBranch,
+    {
+      title: string;
+      description: string;
+      completion: string;
+    }
+  >
+> = {
+  penetration: {
+    a: {
+      title: "심층 관통",
+      description: "더 많은 적을 직선으로 관통 · Lv10 관통 수 추가 증가",
+      completion: "관통 폭주",
+    },
+    b: {
+      title: "잔존 운동에너지",
+      description: "관통 후 피해 유지율 증가 · Lv10 후방에도 높은 피해",
+      completion: "운동에너지 관통탄",
+    },
+  },
+  ricochet: {
+    a: {
+      title: "연쇄 도탄",
+      description: "도탄 횟수와 탐색 거리 증가 · Lv10 긴 연쇄",
+      completion: "도탄 연쇄",
+    },
+    b: {
+      title: "중량 도탄",
+      description: "각 도탄의 피해 강화 · Lv10 강한 충격",
+      completion: "충격 도탄",
+    },
+  },
+  burst: {
+    a: {
+      title: "확장 점사",
+      description: "한 행동의 발수 증가 · Lv10 점사 피해 추가 강화",
+      completion: "완전 점사",
+    },
+    b: {
+      title: "고속 점사",
+      description: "점사 내부 탄 간격 단축 · Lv10 초고속 집중 사격",
+      completion: "초고속 점사",
+    },
+  },
+  multishot: {
+    a: {
+      title: "광역 다중탄",
+      description: "보조탄 수와 분산 각도 증가 · Lv10 넓은 동시 사격",
+      completion: "전방위 사격",
+    },
+    b: {
+      title: "집중 다중탄",
+      description: "좁은 각도의 소수 표적에 보조탄 집중 · 중복 탄환 피해 적용",
+      completion: "집중 일제사격",
+    },
+  },
+  explosive: {
+    a: {
+      title: "광역 폭발",
+      description: "폭발 반경 증가 · Lv10 폭발 피해도 강화",
+      completion: "폭발 지대",
+    },
+    b: {
+      title: "고폭탄",
+      description: "작은 반경에 폭발 피해 집중 · Lv10 고폭 화력",
+      completion: "고폭 탄두",
+    },
+  },
+  heavy: {
+    a: {
+      title: "공성탄",
+      description: "개별 탄환 피해 크게 증가 · 공격주기 대가 증가",
+      completion: "초중량 공성탄",
+    },
+    b: {
+      title: "경량화 고위력탄",
+      description: "고위력 피해를 유지하며 공격주기 대가 완화",
+      completion: "고속 중량탄",
+    },
+  },
+};
 export type MarineUpgradeId =
   MarineTraitId | "primary-damage" | "attack-speed" | "crit-chance" | "range";
 export type MarineRanks = UpgradeRanks &
@@ -23,6 +109,7 @@ export interface MarineGrowthState {
   ranks: MarineRanks;
   quality: Partial<Record<MarineUpgradeId, number>>;
   legendary: ReadonlySet<MarineTraitId>;
+  branches?: MarineModBranches;
   readonly meta?: Readonly<MetaModifiers>;
 }
 export interface MarineUpgradeDefinition {
@@ -102,7 +189,14 @@ export const marineGrowthBalance = runtimeObject("marineGrowth", {
   maxInvestment: 2,
   maxModInvestment: 1.4,
   newModWeight: 0.45,
-  ownedModWeight: 0.35,
+  newModWeight0: 0.45,
+  newModWeight1: 0.3,
+  newModWeight2: 0.18,
+  newModWeight3: 0.12,
+  rangeWeight: 0.25,
+  ownedModWeight: 0.6,
+  specialGrowthWeight: 0.65,
+  maxSpecialInvestment: 1.5,
   firstAcquisitionWeight: 0.3,
   laterAcquisitionWeight: 0.2,
   firstAcquisitionLevel: 8,
@@ -115,6 +209,14 @@ export const marineGrowthBalance = runtimeObject("marineGrowth", {
   maxMultishotTargets: 5,
   maxExplosionRadius: 130,
 } as const);
+export const marineModWeights = runtimeObject("marineModWeights", {
+  penetration: { acquisitionWeight: 1, growthWeight: 1 },
+  ricochet: { acquisitionWeight: 0.9, growthWeight: 1 },
+  burst: { acquisitionWeight: 0.6, growthWeight: 1 },
+  multishot: { acquisitionWeight: 0.7, growthWeight: 1 },
+  explosive: { acquisitionWeight: 0.8, growthWeight: 1 },
+  heavy: { acquisitionWeight: 0.9, growthWeight: 1 },
+});
 const increments = (
   COMMON: number,
   RARE: number,
@@ -140,6 +242,26 @@ export const marineQualityIncrements: Record<
 });
 const positive = (value: number) =>
   Number.isFinite(value) ? Math.max(0, value) : 0;
+export function getMarineModBranch(
+  state: MarineGrowthState,
+  id: MarineTraitId,
+) {
+  return (state.ranks[id] ?? 0) >= 5 ? state.branches?.[id] : undefined;
+}
+// Prototype branch progress: Lv5 starts at 0, Lv6–9 advance, Lv10 completes.
+const branchProgress = (state: MarineGrowthState, id: MarineTraitId) =>
+  Math.max(0, Math.min(1, ((state.ranks[id] ?? 0) - 5) / 5));
+const branchComplete = (state: MarineGrowthState, id: MarineTraitId) =>
+  Number((state.ranks[id] ?? 0) >= 10);
+const heavyBranchDamage = (state: MarineGrowthState) => {
+  const branch = getMarineModBranch(state, "heavy");
+  const progress = branchProgress(state, "heavy");
+  return branch === "a"
+    ? 1.35 + 0.25 * progress + 0.2 * branchComplete(state, "heavy")
+    : branch === "b"
+      ? 1.05 + 0.05 * progress + 0.05 * branchComplete(state, "heavy")
+      : 1;
+};
 export function marineStrength(
   state: MarineGrowthState,
   id: MarineUpgradeId,
@@ -155,14 +277,16 @@ export function marineUpgradeWeight(
   definition: MarineUpgradeDefinition,
   ranks: MarineRanks,
 ): number {
+  if (definition.id === "range") return marineGrowthBalance.rangeWeight;
   if (definition.category !== "weapon-trait") return definition.weight;
+  const rank = positive(ranks[definition.id] ?? 0);
+  const weights = marineModWeights[definition.id as MarineTraitId];
+  if (!rank) return weights.acquisitionWeight;
   return (
-    definition.weight *
+    weights.growthWeight *
     Math.min(
       marineGrowthBalance.maxModInvestment,
-      1 +
-        positive(ranks[definition.id] ?? 0) *
-          marineGrowthBalance.investmentPerRank,
+      1 + rank * marineGrowthBalance.investmentPerRank,
     )
   );
 }
@@ -178,7 +302,13 @@ export const marineRarityBalance = runtimeObject("marineRarity", {
 
 export const marineModBalance = runtimeObject("marineMods", {
   heavyDamagePerQuality: 0.45,
+  heavyPenaltyBase: 1.2,
+  heavyPenaltyExtra: 0.15,
+  heavyPenaltyQualityDecay: 0.15,
   burstDamagePerQuality: 0.035,
+  burstAdditionalRoundDamageFactor: 0.65,
+  burstAdditionalRoundDamagePerQuality: 0.025,
+  burstAdditionalRoundDamageMax: 1,
   burstIntervalMs: 155,
   burstSpeedPerQuality: 0.055,
   penetrationCountPerLevel: 0.7,
@@ -193,6 +323,18 @@ export const marineModBalance = runtimeObject("marineMods", {
   explosionBaseDamage: 0.35,
   explosionDamagePerQuality: 0.075,
 } as const);
+export function getBurstRoundDamageFactor(
+  state: MarineGrowthState,
+  roundIndex: number,
+): number {
+  if (roundIndex <= 0) return 1;
+  return Math.min(
+    marineModBalance.burstAdditionalRoundDamageMax,
+    marineModBalance.burstAdditionalRoundDamageFactor +
+      marineModBalance.burstAdditionalRoundDamagePerQuality *
+        Math.max(0, marineStrength(state, "burst") - 1),
+  );
+}
 
 export function marineRarityWeights(
   level: number,
@@ -233,7 +375,12 @@ export function getMarineStats(state: MarineGrowthState) {
     primaryDamageMultiplier:
       (1 + strength("primary-damage")) *
       (1 + marineModBalance.heavyDamagePerQuality * strength("heavy")) *
+      heavyBranchDamage(state) *
       (1 + marineModBalance.burstDamagePerQuality * strength("burst")) *
+      (getMarineModBranch(state, "burst") === "a" &&
+      branchComplete(state, "burst")
+        ? 1.2
+        : 1) *
       (state.meta?.primaryDamageMultiplier ?? 1),
     attackSpeedMultiplier:
       (1 + strength("attack-speed")) *
@@ -259,20 +406,42 @@ export function deriveMarineWeaponConfig(
 ): GaussRifleConfig {
   const burst = marineStrength(state, "burst");
   const heavy = marineStrength(state, "heavy");
+  const burstBranch = getMarineModBranch(state, "burst");
+  const burstProgress = branchProgress(state, "burst");
   // ponytail: bounded projectile work; mastery damage keeps growing after the seven-round cap.
   const burstRounds =
     burst > 0
       ? Math.min(
           marineGrowthBalance.maxBurstRounds - 1,
-          2 + Math.floor((state.ranks.burst! - 1) / 2),
+          2 +
+            Math.floor((state.ranks.burst! - 1) / 2) +
+            (burstBranch === "a" ? 1 + Math.floor(burstProgress) : 0),
         ) + (state.legendary.has("burst") ? 1 : 0)
       : 1;
   const roundIntervalMs = Math.max(
-    55,
-    marineModBalance.burstIntervalMs /
-      (1 + marineModBalance.burstSpeedPerQuality * burst),
+    burstBranch === "b" ? 35 : 55,
+    (marineModBalance.burstIntervalMs /
+      (1 + marineModBalance.burstSpeedPerQuality * burst)) *
+      (burstBranch === "b"
+        ? 0.7 - 0.15 * burstProgress - 0.1 * branchComplete(state, "burst")
+        : 1),
   );
-  const heavyPenalty = heavy > 0 ? 1.2 + 0.15 / (1 + 0.15 * heavy) : 1;
+  let heavyPenalty =
+    heavy > 0
+      ? marineModBalance.heavyPenaltyBase +
+        marineModBalance.heavyPenaltyExtra /
+          (1 + marineModBalance.heavyPenaltyQualityDecay * heavy)
+      : 1;
+  const heavyBranch = getMarineModBranch(state, "heavy");
+  if (heavyBranch === "a")
+    heavyPenalty *= 1.2 + 0.1 * branchProgress(state, "heavy");
+  if (heavyBranch === "b")
+    heavyPenalty =
+      1 +
+      (heavyPenalty - 1) *
+        (0.5 -
+          0.25 * branchProgress(state, "heavy") -
+          0.1 * branchComplete(state, "heavy"));
   return {
     ...gaussRifleBalance,
     burstRounds,
@@ -351,6 +520,70 @@ export function getMarineTraitEffects(state: MarineGrowthState): TraitEffects {
       effects.explosionSecondaryDamageFactor = 0.3 + 0.035 * strength;
     }
   }
+  // Branch bonuses build on quality growth; unselected/legacy builds stay identical.
+  for (const id of marineTraitIds) {
+    const branch = getMarineModBranch(state, id);
+    if (!branch) continue;
+    const progress = branchProgress(state, id),
+      done = branchComplete(state, id);
+    switch (id) {
+      case "penetration":
+        if (branch === "a")
+          effects.pierceCount = Math.min(
+            marineGrowthBalance.maxPierceCount + 4,
+            effects.pierceCount + 2 + Math.floor(2 * progress) + 2 * done,
+          );
+        else
+          effects.pierceDamageRetention = Math.min(
+            1,
+            effects.pierceDamageRetention +
+              0.07 +
+              0.05 * progress +
+              0.06 * done,
+          );
+        break;
+      case "ricochet":
+        if (branch === "a") {
+          effects.bounceCount = Math.min(
+            marineGrowthBalance.maxBounceCount + 4,
+            effects.bounceCount + 1 + Math.floor(2 * progress) + done,
+          );
+          effects.bounceRadiusBonus += 25 + 25 * progress + 20 * done;
+        } else {
+          effects.bounceDamageRetention *= 1.3 + 0.3 * progress + 0.25 * done;
+          effects.bounceDamageGrowth *= 1.5;
+        }
+        break;
+      case "multishot":
+        if (branch === "a") {
+          effects.multishotTargets = Math.min(
+            marineGrowthBalance.maxMultishotTargets + 3,
+            effects.multishotTargets + 1 + Math.floor(progress) + done,
+          );
+          effects.multishotSpreadRadians = Math.min(
+            1.5,
+            effects.multishotSpreadRadians + 0.2 + 0.15 * progress + 0.1 * done,
+          );
+        } else {
+          effects.multishotSpreadRadians = 0.3 - 0.1 * progress - 0.05 * done;
+          effects.multishotDamageFactor *= 1.2 + 0.2 * progress + 0.2 * done;
+        }
+        break;
+      case "explosive":
+        if (branch === "a") {
+          effects.explosionRadius = Math.min(
+            marineGrowthBalance.maxExplosionRadius,
+            effects.explosionRadius + 6 + 4 * progress + 8 * done,
+          );
+          // Keep the completion useful when quality reaches the radius cap early.
+          effects.explosionDamageFactor *= 1 + 0.1 * done;
+        } else {
+          effects.explosionRadius *= 0.8;
+          effects.explosionDamageFactor *= 1.4 + 0.3 * progress + 0.3 * done;
+        }
+        break;
+    }
+  }
   return effects;
 }
 export function describeMarineUpgrade(
@@ -381,6 +614,6 @@ export function describeMarineUpgrade(
     case "explosive":
       return `반경 ${Math.round(effects.explosionRadius)} · 피해 ${percent(effects.explosionDamageFactor)}${state.legendary.has(id) ? " · 처치 2명 1회 재폭발" : ""}`;
     case "heavy":
-      return `개별 탄환 피해 ×${(1 + marineModBalance.heavyDamagePerQuality * marineStrength(state, id)).toFixed(2)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
+      return `개별 탄환 피해 ×${((1 + marineModBalance.heavyDamagePerQuality * marineStrength(state, id)) * heavyBranchDamage(state)).toFixed(2)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
   }
 }

@@ -96,7 +96,7 @@ export const prototypeCores: Record<PrototypeCoreId, PrototypeCoreDefinition> =
       id: "armament",
       title: "무장 확장 코어",
       symbol: "Ⅲ",
-      description: "특수무기 한도 2 → 3 · 추가 획득 1회",
+      description: "이번 Run 특수무기 한도 +1 (최대 3) · 해금된 무기 추가 획득",
     },
     modification: {
       id: "modification",

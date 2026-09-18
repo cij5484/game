@@ -52,7 +52,8 @@ it("excludes range and returns no rarity when an all-Common band has no Rare+ we
 it("excludes owned legendary mods from an all-Legendary band without removing unowned mods", () => {
   allRarity(3);
   marineGrowthBalance.choiceCount = 4;
-  marineGrowthBalance.newModWeight = 0;
+  marineGrowthBalance.newModWeight0 = 0;
+  marineGrowthBalance.newModWeight1 = 0;
   const p = new MarineProgression(() => 0.85);
   p.ranks.penetration = 1;
   p.legendary.add("penetration");
@@ -60,7 +61,8 @@ it("excludes owned legendary mods from an all-Legendary band without removing un
   expect(p.offer().some((card) => card.id === "penetration")).toBe(false);
   expect(p.offer().every((card) => card.rarity === "LEGENDARY")).toBe(true);
   expect(rollMarineRarity(1, () => 1, false, true)).toBeNull();
-  marineGrowthBalance.newModWeight = 0.45;
+  marineGrowthBalance.newModWeight0 = 0.45;
+  marineGrowthBalance.newModWeight1 = 0.3;
   const next = new MarineProgression(() => 0.84);
   next.pendingChoices = 1;
   expect(next.offer().some((card) => card.category === "weapon-trait")).toBe(
@@ -70,7 +72,8 @@ it("excludes owned legendary mods from an all-Legendary band without removing un
 
 it("never falls back to a zero-weight category after the positive pool is exhausted", () => {
   marineGrowthBalance.choiceCount = 4;
-  marineGrowthBalance.newModWeight = 0;
+  marineGrowthBalance.newModWeight0 = 0;
+  marineGrowthBalance.newModWeight1 = 0;
   marineGrowthBalance.ownedModWeight = 0;
   marineGrowthBalance.firstAcquisitionWeight = 0;
   const p = new MarineProgression(() => 1);

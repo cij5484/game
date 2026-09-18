@@ -78,6 +78,11 @@ export function validateBalanceGroups(values: Overrides): void {
     if (n(`elite.windows.${i}.0`) > n(`elite.windows.${i}.1`))
       throw Error("정예 등장 시작 시간은 종료 시간보다 늦을 수 없습니다.");
   }
+  if (
+    n("marineMods.burstAdditionalRoundDamageFactor") >
+    n("marineMods.burstAdditionalRoundDamageMax")
+  )
+    throw Error("점사 추가탄 기본 피해율은 상한보다 클 수 없습니다.");
   if (n("boss.warningMs") > n("boss.spawnMs"))
     throw Error("Boss 전 공급 완화는 Boss 등장보다 먼저 시작해야 합니다.");
 }

@@ -5,6 +5,16 @@ import {
   rerollCosts,
 } from "../data/meta";
 import { metaStore } from "../meta/metaSave";
+import {
+  operationRecords,
+  getMasteryPoints,
+  getOperationProgress,
+  getUnlocks,
+  allUnlocks,
+  unlockLabels,
+  unlockRequirements,
+  type OperationRecord,
+} from "../data/operations";
 import "./metaHub.css";
 
 const element = <K extends keyof HTMLElementTagNameMap>(
@@ -19,6 +29,10 @@ const element = <K extends keyof HTMLElementTagNameMap>(
 };
 const formatEffect = (value: number, unit: string, reduction = false) =>
   `${reduction ? "−" : "+"}${Number((value * (unit === "multiplier" ? 1 : 100)).toFixed(2))}${unit === "multiplier" ? "배" : unit === "percentage-points" ? "%p" : "%"}`;
+const formatProgress = (record: OperationRecord, value: number) =>
+  record.metric === "elapsedMs"
+    ? `${Math.floor(value / 60000)}:${String(Math.floor(value / 1000) % 60).padStart(2, "0")}`
+    : String(value);
 
 export function mountMetaHub(
   parent: HTMLElement,
@@ -68,6 +82,75 @@ export function mountMetaHub(
     wallet,
     progress,
     launch,
+  );
+
+  const records = element("details", "", "meta-section");
+  const mastery = element("p", "", "meta-wallet");
+  mastery.id = "meta-mastery";
+  records.append(
+    element("summary", "작전 기록"),
+    mastery,
+    element(
+      "p",
+      "조건을 달성하면 기록·숙련 Point·해금 보상이 자동 저장됩니다.",
+    ),
+  );
+  const recordGroups = new Map<string, HTMLDetailsElement>();
+  const recordRows = operationRecords.map((record) => {
+    let group = recordGroups.get(record.category);
+    if (!group) {
+      group = element("details", "", "meta-record-group");
+      group.append(element("summary", record.category));
+      recordGroups.set(record.category, group);
+      records.append(group);
+    }
+    const row = element("article", "", "meta-research-row");
+    const state = element("p");
+    state.id = `meta-record-${record.id}`;
+    row.append(
+      element("h3", record.title),
+      element("p", record.description, "meta-secondary"),
+      state,
+      element(
+        "p",
+        `숙련 +${record.points}${record.rewards.length ? ` · 직접 해금: ${record.rewards.join(" · ")}` : ""}`,
+        "meta-secondary",
+      ),
+    );
+    group.append(row);
+    return { record, state };
+  });
+  const unlockOverview = element("details", "", "meta-section");
+  unlockOverview.append(element("summary", "무장 / 해금 현황"));
+  const capacity = element("p");
+  capacity.id = "meta-special-capacity";
+  unlockOverview.append(capacity);
+  const unlockGroups = new Map<string, HTMLElement>();
+  const groupNames: Record<string, string> = {
+    mod: "기본무기 개조",
+    weapon: "특수무기",
+    slot: "특수 슬롯",
+    relic: "유물",
+    system: "시스템",
+    tree: "특수무기 Main Tree",
+    overclock: "특수무기 Overclock",
+    research: "영구 연구",
+  };
+  const unlockRows = Object.entries(unlockLabels(allUnlocks())).map(
+    ([key, title]) => {
+      const category = key.split("/")[0]!;
+      let group = unlockGroups.get(category);
+      if (!group) {
+        group = element("section", "", "meta-research-group");
+        group.append(element("h2", groupNames[category] ?? "콘텐츠"));
+        unlockGroups.set(category, group);
+        unlockOverview.append(group);
+      }
+      const row = element("p");
+      row.id = `meta-unlock-${key.replaceAll("/", "-")}`;
+      group.append(row);
+      return { key, title, row };
+    },
   );
 
   const research = element("details", "", "meta-section");
@@ -184,6 +267,29 @@ export function mountMetaHub(
       ? `완료한 Run ${save.progress.completedRuns}회 · Stage 1 클리어 ${save.progress.stage1ClearCount}회`
       : "저장 관리에서 오류를 해결한 뒤 출격하세요.";
     launch.disabled = busy || !save;
+    const unlocks = save ? getUnlocks(save) : undefined;
+    const available = unlocks ? unlockLabels(unlocks) : {};
+    const completed = save?.characters.marine.completedOperationRecords ?? [];
+    mastery.textContent = save
+      ? `Marine 숙련 ${getMasteryPoints(completed)} Point · 완료 ${completed.length} / ${operationRecords.length}`
+      : "숙련 · 저장 확인 필요";
+    for (const { record, state } of recordRows) {
+      state.textContent = !save
+        ? "저장 확인 필요"
+        : completed.includes(record.id)
+          ? "✓ 완료"
+          : `미완료 · 진행 ${formatProgress(record, getOperationProgress(record, save))} / ${formatProgress(record, record.target)}`;
+    }
+    capacity.textContent = unlocks
+      ? `특수 슬롯 ${unlocks.specialCapacity} / 2 · 무장 확장 코어는 해당 Run에서 +1 (최대 3)`
+      : "특수 슬롯 · 저장 확인 필요";
+    for (const { key, title, row } of unlockRows) {
+      row.textContent = !save
+        ? `${title} · 저장 확인 필요`
+        : key in available
+          ? `✓ ${title}`
+          : `🔒 ${title} · ${unlockRequirements[key] ?? "관련 작전 기록 완료"}`;
+    }
     for (const { definition, current, next, buy } of rows) {
       const level = save?.characters.marine.research[definition.id] ?? 0;
       const cost = getResearchCost(definition.id, level);
@@ -195,13 +301,17 @@ export function mountMetaHub(
       current.textContent = save
         ? `Lv${level} / ${definition.maxLevel} · 누적 효과 ${effect}`
         : "저장 확인 필요";
+      const unlocked = unlocks?.research.includes(definition.id) ?? false;
       next.textContent = !save
         ? ""
-        : cost === null
-          ? "MAX · 연구 완료"
-          : `다음 Lv${level + 1}${definition.breakthroughLevels.includes(level + 1) ? " 돌파" : ""} → ${formatEffect(getResearchEffect(definition.id, level + 1), definition.effectUnit, definition.id === "special-cycle" || definition.id === "wall-defense")} · ${cost.toLocaleString()} Gold`;
-      buy.textContent = cost === null ? "MAX" : "연구";
-      buy.disabled = busy || !save || cost === null || save.account.gold < cost;
+        : !unlocked
+          ? `🔒 ${unlockRequirements[`research/${definition.id}`] ?? "관련 작전 기록 완료"}`
+          : cost === null
+            ? "MAX · 연구 완료"
+            : `다음 Lv${level + 1}${definition.breakthroughLevels.includes(level + 1) ? " 돌파" : ""} → ${formatEffect(getResearchEffect(definition.id, level + 1), definition.effectUnit, definition.id === "special-cycle" || definition.id === "wall-defense")} · ${cost.toLocaleString()} Gold`;
+      buy.textContent = !unlocked ? "잠김" : cost === null ? "MAX" : "연구";
+      buy.disabled =
+        busy || !save || !unlocked || cost === null || save.account.gold < cost;
     }
     const level = save?.account.rerollLevel ?? 0;
     const cost = rerollCosts[level];
@@ -213,7 +323,7 @@ export function mountMetaHub(
     for (const control of [exportButton, importButton, reset])
       control.disabled = busy;
   }
-  root.append(header, notice, research, storage);
+  root.append(header, notice, records, unlockOverview, research, storage);
   parent.append(root);
   refresh();
   window.addEventListener("storage", refresh);

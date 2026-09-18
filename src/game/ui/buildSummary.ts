@@ -6,6 +6,8 @@ import {
 } from "../data/specialWeapons";
 import {
   marineUpgrades,
+  marineModBranches,
+  marineTraitIds,
   describeMarineUpgrade,
   type MarineGrowthState,
   type MarineTraitId,
@@ -21,7 +23,7 @@ import { abilityGrowth, abilityLevel } from "../data/abilityGrowth";
 import type { GrowthBranches } from "../data/growth";
 import { relics, type RelicLevels } from "../data/relics";
 import { cores, type CoreId } from "../data/cores";
-import { choiceFaces, magicLabels } from "../data/display";
+import { choiceFaces, magicLabels, levelLabel } from "../data/display";
 import { activeSynergies } from "../progression/synergy";
 import { evolutionRecipes, type RecipeRequirements } from "../data/evolutions";
 import {
@@ -196,6 +198,28 @@ export function marineBuildSummary(
       level: growth.ranks[card.id]!,
       detail: describeMarineUpgrade(card.id, growth),
     }));
+  for (const id of marineTraitIds) {
+    const branchId = growth.branches?.[id];
+    if (!branchId || (growth.ranks[id] ?? 0) < 5) continue;
+    const branch = marineModBranches[id][branchId];
+    items.push({
+      id: `${id}-branch`,
+      owner: "basicWeapon",
+      group: "trait",
+      title: branch.title,
+      symbol: branchId.toUpperCase(),
+      detail: `${marineUpgrades[id].title} · ${levelLabel(5)} 분기 ${branchId.toUpperCase()}\n${branch.description}`,
+    });
+    if ((growth.ranks[id] ?? 0) >= 10)
+      items.push({
+        id: `${id}-complete`,
+        owner: "basicWeapon",
+        group: "trait",
+        title: branch.completion,
+        symbol: "◆",
+        detail: `${marineUpgrades[id].title} · ${levelLabel(10)} 완성형 · ${branch.title}\n${levelLabel(11)} 이후에도 선택한 방향으로 성장합니다.`,
+      });
+  }
   return [
     ...items,
     ...buildSummary({}, relicLevels, ownedCores),

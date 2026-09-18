@@ -1,4 +1,5 @@
 import type { RunSettlement } from "../meta/metaSave";
+import { operationRecords } from "../data/operations";
 import { specialBuildSummary, type BuildIcon } from "./buildSummary";
 import type { SpecialWeaponState } from "../data/specialWeapons";
 import {
@@ -188,6 +189,24 @@ export class ResultView {
       stats.append(term, detail);
     }
     this.dialog.append(title, stats);
+    const operations = result.settlement?.operations;
+    if (operations) {
+      const summary = document.createElement("section");
+      summary.setAttribute("aria-label", "이번 Run 작전 기록");
+      const heading = document.createElement("h3");
+      heading.textContent = `이번 Run 작전 기록 완료 ${operations.completed.length} · 숙련 +${operations.points}`;
+      const completed = document.createElement("p");
+      completed.textContent =
+        operations.completed
+          .map(
+            (id) => operationRecords.find((record) => record.id === id)!.title,
+          )
+          .join(" · ") || "새 완료 기록 없음";
+      const unlocked = document.createElement("p");
+      unlocked.textContent = `신규 해금: ${operations.unlocked.join(" · ") || "없음"}`;
+      summary.append(heading, completed, unlocked);
+      this.dialog.append(summary);
+    }
     const actions = document.createElement("div");
     const addAction = (label: string, run: () => void) => {
       const button = document.createElement("button");

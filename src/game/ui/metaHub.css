@@ -90,6 +90,12 @@
 .meta-research-group {
   margin-top: 24px;
 }
+.meta-record-group {
+  margin-top: 16px;
+}
+.meta-record-group summary {
+  font-size: 16px;
+}
 .meta-research-row {
   border-top: 1px solid #3b505b;
   padding: 16px 0;

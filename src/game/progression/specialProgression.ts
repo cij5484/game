@@ -8,6 +8,7 @@ import {
 import { promoteRarity } from "../data/highroll";
 import { marineGrowthBalance } from "../data/marineGrowth";
 import type { UpgradeRarity } from "../data/upgrades";
+import type { UnlockState } from "../data/operations";
 
 export interface SpecialGrowthHistory {
   weaponId: SpecialWeaponId;
@@ -43,15 +44,37 @@ export class SpecialProgression {
   capacity = marineGrowthBalance.specialCapacity;
   private qualityLiberated = false;
   private readonly queue: QueueEntry[] = [];
+  private selection: SpecialSelection | null = null;
+  private capacityBonus = 0;
+  private unlocks: UnlockState | undefined;
+
+  constructor(unlocks?: UnlockState) {
+    if (unlocks) this.setUnlocks(unlocks);
+  }
+
+  setUnlocks(unlocks: UnlockState): void {
+    this.unlocks = unlocks;
+    this.capacity = Math.min(3, unlocks.specialCapacity + this.capacityBonus);
+  }
+
+  private acquisitionPool() {
+    return Object.values(specialWeaponDefinitions).filter(
+      (definition) =>
+        (!this.unlocks ||
+          this.unlocks.specialWeapons.includes(definition.id)) &&
+        !this.weapons.some((weapon) => weapon.id === definition.id),
+    );
+  }
 
   get pending(): boolean {
     return this.queue.length > 0;
   }
 
   expandCapacity(): boolean {
-    if (this.capacity >= 3) return false;
-    this.capacity = 3;
-    this.queue.push({ kind: "acquire" });
+    if (this.capacity >= 3 || this.capacityBonus) return false;
+    this.capacityBonus = 1;
+    this.capacity++;
+    if (this.acquisitionPool().length) this.queue.push({ kind: "acquire" });
     return true;
   }
 
@@ -70,6 +93,7 @@ export class SpecialProgression {
   acquireWeapon(id: SpecialWeaponId): boolean {
     if (
       !Object.hasOwn(specialWeaponDefinitions, id) ||
+      (this.unlocks && !this.unlocks.specialWeapons.includes(id)) ||
       this.weapons.length >= this.capacity ||
       this.weapons.some((weapon) => weapon.id === id)
     )
@@ -148,40 +172,46 @@ export class SpecialProgression {
   }
 
   offer(): SpecialSelection | null {
+    if (this.selection) return this.selection;
     const event = this.queue[0];
     if (!event || event.kind === "growth") return null;
     if (event.kind === "acquire")
-      return {
+      return (this.selection = {
         title: `특수무기 ${this.weapons.length + 1} 획득`,
         kind: "acquire",
-        choices: Object.values(specialWeaponDefinitions).filter(
-          (d) => !this.weapons.some((w) => w.id === d.id),
-        ),
-      };
+        choices: this.acquisitionPool(),
+      });
     const weapon = this.weapons.find((w) => w.id === event.weaponId)!;
     const definition = specialWeaponDefinitions[weapon.id];
     const choices =
       event.kind === "tree"
-        ? definition.trees
+        ? definition.trees.filter(
+            (tree) =>
+              !this.unlocks || this.unlocks.trees[weapon.id].includes(tree.id),
+          )
         : event.kind === "branch"
           ? Object.values(
               definition.trees.find((t) => t.id === weapon.tree)!.branches,
             )
           : event.kind === "transcendence"
             ? definition.transcendences
-            : definition.overclocks;
+            : definition.overclocks.filter(
+                (option) =>
+                  !this.unlocks ||
+                  this.unlocks.overclocks[weapon.id].includes(option.id),
+              );
     const label = {
       tree: "주요 트리",
       branch: "세부 분기",
       transcendence: "초월",
       overclock: "오버클록",
     }[event.kind];
-    return {
+    return (this.selection = {
       title: `${definition.title} Lv${weapon.level} · ${label}`,
       weaponId: weapon.id,
       kind: event.kind,
       choices,
-    };
+    });
   }
 
   choose(optionId: string): boolean {
@@ -195,6 +225,7 @@ export class SpecialProgression {
       else weapon[selection.kind] = optionId;
     }
     this.queue.shift();
+    this.selection = null;
     this.applyGrowth();
     return true;
   }

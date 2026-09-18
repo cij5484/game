@@ -7,7 +7,7 @@
   font:
     15px/1.5 system-ui,
     sans-serif;
-  padding: 24px max(20px, calc((100vw - 1160px) / 2));
+  padding: 24px max(20px, calc((100vw - 1360px) / 2));
   touch-action: auto;
   user-select: text;
   -webkit-user-select: text;
@@ -119,7 +119,7 @@
   margin-top: 14px;
   overflow: hidden;
 }
-.balance-group summary {
+.balance-group > summary {
   font-size: 17px;
   font-weight: 650;
   padding: 16px;
@@ -131,6 +131,125 @@
   flex-wrap: wrap;
   gap: 16px 32px;
   margin: 16px;
+}
+.balance-live {
+  margin: 10px 0;
+  background: #17232d;
+}
+.balance-live > summary {
+  font-size: 13px;
+  padding: 7px 12px;
+}
+.balance-live .balance-performance {
+  margin: 8px 12px 12px;
+  gap: 8px 24px;
+}
+.balance-live .balance-performance > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.balance-live dd {
+  margin: 0;
+  font-weight: 700;
+}
+.balance-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.balance-tabs button {
+  min-width: 140px;
+  font-weight: 750;
+}
+.balance-tabs button[aria-selected="true"] {
+  background: #285d76;
+  border-color: #90cee9;
+}
+.balance-quick-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+.balance-quick-nav button[aria-current="true"],
+.balance-category-nav button[aria-current="true"] {
+  background: #294535;
+  border-color: #8ac8a5;
+}
+.balance-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin: 18px 0 40px;
+}
+.balance-category-nav {
+  position: sticky;
+  top: 160px;
+  max-height: calc(100dvh - 190px);
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+.balance-category-nav button {
+  text-align: left;
+  font-size: 13px;
+  white-space: normal;
+}
+.balance-category-picker {
+  display: none;
+}
+.balance-groups > .balance-group:first-child {
+  margin-top: 0;
+}
+.balance-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+.balance-quick-card {
+  border: 1px solid #3d5667;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #16222c;
+}
+.balance-quick-card h2 {
+  margin: 0;
+  padding: 14px 16px;
+  background: #213341;
+  font-size: 17px;
+}
+.balance-quick-card .balance-field {
+  grid-template-columns: minmax(0, 1fr) 115px;
+  gap: 8px 12px;
+  padding: 12px 14px;
+}
+.balance-quick-card .balance-field[data-changed="true"] {
+  padding-left: 11px;
+}
+.balance-quick-card .balance-control {
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.balance-quick-card .balance-control input[type="number"] {
+  width: 115px;
+}
+.balance-quick-card .balance-meta {
+  gap: 4px 8px;
+}
+.balance-help summary {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 0;
+  color: #9cc8e5;
+  font-size: 12px;
+  cursor: pointer;
+}
+.balance-help[open] {
+  margin: 8px 0;
 }
 .balance-performance dt {
   color: #b7c7d5;
@@ -237,6 +356,22 @@
   font:
     13px/1.6 ui-monospace,
     monospace;
+}
+@media (max-width: 850px) {
+  .balance-workspace {
+    display: block;
+  }
+  .balance-category-nav {
+    display: none;
+  }
+  .balance-category-picker {
+    display: grid;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  .balance-quick-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (max-width: 600px) {
   .dev-balance-panel {

@@ -3,10 +3,19 @@ import {
   MetaStore,
   META_STORAGE_KEY,
 } from "../../src/game/meta/metaSave";
+import { getUnlocks } from "../../src/game/data/operations";
 import { runBalance } from "../../src/game/data/run";
 import { enemyConfigs } from "../../src/game/data/enemies";
 import type { PrototypeSynergies } from "../../src/game/combat/prototypeSynergies";
 import { deriveMarineWeaponConfig } from "../../src/game/data/marineGrowth";
+import { balanceFields } from "../../src/game/dev/balanceFields";
+import {
+  configureFields,
+  getOverrides,
+  setOverrides,
+  updateOverride,
+} from "../../src/game/dev/runtimeBalance";
+import { validateBalanceGroups } from "../../src/game/dev/runtimeBridge";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("phaser", () => ({ default: { Scene: class {} } }));
 import { CombatScene } from "../../src/game/scenes/CombatScene";
@@ -20,7 +29,7 @@ import type { TargetFocus } from "../../src/game/combat/targeting";
 import type { Point } from "../../src/game/input/gestureRecognizer";
 import { Stimpack } from "../../src/game/combat/stimpack";
 import { stimpackBalance } from "../../src/game/data/balance";
-import type { PrototypeRelics } from "../../src/game/progression/highroll";
+import { PrototypeRelics } from "../../src/game/progression/highroll";
 import type { SpecialWeapons } from "../../src/game/combat/specialWeapons";
 import type { RunState } from "../../src/game/model/runState";
 import { createSiegeBoss } from "../../src/game/enemies/siegeBoss";
@@ -151,6 +160,94 @@ it("scene fires without input and repeated focus taps cannot increase automatic 
     automatic.enemies.map((e) => e.state.hp),
   );
   expect(spam.run.elapsedMs).toBeCloseTo(999);
+});
+
+it("uses the action-local first/additional burst coefficient with snapshotted growth", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.refreshBuild();
+  const config = deriveMarineWeaponConfig(test.progression.growth);
+  test.update(0, 0);
+  const afterFirst = test.enemies[0]!.state.hp;
+  const firstDamage = 10000 - afterFirst;
+  expect(firstDamage).toBeCloseTo(10.35);
+  test.progression.quality.burst = 10;
+  test.update(0, config.roundIntervalMs! / runBalance.combatTempo);
+  expect(test.shotIndex).toBe(2);
+  expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(
+    firstDamage * 0.65,
+  );
+});
+
+it("copied bursts start at full first-round damage and copy additional rounds without recursion", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.relics.owned.add("replicator");
+  test.refreshBuild();
+  vi.mocked(Math.random).mockReturnValue(1).mockReturnValueOnce(0);
+  test.update(0, 0);
+  const afterOriginal = test.enemies[0]!.state.hp;
+  test.update(0, 0);
+  const afterCopy = test.enemies[0]!.state.hp;
+  expect(afterOriginal - afterCopy).toBeCloseTo(10000 - afterOriginal);
+  expect(test.shotIndex).toBe(2);
+  const config = deriveMarineWeaponConfig(test.progression.growth);
+  test.update(0, config.roundIntervalMs! / runBalance.combatTempo);
+  expect(afterCopy - test.enemies[0]!.state.hp).toBeCloseTo(
+    2 * (10000 - afterOriginal) * 0.65,
+  );
+  expect(test.shotIndex).toBe(4);
+  expect(test.copiedAttacks).toHaveLength(0);
+});
+
+it("live burst coefficient tuning changes actual additional-round damage, leaving first shots full", () => {
+  configureFields(balanceFields, validateBalanceGroups);
+  const original = getOverrides();
+  try {
+    const test = scene();
+    test.progression.ranks.burst = 1;
+    test.progression.quality.burst = 1;
+    test.refreshBuild();
+    test.update(0, 0);
+    const afterFirst = test.enemies[0]!.state.hp;
+    updateOverride("marineMods.burstAdditionalRoundDamageFactor", 0.2);
+    test.update(
+      0,
+      deriveMarineWeaponConfig(test.progression.growth).roundIntervalMs! /
+        runBalance.combatTempo,
+    );
+    expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(
+      (10000 - afterFirst) * 0.2,
+    );
+    const nextAction = scene();
+    nextAction.progression.ranks.burst = 1;
+    nextAction.progression.quality.burst = 1;
+    nextAction.refreshBuild();
+    nextAction.update(0, 0);
+    expect(nextAction.enemies[0]!.state.hp).toBeCloseTo(afterFirst);
+  } finally {
+    setOverrides(original);
+  }
+});
+
+it("reinforcement rifles each start a full first round and track their own additional rounds", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.relics.owned.add("reinforcement");
+  test.refreshBuild();
+  test.update(0, 0);
+  const afterFirst = test.enemies[0]!.state.hp;
+  expect(10000 - afterFirst).toBeCloseTo(2 * 10.35);
+  test.update(
+    0,
+    deriveMarineWeaponConfig(test.progression.growth).roundIntervalMs! /
+      runBalance.combatTempo,
+  );
+  expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(2 * 10.35 * 0.65);
+  expect(test.shotIndex).toBe(4);
 });
 it("focused target survives across shots, blank tap releases it and death resumes smart targeting", () => {
   const test = scene();
@@ -708,7 +805,12 @@ it("M11 scene snapshots wall/XP/defense research and settles natural endings onc
   vi.spyOn(metaStore, "beginRun").mockImplementation(() => store.beginRun());
   const settle = vi
     .spyOn(metaStore, "settleRun")
-    .mockImplementation((id, summary) => store.settleRun(id, summary));
+    .mockImplementation((id, summary, evidence) =>
+      store.settleRun(id, summary, evidence),
+    );
+  vi.spyOn(metaStore, "recordProgress").mockImplementation((id, evidence) =>
+    store.recordProgress(id, evidence),
+  );
   const test = scene();
   const lifecycle = test as unknown as {
     prepareRun(): void;
@@ -748,4 +850,201 @@ it("M11 scene snapshots wall/XP/defense research and settles natural endings onc
   expect(store.read().progress.stage1ClearCount).toBe(1);
   expect(store.read().progress.completedRuns).toBe(2);
   expect(values.has(META_STORAGE_KEY)).toBe(true);
+});
+
+function operationScene() {
+  const values = new Map<string, string>();
+  const store = new MetaStore({
+    getItem: (k) => values.get(k) ?? null,
+    setItem: (k, v) => {
+      values.set(k, v);
+    },
+  });
+  vi.spyOn(metaStore, "beginRun").mockImplementation(() => store.beginRun());
+  vi.spyOn(metaStore, "recordProgress").mockImplementation((id, evidence) =>
+    store.recordProgress(id, evidence),
+  );
+  vi.spyOn(metaStore, "settleRun").mockImplementation((id, summary, evidence) =>
+    store.settleRun(id, summary, evidence),
+  );
+  const test = scene() as SceneHarness & {
+    prepareRun(): void;
+    finishRun(): void;
+    resultShown: boolean;
+    result: { show: ReturnType<typeof vi.fn> };
+  };
+  test.prepareRun();
+  test.relics = new PrototypeRelics(Math.random, getUnlocks(store.read()));
+  return { test, store };
+}
+it("M12 fresh scene gates rewards and natural failure opens grenade for the next Run", () => {
+  const { test, store } = operationScene();
+  expect(test.progression.special.capacity).toBe(0);
+  expect(test.progression.special.acquireWeapon("grenade")).toBe(false);
+  test.enemies[0]!.state.elite = true;
+  test.applyEnemyStates(
+    test.enemies.map((e, i) => (i === 0 ? { ...e.state, hp: 0 } : e.state)),
+  );
+  expect(test.relics.pending).toBe(false);
+  expect(test.progression.core).toBeNull();
+  expect(store.read().characters.marine.completedOperationRecords).toContain(
+    "first-elite",
+  );
+  expect(
+    store.read().characters.marine.completedOperationRecords,
+  ).not.toContain("elite-sniper");
+  test.takeWallDamage(test.run.wallHp);
+  test.finishRun();
+  const settlement = test.result.show.mock.calls[0]![0].settlement;
+  expect(settlement.operations.completed).toContain("first-operation");
+  expect(settlement.operations.completed).toContain("first-elite");
+  expect(getUnlocks(store.read()).specialWeapons).toEqual(["grenade"]);
+  test.prepareRun();
+  expect(test.progression.special.capacity).toBe(1);
+  expect(test.progression.special.acquireWeapon("grenade")).toBe(true);
+});
+it("M12 actual Gauss damage tracks unique action hits and kills, then survives manual restart", () => {
+  const { test, store } = operationScene();
+  test.progression.ranks.penetration = 3;
+  test.progression.quality.penetration = 3;
+  test.enemies = [1, 2, 3].map((id) => ({
+    state: {
+      ...enemy(id),
+      hp: 1,
+      progress01: 0.8 - id * 0.01,
+      elite: id === 1,
+    },
+    attackElapsedMs: 0,
+    visual: { destroy: noop },
+  }));
+  test.refreshBuild();
+  test.update(0, 0);
+  const marine = store.read().characters.marine;
+  expect(marine.operationProgress.primaryKills).toBe(3);
+  expect(marine.completedOperationRecords).toEqual(
+    expect.arrayContaining(["penetration-understanding", "elite-sniper"]),
+  );
+  expect(test.progression.special.capacity).toBe(0);
+  test.prepareRun();
+  expect(store.read().progress.completedRuns).toBe(0);
+  expect(
+    store.read().characters.marine.completedOperationRecords,
+  ).not.toContain("first-operation");
+  expect(getUnlocks(store.read()).basicMods).toEqual(
+    expect.arrayContaining(["ricochet", "heavy"]),
+  );
+});
+it("M12 repeated hits on one enemy do not unlock three-target record; real critical unlocks research", () => {
+  const { test, store } = operationScene();
+  test.enemies = [test.enemies[0]!];
+  test.progression.ranks.burst = 3;
+  test.progression.quality.burst = 3;
+  test.refreshBuild();
+  vi.mocked(Math.random).mockReturnValue(0);
+  test.update(0, 200);
+  expect(test.shotIndex).toBe(3);
+  expect(
+    store.read().characters.marine.completedOperationRecords,
+  ).not.toContain("penetration-understanding");
+  expect(store.read().characters.marine.completedOperationRecords).toContain(
+    "first-critical",
+  );
+  expect(getUnlocks(store.read()).research).toContain("critical-damage");
+});
+
+it("M12 a synergy activated by a mastery unlock is saved before the next frame or choice", () => {
+  const { test, store } = operationScene();
+  for (const id of [
+    "first-operation",
+    "hold-line",
+    "combat-adaptation",
+    "first-elite",
+    "endurance",
+    "boss-encounter",
+    "first-victory",
+    "penetration-understanding",
+    "continuous-fire",
+    "elite-sniper",
+    "mass-kills",
+    "powerful-choice",
+    "complete-rifle",
+    "grenade-mastery",
+    "retarget",
+    "drone-mastery",
+    "dual-armament",
+    "first-critical",
+  ] as const)
+    store.completeRecord(id);
+  expect(getUnlocks(store.read()).synergySystem).toBe(false); //21 points
+  test.prepareRun();
+  test.progression.ranks.burst = 1;
+  test.progression.ranks.heavy = 1;
+  test.progression.special.acquireWeapon("missile");
+  test.progression.special.acquireWeapon("drone");
+  Object.assign(test.progression.special.weapons[0]!, {
+    level: 10,
+    tree: "hunter",
+    branch: "b",
+  });
+  Object.assign(test.progression.special.weapons[1]!, {
+    level: 10,
+    tree: "squadron",
+    branch: "b",
+  });
+  (test as unknown as { trackOperations(): void }).trackOperations();
+  expect(test.synergies.active.has("hunt")).toBe(true);
+  expect(store.read().characters.marine.completedOperationRecords).toEqual(
+    expect.arrayContaining(["first-completion", "first-synergy"]),
+  );
+});
+
+it("M12 mod branch pauses all combat even after the ordinary choice was consumed", () => {
+  const test = scene();
+  test.progression.ranks.burst = 4;
+  test.progression.quality.burst = 4;
+  test.progression.pendingChoices = 1;
+  vi.mocked(Math.random).mockReturnValue(0.99999);
+  expect(test.progression.offer().some((card) => card.id === "burst")).toBe(
+    true,
+  );
+  vi.mocked(Math.random).mockReturnValue(0);
+  expect(test.progression.choose("burst")).toBe(true);
+  expect(test.progression.pendingChoices).toBe(0);
+  expect(test.progression.ranks.burst).toBe(5);
+  const before = test.run.elapsedMs;
+  test.update(0, 500);
+  expect(test.run.elapsedMs).toBe(before);
+  expect(test.shotIndex).toBe(0);
+  const ui = { showModBranch: vi.fn(), hide: vi.fn() };
+  Object.assign(test, { choices: ui });
+  const show = (CombatScene.prototype as unknown as { showChoices(): void })
+    .showChoices;
+  show.call(test);
+  expect(ui.showModBranch).toHaveBeenCalledTimes(1);
+  const select = ui.showModBranch.mock.calls[0]![1] as (id: string) => void;
+  select("b");
+  expect(test.progression.ranks.burst).toBe(6);
+  expect(test.progression.branches).toEqual({ burst: "b" });
+  test.update(0, 0);
+  expect(test.shotIndex).toBe(1);
+});
+it("M12 primary action snapshots mod branches for the entire burst", () => {
+  const test = scene();
+  test.progression.ranks.burst = 5;
+  test.progression.quality.burst = 5;
+  Object.assign(test.progression.branches, { burst: "a" });
+  test.refreshBuild();
+  test.update(0, 0);
+  const actions = (
+    test as unknown as {
+      primaryActions: Map<
+        unknown,
+        { growth: { branches?: { burst?: string } } }
+      >;
+    }
+  ).primaryActions;
+  const started = [...actions.values()][0]!;
+  expect(started.growth.branches).toEqual({ burst: "a" });
+  Object.assign(test.progression.branches, { burst: "b" });
+  expect(started.growth.branches).toEqual({ burst: "a" });
 });
