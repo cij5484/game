@@ -37,24 +37,22 @@ it("requires general upgrade ranks separately from traits and preserves magic co
     ),
   ).toBe(true);
 });
-it("requires penetration four and siege amplifier three and never evolves twice", () => {
+it("requires penetration four and tesla coil three and never evolves twice", () => {
   expect(
-    eligibleEvolutions({ penetration: 3 }, { "siege-amplifier": 3 }, new Set()),
+    eligibleEvolutions({ penetration: 3 }, { "tesla-coil": 3 }, new Set()),
   ).toEqual([]);
   expect(
-    eligibleEvolutions({ penetration: 4 }, { "siege-amplifier": 2 }, new Set()),
+    eligibleEvolutions({ penetration: 4 }, { "tesla-coil": 2 }, new Set()),
   ).toEqual([]);
   expect(
-    eligibleEvolutions(
-      { penetration: 4 },
-      { "siege-amplifier": 3 },
-      new Set(),
-    ).map((x) => x.id),
+    eligibleEvolutions({ penetration: 4 }, { "tesla-coil": 3 }, new Set()).map(
+      (x) => x.id,
+    ),
   ).toEqual(["hyper-gauss"]);
   expect(
     eligibleEvolutions(
       { penetration: 4 },
-      { "siege-amplifier": 3 },
+      { "tesla-coil": 3 },
       new Set(["hyper-gauss"]),
     ),
   ).toEqual([]);

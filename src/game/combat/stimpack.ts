@@ -1,4 +1,6 @@
-import { upgrades, type UpgradeRanks } from "../data/upgrades";
+import type { UpgradeRanks } from "../data/upgrades";
+import type { GrowthBranches } from "../data/growth";
+import { getAbilityEffects } from "../data/abilityGrowth";
 import type { StimpackConfig } from "../model/types";
 
 export type StimpackPhase = "normal" | "boost" | "crash" | "recovery";
@@ -8,23 +10,38 @@ export class Stimpack {
   private readonly base: StimpackConfig;
   private state: StimpackPhase = "normal";
   private elapsedMs = 0;
+  private boostDamageMultiplier = 1;
+  private extensionMs = 0;
+  private recoverySurchargeMs = 0;
+
+  private get recoveryDurationMs(): number {
+    return this.config.recoveryMs + this.recoverySurchargeMs;
+  }
 
   constructor(config: StimpackConfig) {
     this.config = config;
     this.base = config;
   }
 
-  setUpgrades(ranks: UpgradeRanks): void {
-    const bonus = (id: keyof UpgradeRanks) =>
-      (ranks[id] ?? 0) * upgrades[id].amount;
+  setUpgrades(ranks: UpgradeRanks, branches: GrowthBranches = {}): void {
+    const effects = getAbilityEffects(ranks, branches);
+    this.boostDamageMultiplier = effects.stimDamageMultiplier;
     this.config = {
       ...this.base,
-      boostMs: this.base.boostMs + bonus("stim-duration"),
+      boostMs: this.base.boostMs + effects.stimDurationBonusMs,
       boostAttackSpeedMultiplier:
-        this.base.boostAttackSpeedMultiplier + bonus("stim-speed"),
-      recoveryMs: Math.max(1, this.base.recoveryMs - bonus("stim-recovery")),
+        this.base.boostAttackSpeedMultiplier + effects.stimSpeedBonus,
+      crashMs: Math.max(1, this.base.crashMs * effects.stimCrashMultiplier),
+      recoveryMs: Math.max(
+        1,
+        this.base.recoveryMs * effects.stimRecoveryMultiplier,
+      ),
     };
     this.advance(0);
+  }
+
+  get primaryDamageMultiplier(): number {
+    return this.state === "boost" ? this.boostDamageMultiplier : 1;
   }
 
   get phase(): StimpackPhase {
@@ -48,7 +65,7 @@ export class Stimpack {
       case "crash":
         return 0;
       case "recovery":
-        return this.elapsedMs / this.config.recoveryMs;
+        return this.elapsedMs / this.recoveryDurationMs;
       case "normal":
         return 1;
     }
@@ -57,11 +74,14 @@ export class Stimpack {
   get timeToBoundaryMs(): number {
     switch (this.state) {
       case "boost":
-        return Math.max(0, this.config.boostMs - this.elapsedMs);
+        return Math.max(
+          0,
+          this.config.boostMs + this.extensionMs - this.elapsedMs,
+        );
       case "crash":
-        return this.config.crashMs - this.elapsedMs;
+        return Math.max(0, this.config.crashMs - this.elapsedMs);
       case "recovery":
-        return Math.max(0, this.config.recoveryMs - this.elapsedMs);
+        return Math.max(0, this.recoveryDurationMs - this.elapsedMs);
       case "normal":
         return Infinity;
     }
@@ -69,9 +89,34 @@ export class Stimpack {
 
   activate(): boolean {
     if (this.state !== "normal") return false;
+    this.extensionMs = 0;
+    this.recoverySurchargeMs = 0;
     this.state = "boost";
     this.elapsedMs = 0;
     return true;
+  }
+
+  /** Bounded per activation; only accepted extension adds recovery debt. Crash is unchanged. */
+  extendBoost(
+    amountMs: number,
+    capMs: number,
+    recoveryCostRatio = 0.5,
+  ): number {
+    if (
+      this.state !== "boost" ||
+      !Number.isFinite(amountMs) ||
+      !Number.isFinite(capMs) ||
+      !Number.isFinite(recoveryCostRatio)
+    )
+      return 0;
+    const accepted = Math.min(
+      Math.max(0, amountMs),
+      Math.max(0, capMs - this.extensionMs),
+    );
+    this.extensionMs += accepted;
+    this.recoverySurchargeMs +=
+      accepted * Math.max(0, Math.min(1, recoveryCostRatio));
+    return accepted;
   }
 
   advance(deltaMs: number): void {
@@ -96,7 +141,7 @@ export class Stimpack {
     const duration = Math.min(Math.max(0, realMs), this.timeToBoundaryMs);
     return this.state === "recovery"
       ? (this.elapsedMs * duration + (duration * duration) / 2) /
-          this.config.recoveryMs
+          this.recoveryDurationMs
       : duration * this.attackSpeedMultiplier;
   }
 
@@ -106,8 +151,9 @@ export class Stimpack {
     if (duration === 0) return 0;
     if (this.state === "recovery") {
       return (
-        Math.sqrt(this.elapsedMs ** 2 + 2 * this.config.recoveryMs * duration) -
-        this.elapsedMs
+        Math.sqrt(
+          this.elapsedMs ** 2 + 2 * this.recoveryDurationMs * duration,
+        ) - this.elapsedMs
       );
     }
     return duration / this.attackSpeedMultiplier;

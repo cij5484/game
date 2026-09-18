@@ -1,81 +1,38 @@
 import type { GaussRifleConfig } from "../model/types";
-
-export interface AttackCommand {
-  manualTargetId: number | null;
-}
-
+/** Autonomous weapon clock. Focus input never starts, buffers or speeds up an attack. */
 export class GaussRifle {
+  private untilShotMs = 0;
   private config: GaussRifleConfig;
-  private current: AttackCommand | null = null;
-  private buffered: AttackCommand | null = null;
-  private roundsRemaining = 0;
-  private untilEventMs = 0;
-  private state: "idle" | "firing" | "recovery" = "idle";
-
   constructor(config: GaussRifleConfig) {
     this.config = config;
   }
-
-  get phase() {
-    return this.state;
+  get timeToEventMs() {
+    return this.untilShotMs;
   }
-
-  /** Keep the pending round and command intact; apply new tuning at future events. */
-  setConfig(config: GaussRifleConfig): void {
+  setConfig(config: GaussRifleConfig) {
     this.config = config;
   }
-
-  request(command: AttackCommand): void {
-    if (this.state === "idle") {
-      this.start(command);
-    } else if (this.config.maxBufferedCommands > 0 && this.buffered === null) {
-      this.buffered = { ...command };
-    }
-  }
-
-  /** Round offsets let the caller advance gameplay to each hitscan instant. */
   advance(
     deltaMs: number,
-    onRound: (command: AttackCommand, offsetMs: number) => void | boolean,
+    onRound: (offsetMs: number) => void | boolean,
     includeEndpoint = true,
   ): void {
-    let remainingMs = Math.max(0, deltaMs);
-    let offsetMs = 0;
-    while (this.state !== "idle") {
+    let remaining = Math.max(0, deltaMs);
+    let offset = 0;
+    while (true) {
       if (
-        remainingMs < this.untilEventMs ||
-        (!includeEndpoint && remainingMs === this.untilEventMs)
+        remaining < this.untilShotMs ||
+        (!includeEndpoint && remaining === this.untilShotMs)
       ) {
-        this.untilEventMs -= remainingMs;
+        this.untilShotMs -= remaining;
+        // Inverse recovery integration can leave a sub-nanosecond endpoint residue.
+        if (this.untilShotMs < 1e-9) this.untilShotMs = 0;
         return;
       }
-      remainingMs -= this.untilEventMs;
-      offsetMs += this.untilEventMs;
-      if (this.state === "recovery") {
-        const next = this.buffered;
-        this.buffered = null;
-        this.current = null;
-        this.state = "idle";
-        if (next === null) return;
-        this.start(next);
-      } else {
-        const command = this.current!;
-        this.roundsRemaining -= 1;
-        this.state = this.roundsRemaining > 0 ? "firing" : "recovery";
-        this.untilEventMs =
-          this.roundsRemaining > 0
-            ? this.config.roundIntervalMs
-            : this.config.burstRecoveryMs;
-        // Returning false lets a terminal run failure stop this frame immediately.
-        if (onRound(command, offsetMs) === false) return;
-      }
+      remaining -= this.untilShotMs;
+      offset += this.untilShotMs;
+      this.untilShotMs = Math.max(1, this.config.shotIntervalMs);
+      if (onRound(offset) === false) return;
     }
-  }
-
-  private start(command: AttackCommand): void {
-    this.current = { ...command };
-    this.roundsRemaining = this.config.roundsPerBurst;
-    this.untilEventMs = 0;
-    this.state = "firing";
   }
 }

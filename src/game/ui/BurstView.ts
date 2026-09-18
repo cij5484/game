@@ -1,13 +1,14 @@
 import { battlefieldLayout, readSafeArea } from "../battlefield/layout";
 import { burstBalance } from "../data/burst";
 import type { Burst } from "../combat/burst";
-import { display, gradeLabels } from "../data/display";
 import type { StimpackPhase } from "../combat/stimpack";
+import { ultimateGestureHint } from "../input/ultimateGesture";
 import { hudLabels } from "./hudLabels";
 import "./combatHud.css";
-
-function statusCircle(element: HTMLElement, title: string, symbol: string) {
-  element.classList.add("ability-circle");
+function circle(title: string, symbol: string, action: () => void) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = "ability-circle";
   const icon = document.createElement("span");
   icon.className = "ability-symbol";
   icon.textContent = symbol;
@@ -18,130 +19,103 @@ function statusCircle(element: HTMLElement, title: string, symbol: string) {
   const state = document.createElement("span");
   state.className = "ability-state";
   element.append(icon, name, state);
+  element.addEventListener("click", action);
   return { element, title, state };
 }
-
 function renderCircle(
-  circle: ReturnType<typeof statusCircle>,
+  c: ReturnType<typeof circle>,
   progress: number,
   state: string,
   color: string,
 ) {
   const percent = Math.round(Math.max(0, Math.min(1, progress)) * 100);
-  circle.element.style.setProperty("--progress", `${percent}%`);
-  circle.element.style.setProperty("--accent", color);
-  circle.element.setAttribute(
-    "aria-label",
-    `${circle.title} · ${state} · ${percent}%`,
-  );
-  circle.state.textContent = state;
+  c.element.style.setProperty("--progress", `${percent}%`);
+  c.element.style.setProperty("--accent", color);
+  c.element.setAttribute("aria-label", `${c.title} · ${state} · ${percent}%`);
+  c.state.textContent = state;
 }
-
-/** Native accessible button, anchored to the same logical wall as the canvas HUD. */
 export class BurstView {
-  private readonly root = document.createElement("div");
-  private readonly button = document.createElement("button");
-  private readonly stim = statusCircle(
-    document.createElement("div"),
-    hudLabels.stim,
-    "✚",
-  );
-  private readonly frost = statusCircle(
-    document.createElement("div"),
-    hudLabels.frost,
-    "❄",
-  );
-  private readonly chain = statusCircle(
-    document.createElement("div"),
-    hudLabels.chain,
-    "ϟ",
-  );
-  private readonly burstCircle = statusCircle(
-    this.button,
-    hudLabels.burst,
-    "✦",
-  );
-  private readonly rhythm = document.createElement("div");
-  private readonly label = document.createElement("div");
-  private readonly cursor = document.createElement("i");
-
-  constructor(activate: () => void, tap: () => void) {
+  private root = document.createElement("div");
+  private hint = document.createElement("div");
+  private hintTimer: number | undefined;
+  private stim;
+  private frost;
+  private chain;
+  private ultimate;
+  private blocked = false;
+  constructor(actions: {
+    stim: () => void;
+    frost: () => void;
+    chain: () => void;
+    hint: () => void;
+  }) {
+    this.stim = circle(hudLabels.stim, "✚", actions.stim);
+    this.frost = circle(hudLabels.frost, "❄", actions.frost);
+    this.chain = circle(hudLabels.chain, "ϟ", actions.chain);
+    this.ultimate = circle(hudLabels.burst, "V", actions.hint);
     this.root.className = "burst-ui combat-hud";
     this.root.setAttribute("role", "group");
     this.root.setAttribute("aria-label", hudLabels.abilities);
-    this.button.classList.add("burst-button");
-    for (const [index, circle] of [
-      this.stim,
-      this.frost,
-      this.chain,
-      this.burstCircle,
-    ].entries()) {
-      circle.element.style.left = `${70 + index * 165}px`;
-      if (circle !== this.burstCircle)
-        circle.element.setAttribute("role", "img");
-    }
-    this.button.type = "button";
-    this.button.addEventListener("click", () => {
-      if (this.rhythm.hidden) activate();
-      else tap();
+    [this.stim, this.frost, this.chain, this.ultimate].forEach((c, i) => {
+      c.element.style.left = `${65 + i * 165}px`;
+      this.root.append(c.element);
     });
-    this.rhythm.className = "rhythm";
-    this.rhythm.hidden = true;
-    this.label.className = "rhythm-label";
-    const track = document.createElement("div");
-    track.className = "rhythm-track";
-    for (const time of burstBalance.beatTargetsMs) {
-      const beat = document.createElement("b");
-      beat.style.left = `${(time / burstBalance.rhythmMs) * 100}%`;
-      track.append(beat);
-    }
-    this.cursor.className = "rhythm-cursor";
-    track.append(this.cursor);
-    this.rhythm.append(this.label, track);
-    this.root.append(
-      this.stim.element,
-      this.frost.element,
-      this.chain.element,
-      this.button,
-      this.rhythm,
+    this.hint.className = "ultimate-hint";
+    this.hint.hidden = true;
+    this.hint.setAttribute("role", "status");
+    const drawing = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
     );
+    drawing.setAttribute("viewBox", "0 0 240 240");
+    drawing.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(drawing.namespaceURI, "polyline");
+    path.setAttribute(
+      "points",
+      ultimateGestureHint.path
+        .map((p) => `${20 + p.x * 200},${20 + p.y * 200}`)
+        .join(" "),
+    );
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "#ffe18b");
+    path.setAttribute("stroke-width", "8");
+    drawing.append(path);
+    const text = document.createElement("span");
+    text.textContent = ultimateGestureHint.instruction;
+    this.hint.append(drawing, text);
+    this.root.append(this.hint);
     document.body.append(this.root);
   }
-
-  resize(width: number, height: number): void {
+  showHint() {
+    this.hint.hidden = false;
+    window.clearTimeout(this.hintTimer);
+    this.hintTimer = window.setTimeout(() => {
+      this.hint.hidden = true;
+    }, 2400);
+  }
+  resize(width: number, height: number) {
     const layout = battlefieldLayout(width, height, readSafeArea());
     this.root.style.left = `${layout.x}px`;
     this.root.style.top = `${layout.y}px`;
     this.root.style.transform = `scale(${layout.scale})`;
   }
-
-  render(burst: Burst, blocked: boolean, ultimate: boolean): void {
-    const rhythm = burst.phase === "rhythm";
-    this.rhythm.hidden = !rhythm || blocked;
-    this.button.disabled = blocked || ultimate || (!rhythm && !burst.ready);
+  render(burst: Burst, blocked: boolean, ultimate: boolean) {
+    this.blocked = blocked;
+    this.ultimate.element.disabled = blocked;
     renderCircle(
-      this.burstCircle,
-      ultimate
-        ? 1
-        : rhythm
-          ? burst.progress
-          : burst.gauge / burstBalance.gaugeMax,
+      this.ultimate,
+      burst.gauge / burstBalance.gaugeMax,
       ultimate
         ? hudLabels.active
-        : rhythm
-          ? display.tap
-          : burst.ready
-            ? hudLabels.ready
-            : hudLabels.charging,
-      burst.ready || ultimate || rhythm ? "#ffe18b" : "#a8baca",
+        : burst.ready
+          ? "준비 · V 그리기"
+          : "충전 · 탭 안내",
+      burst.ready ? "#ffe18b" : "#a8baca",
     );
-    this.button.classList.toggle("ready", burst.ready);
-    this.cursor.style.left = `${burst.progress * 100}%`;
-    const last = burst.grades[burst.grades.length - 1];
-    const grade = last ? gradeLabels[last] : display.rhythmHint;
-    this.label.textContent = `${grade} · ${burst.beatIndex}/${burstBalance.beatTargetsMs.length}`;
+    this.ultimate.element.classList.toggle("ready", burst.ready);
+    this.ultimate.element.classList.toggle("ultimate-ready", burst.ready);
+    if (blocked) this.hint.hidden = true;
   }
-
   renderAbilities(
     stim: { phase: StimpackPhase; progress: number },
     magic: {
@@ -149,18 +123,16 @@ export class BurstView {
       chainProgress: number;
       frostActive: boolean;
     },
-  ): void {
-    const colors = {
-      normal: "#83edb0",
-      boost: "#70ffae",
-      crash: "#ff7d72",
-      recovery: "#ffcd78",
-    };
+  ) {
+    const blocked = this.blocked;
+    this.stim.element.disabled = blocked || stim.phase !== "normal";
+    this.frost.element.disabled = blocked || magic.frostProgress < 1;
+    this.chain.element.disabled = blocked || magic.chainProgress < 1;
     renderCircle(
       this.stim,
       stim.progress,
       hudLabels.stimPhases[stim.phase],
-      colors[stim.phase],
+      stim.phase === "crash" ? "#ff7d72" : "#83edb0",
     );
     renderCircle(
       this.frost,
@@ -170,20 +142,20 @@ export class BurstView {
         : magic.frostActive
           ? hudLabels.active
           : hudLabels.waiting,
-      magic.frostActive || magic.frostProgress >= 1 ? "#92ecff" : "#78949f",
+      "#92ecff",
     );
     renderCircle(
       this.chain,
       magic.chainProgress,
       magic.chainProgress >= 1 ? hudLabels.ready : hudLabels.waiting,
-      magic.chainProgress >= 1 ? "#e3b6ff" : "#9586a2",
+      "#e3b6ff",
     );
-    this.stim.element.classList.toggle("ready", stim.phase === "normal");
-    this.frost.element.classList.toggle("ready", magic.frostProgress >= 1);
-    this.chain.element.classList.toggle("ready", magic.chainProgress >= 1);
+    [this.stim, this.frost, this.chain].forEach((c) =>
+      c.element.classList.toggle("ready", !c.element.disabled),
+    );
   }
-
-  destroy(): void {
+  destroy() {
+    window.clearTimeout(this.hintTimer);
     this.root.remove();
   }
 }

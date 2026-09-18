@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveAttackTarget,
   selectAutoTarget,
+  TargetFocus,
 } from "../../src/game/combat/targeting";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 
@@ -31,7 +32,7 @@ describe("targeting", () => {
     expect(selectAutoTarget([])).toBeNull();
   });
 
-  it("uses a manual target for this command only, falling back when dead or absent", () => {
+  it("resolves focused targets and falls back when dead or absent", () => {
     const enemies = [far, near, dead];
     expect(resolveAttackTarget(far.id, enemies)).toBe(far);
     expect(resolveAttackTarget(null, enemies)).toBe(near);
@@ -39,4 +40,21 @@ describe("targeting", () => {
     expect(resolveAttackTarget(999, enemies)).toBe(near);
     expect(resolveAttackTarget(dead.id, [dead])).toBeNull();
   });
+});
+
+it("focus persists across automatic shots, clears on blank tap, and permanently releases a dead target", () => {
+  const focus = new TargetFocus();
+  expect(focus.resolve([far, near])).toBe(near);
+  focus.set(far.id);
+  expect(focus.resolve([far, near])).toBe(far);
+  expect(focus.resolve([far, near])).toBe(far);
+  focus.set(null);
+  expect(focus.resolve([far, near])).toBe(near);
+  focus.set(far.id);
+  expect(focus.resolve([{ ...far, hp: 0 }, near])).toBe(near);
+  expect(focus.targetId).toBeNull();
+  expect(focus.resolve([far, near])).toBe(near);
+  focus.set(999);
+  expect(focus.resolve([far, near])).toBe(near);
+  expect(focus.targetId).toBeNull();
 });

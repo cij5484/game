@@ -10,7 +10,9 @@ export function eligibleRelics(
   levels: RelicLevels,
   capacity: number = relicBalance.maxTypes,
 ): RelicDefinition[] {
-  const owned = Object.values(levels).filter((level) => level > 0).length;
+  const owned = Object.values(relics).filter(
+    (relic) => (levels[relic.id] ?? 0) > 0,
+  ).length;
   return Object.values(relics).filter((relic) => {
     const level = levels[relic.id] ?? 0;
     return level < relic.maxLevel && (level > 0 || owned < capacity);
@@ -58,31 +60,40 @@ export class Relics {
 }
 export function relicEffects(levels: RelicLevels): RelicEffects {
   const effects: RelicEffects = {
-    shieldHitRefundMs: 0,
-    shieldRefundCapMs: 0,
-    empoweredRounds: 0,
-    shieldDamageMultiplier: 1,
-    wallHealing: 0,
     arcEveryRounds: 0,
     arcTargets: 0,
     arcDamage: 0,
     arcRadius: 0,
     criticalChargeBonus: 0,
-    lightningReadiesArc: false,
     arcRefundMs: 0,
-    frostDurationBonusMs: 0,
-    frostKillRefundMs: 0,
-    frostKillRefundCapMs: 0,
-    stimRefundMs: 0,
-    boostKillHealing: 0,
-    lowWallHealing: 0,
-    lowWallDamageBonus: 0,
     stimWallCost: 0,
     boostDamageBonus: 0,
     alternatingRefundMs: 0,
     alternatingHealing: 0,
-    magicKillXpMultiplier: 1,
-    rarityModifiers: {},
+    crisisDurationMs: 0,
+    crisisSpeedBonus: 0,
+    crisisDamageReduction: 0,
+    crisisPushback: 0,
+    crisisRefundMs: 0,
+    echoEveryVolleys: 0,
+    echoDamageMultiplier: 0,
+    echoTraitLevel: 0,
+    echoRoundCap: 0,
+    brittleThreshold: 0,
+    shatterDamage: 0,
+    shatterRadius: 0,
+    shatterWaves: 0,
+    shatterTargets: 0,
+    shatterChainStacks: 0,
+    boostExtensionPerKillMs: 0,
+    boostExtensionCapMs: 0,
+    recoveryCostRatio: 0,
+    pumpDamageBonus: 0,
+    reclaimHealing: 0,
+    reclaimEnergy: 0,
+    reclaimKillsPerSecond: 0,
+    lightningReadiesArc: false,
+    lethalSave: false,
   };
   for (const relic of Object.values(relics)) {
     const level = Math.min(relic.maxLevel, Math.max(0, levels[relic.id] ?? 0));

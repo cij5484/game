@@ -1,58 +1,68 @@
 import { expect, it } from "vitest";
-import { relics } from "../../src/game/data/relics";
+import { relics, type RelicId } from "../../src/game/data/relics";
 import {
   Relics,
   eligibleRelics,
   relicEffects,
 } from "../../src/game/progression/relics";
-it("levels run-only relics to five, excludes MAX and respects capacity", () => {
-  const state = new Relics(() => 0.999);
-  state.levels["ice-heart"] = 5;
-  state.levels["tesla-coil"] = 1;
-  expect(state.choose("siege-amplifier")).toBe(false);
-  for (let i = 0; i < 11; i++) state.reward();
-  for (let i = 0; i < 5; i++)
-    expect(state.choose("siege-amplifier")).toBe(true);
-  expect(state.levels["siege-amplifier"]).toBe(5);
-  expect(state.offer().map((card) => card.id)).toEqual(["tesla-coil"]);
-  expect(state.choose("siege-amplifier")).toBe(false);
-  for (let i = 0; i < 5; i++) state.choose("tesla-coil");
-  expect(state.pendingRewards).toBe(0);
-  state.reward();
-  expect(state.offer()).toEqual([]);
-  expect(new Relics().levels).toEqual({});
+it("offers exactly eight redesigned relics and upgrades each from one through MAX", () => {
+  const expected = [
+    "tesla-coil",
+    "berserker-seal",
+    "time-gear",
+    "last-bulwark",
+    "ammo-replicator",
+    "frost-resonator",
+    "adrenaline-pump",
+    "emergency-reclaimer",
+  ];
   expect(
-    eligibleRelics({ "siege-amplifier": 1 }, 1).map((card) => card.id),
-  ).toEqual(["siege-amplifier"]);
+    eligibleRelics({})
+      .map((x) => x.id)
+      .sort(),
+  ).toEqual(expected.sort());
+  for (const id of expected as RelicId[]) {
+    const state = new Relics();
+    state.levels[id] = 1;
+    state.capacity = 1;
+    for (let level = 2; level <= 5; level++) {
+      state.reward();
+      expect(state.choose(id)).toBe(true);
+      expect(state.levels[id]).toBe(level);
+    }
+    state.reward();
+    expect(state.offer()).toEqual([]);
+    expect(relics[id].levels).toHaveLength(5);
+    expect(
+      Object.values(relicEffects({ [id]: 5 })).every(
+        (v) => typeof v !== "number" || Number.isFinite(v),
+      ),
+    ).toBe(true);
+  }
 });
-
-it("offers three distinct cached choices from eight and expands capacity once", () => {
-  expect(Object.values(relics)).toHaveLength(8);
+it("respects three relic slots and expands to four once while keeping cached choices", () => {
   const state = new Relics(() => 0.999);
   state.reward();
   const offer = state.offer();
-  expect(offer).toHaveLength(3);
-  expect(new Set(offer.map((x) => x.id)).size).toBe(3);
   state.reward();
   expect(state.offer()).toEqual(offer);
-  expect(state.choose("lucky-coin")).toBe(false);
-  expect(state.capacity).toBe(3);
+  expect(new Set(offer.map((x) => x.id)).size).toBe(3);
+  Object.assign(state.levels, {
+    "tesla-coil": 5,
+    "time-gear": 5,
+    "last-bulwark": 5,
+  });
+  expect(eligibleRelics(state.levels, state.capacity)).toEqual([]);
   expect(state.expandCapacity()).toBe(true);
   expect(state.expandCapacity()).toBe(false);
-  expect(state.capacity).toBe(4);
-  Object.assign(state.levels, {
+  expect(eligibleRelics(state.levels, state.capacity)).toHaveLength(5);
+});
+it("ignores removed relic ids when counting capacity for imported run state", () => {
+  const legacy = {
     "siege-amplifier": 5,
-    "tesla-coil": 5,
     "ice-heart": 5,
-    "stim-circuit": 1,
-  });
-  expect(eligibleRelics(state.levels, state.capacity).map((x) => x.id)).toEqual(
-    ["stim-circuit"],
-  );
-  expect(relicEffects({ "ice-heart": 5 }).frostDurationBonusMs).toBe(3000);
-  expect(relicEffects({ "lucky-coin": 5 }).rarityModifiers).toEqual({
-    RARE: 0.25,
-    EPIC: 0.25,
-    LEGENDARY: 0.25,
-  });
+    "stim-circuit": 5,
+    "lucky-coin": 5,
+  };
+  expect(eligibleRelics(legacy as never)).toHaveLength(8);
 });

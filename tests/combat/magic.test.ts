@@ -3,42 +3,12 @@ import { Magic } from "../../src/game/combat/magic";
 import { enemyConfigs } from "../../src/game/data/enemies";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
-
-it("connects frost vulnerability and bounded death bursts without recursive kills", () => {
-  const magic = new Magic();
-  magic.setUpgrades({
-    "frost-vulnerability": 2,
-    "frost-deathburst": 1,
-  });
-  const pack = Array.from({ length: 3 }, (_, id) => ({
+const pack = (count: number, hp = 100) =>
+  Array.from({ length: count }, (_, id) => ({
     ...createPrototypeEnemy("grunt", "center", id),
-    progress01: 0.8 - id * 0.08,
+    hp,
+    progress01: 0.95 - id * 0.001,
   }));
-  magic.cast("frost-nova", pack);
-  expect(magic.primaryDamageMultiplier).toBeCloseTo(1.3);
-  expect(magic.remaining("frost-nova")).toBe(30000);
-  const burst = magic.afterDeaths(
-    pack.map((e) => (e.id === 0 ? { ...e, hp: 0 } : e)),
-    [0],
-  );
-  expect(burst.enemies[1]!.hp).toBe(0);
-  expect(burst.enemies[2]!.hp).toBeGreaterThan(0);
-  magic.advance(30000);
-  expect(magic.primaryDamageMultiplier).toBe(1);
-});
-
-it("extends lightning on kills and makes periodic strikes hit nearby enemies once", () => {
-  const pack = Array.from({ length: 55 }, (_, id) => ({
-    ...createPrototypeEnemy("grunt", "center", id),
-    progress01: 0.95 - id * 0.01,
-  }));
-  const chain = new Magic();
-  chain.setUpgrades({ "chain-killchain": 1, "chain-strike": 1 });
-  const result = chain.cast("chain-lightning", pack)!;
-  expect(result.hitIds.length).toBeGreaterThan(30);
-  expect(new Set(result.hitIds).size).toBe(result.hitIds.length);
-  expect(result.strikeIds.length).toBeGreaterThan(0);
-});
 
 it("relic refunds shorten cooldowns without advancing or extending global slow", () => {
   const magic = new Magic();
@@ -130,56 +100,117 @@ it("uses independent long cooldowns and permits reuse only at expiry", () => {
   expect(magic.cast("frost-nova", [])).not.toBeNull();
 });
 
-it("grows global slow strength and duration without resetting an active effect or cooldown", () => {
+it("whiteout improves whole-world control including new spawns without refreshing a running cast", () => {
   const magic = new Magic();
   magic.cast("frost-nova", []);
   magic.advance(1000);
-  magic.setUpgrades({ "frost-strength": 5, "frost-duration": 2 });
-  expect(magic.remaining("frost-nova")).toBe(29000);
+  magic.setUpgrades({ "frost-growth": 5 }, { "frost-growth": "a" });
   expect(magic.frostRemainingMs).toBe(6000);
   expect(magic.movementMultiplier).toBe(0.5);
   magic.advance(29000);
   magic.cast("frost-nova", []);
-  expect(magic.movementMultiplier).toBeCloseTo(0.25);
-  expect(magic.frostRemainingMs).toBe(8600);
-});
-
-it("grows lightning target count and damage without resetting cooldown", () => {
-  const enemies = Array.from({ length: 36 }, (_, id) => ({
-    ...createPrototypeEnemy("shield", "center", id),
-    hp: 150,
-    progress01: 0.95 - id * 0.02,
-  }));
-  const magic = new Magic();
-  magic.setUpgrades({ "chain-targets": 2, "chain-damage": 2 });
-  const result = magic.cast("chain-lightning", enemies)!;
-  expect(new Set(result.hitIds).size).toBe(34);
-  expect(result.enemies.slice(0, 34).every((enemy) => enemy.hp === 39)).toBe(
-    true,
-  );
-  expect(result.enemies.slice(34).every((enemy) => enemy.hp === 150)).toBe(
-    true,
-  );
-  magic.setUpgrades({ "chain-targets": 3, "chain-damage": 3 });
-  expect(magic.remaining("chain-lightning")).toBe(24000);
-  expect(magic.cast("chain-lightning", enemies)).toBeNull();
-});
-
-it("advanced frost pulses all living enemies and storm forks hit distinct targets", () => {
-  const pack = Array.from({ length: 36 }, (_, id) => ({
-    ...createPrototypeEnemy("grunt", "center", id),
-    hp: 100,
-    progress01: 0.95 - id * 0.02,
-  }));
-  const frost = new Magic();
-  frost.setUpgrades({ "frost-shatter": 1 });
+  expect(magic.frostRemainingMs).toBe(14000);
+  expect(magic.movementMultiplier).toBeCloseTo(0.12);
+  const spawned = createPrototypeEnemy("runner", "center", 99);
   expect(
-    frost.cast("frost-nova", pack)!.enemies.every((enemy) => enemy.hp === 70),
-  ).toBe(true);
-  const chain = new Magic();
-  chain.setUpgrades({ "storm-fork": 1 });
-  const result = chain.cast("chain-lightning", pack)!;
-  expect(result.hitIds).toHaveLength(33);
-  expect(new Set(result.hitIds).size).toBe(33);
-  expect(result.enemies.filter((enemy) => enemy.hp === 55)).toHaveLength(3);
+    advanceEnemy(spawned, 1000, enemyConfigs.runner, magic.movementMultiplier)
+      .enemy.progress01,
+  ).toBeCloseTo(0.00624);
+  expect(magic.primaryDamageMultiplier).toBe(1);
+});
+it("absolute shatter chains through killed neighbors with a bounded center and victim budget", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ "frost-growth": 5 }, { "frost-growth": "b" });
+  const enemies = pack(300, 60);
+  enemies[0]!.hp = 0;
+  magic.cast("frost-nova", enemies);
+  expect(magic.primaryDamageMultiplier).toBe(1.6);
+  const result = magic.afterDeaths(enemies, [0]);
+  expect(result.hitIds.length).toBeGreaterThan(0);
+  expect(result.hitIds.length).toBeLessThanOrEqual(40);
+  expect(result.centerIds.length).toBeGreaterThan(1);
+  expect(result.centerIds.length).toBeLessThanOrEqual(8);
+  expect(new Set(result.hitIds).size).toBe(result.hitIds.length);
+  magic.advance(30000);
+  expect(magic.afterDeaths(enemies, [0]).hitIds).toEqual([]);
+});
+it("chain branch gains extra jumps from kills but never exceeds the 64-target ceiling", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ "lightning-growth": 5 }, { "lightning-growth": "a" });
+  const result = magic.cast("chain-lightning", pack(300, 20))!;
+  expect(result.hitIds).toHaveLength(64);
+  expect(new Set(result.hitIds).size).toBe(64);
+  const tough = new Magic();
+  tough.setUpgrades({ "lightning-growth": 5 }, { "lightning-growth": "a" });
+  expect(
+    tough.cast("chain-lightning", pack(300, 1000))!.hitIds.length,
+  ).toBeLessThan(64);
+});
+it("thunderstorm prioritizes elite threats and schedules exactly three capped strikes", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ "lightning-growth": 5 }, { "lightning-growth": "b" });
+  let enemies = pack(300, 1000);
+  enemies[250] = { ...enemies[250]!, elite: true };
+  const result = magic.cast("chain-lightning", enemies)!;
+  enemies = result.enemies;
+  expect(result.hitIds[0]).toBe(250);
+  expect(result.hitIds).toHaveLength(10);
+  expect(enemies[250]!.hp).toBe(745);
+  magic.advance(499);
+  expect(magic.drainStrikes(enemies).hitIds).toEqual([]);
+  magic.advance(1);
+  const first = magic.drainStrikes(enemies);
+  expect(first.strikeIds).toEqual([250]);
+  expect(first.hitIds).toHaveLength(8);
+  expect(magic.drainStrikes(first.enemies).hitIds).toEqual([]);
+  magic.advance(1000);
+  const rest = magic.drainStrikes(first.enemies);
+  expect(rest.strikeIds).toHaveLength(2);
+  expect(rest.hitIds.length).toBeLessThanOrEqual(16);
+  magic.advance(10000);
+  expect(magic.drainStrikes(rest.enemies).hitIds).toEqual([]);
+});
+it("queued strikes use cast-time effects even after growth refresh and retarget dead enemies", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ "lightning-growth": 5 }, { "lightning-growth": "b" });
+  const enemies = pack(20, 1000);
+  magic.cast("chain-lightning", enemies);
+  magic.setUpgrades({});
+  magic.advance(500);
+  const result = magic.drainStrikes(
+    enemies.map((e) => (e.id === 0 ? { ...e, hp: 0 } : e)),
+  );
+  expect(result.strikeIds).toEqual([1]);
+  expect(result.enemies[1]!.hp).toBe(850);
+});
+
+it("only the shatter capstone reaches a second death generation and never a third", () => {
+  const enemies = Array.from({ length: 4 }, (_, id) => ({
+    ...createPrototypeEnemy("grunt", "center", id),
+    hp: id === 0 ? 0 : 40,
+    progress01: 0.9 - id * 0.09,
+  }));
+  const normal = new Magic();
+  normal.setUpgrades({ "frost-growth": 4 }, { "frost-growth": "b" });
+  normal.cast("frost-nova", enemies);
+  expect(normal.afterDeaths(enemies, [0]).hitIds).toEqual([1]);
+  const capstone = new Magic();
+  capstone.setUpgrades({ "frost-growth": 5 }, { "frost-growth": "b" });
+  capstone.cast("frost-nova", enemies);
+  const result = capstone.afterDeaths(enemies, [0]);
+  expect(result.hitIds).toEqual([1, 2]);
+  expect(result.enemies[3]!.hp).toBe(40);
+});
+
+it("a track with no selected branch cannot silently activate a capstone", () => {
+  const magic = new Magic();
+  magic.setUpgrades({ "frost-growth": 5, "lightning-growth": 5 });
+  magic.cast("frost-nova", []);
+  expect(magic.primaryDamageMultiplier).toBe(1);
+  expect(magic.frostRemainingMs).toBe(9000);
+  expect(magic.cast("chain-lightning", pack(300, 1000))!.hitIds).toHaveLength(
+    36,
+  );
+  magic.advance(2000);
+  expect(magic.drainStrikes(pack(300)).hitIds).toEqual([]);
 });

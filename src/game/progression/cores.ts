@@ -1,20 +1,16 @@
 import { coreBalance, cores, type CoreId } from "../data/cores";
-import type { WeaponTraitLevels } from "../data/traits";
 
 export class Cores {
   readonly owned = new Set<CoreId>();
 
-  tryDrop(traits: WeaponTraitLevels, random = Math.random) {
+  tryDrop(random = Math.random) {
     if (
       this.owned.size >= coreBalance.maxPerRun ||
       random() >= coreBalance.eliteDropChance
     )
       return null;
     const pool = Object.values(cores).filter(
-      (core) =>
-        !this.owned.has(core.id) &&
-        (core.id !== "overload" ||
-          Object.values(traits).some((level) => level > 0 && level < 5)),
+      (core) => !this.owned.has(core.id),
     );
     let roll = random() * pool.reduce((sum, core) => sum + core.weight, 0);
     const picked =

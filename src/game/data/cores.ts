@@ -1,5 +1,3 @@
-import type { UpgradeRarity } from "./upgrades";
-
 export const coreBalance = { eliteDropChance: 0.08, maxPerRun: 2 } as const;
 export const cores = {
   "tactical-expansion": {
@@ -13,37 +11,25 @@ export const cores = {
     id: "relic-expansion",
     title: "유물 확장 코어",
     symbol: "◇",
-    description: "유물 보유 한도 3 → 4",
+    description: "유물 한도 3 → 4 · 즉시 유물 선택 1회",
     weight: 1,
   },
-  luck: {
-    id: "luck",
-    title: "행운 코어",
-    symbol: "♧",
-    description: "희귀 ×1.5 · 유니크 ×2 · 전설 ×3 후보 가중치",
-    weight: 1,
-  },
-  overload: {
-    id: "overload",
-    title: "과부하 코어",
-    symbol: "↑",
-    description: "보유한 모든 특성 즉시 +1레벨 · 최대 5",
+  "choice-expansion": {
+    id: "choice-expansion",
+    title: "선택 확장 코어",
+    symbol: "▤",
+    description: "레벨업 강화 카드 후보 3장 → 4장",
     weight: 1,
   },
   resonance: {
     id: "resonance",
     title: "공명 코어",
     symbol: "∞",
-    description: "활성 시너지의 폭발·추가 도탄·탄막 강화",
+    description: "선택해 활성화한 시너지의 효과 ×1.5",
     weight: 1,
   },
 } as const;
 export type CoreId = keyof typeof cores;
 export function coreEffects(owned: ReadonlySet<CoreId>) {
-  return {
-    rarityModifiers: (owned.has("luck")
-      ? { RARE: 1.5, EPIC: 2, LEGENDARY: 3 }
-      : {}) as Partial<Record<UpgradeRarity, number>>,
-    synergyMultiplier: owned.has("resonance") ? 1.5 : 1,
-  };
+  return { synergyMultiplier: owned.has("resonance") ? 1.5 : 1 };
 }

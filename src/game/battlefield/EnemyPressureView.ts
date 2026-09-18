@@ -53,6 +53,11 @@ export class EnemyPressureView {
   private readonly gesturePath: Phaser.GameObjects.Graphics;
   private readonly gestureText: Phaser.GameObjects.Text;
   private farY = field.farY;
+  private focusId: number | null = null;
+
+  setFocus(id: number | null): void {
+    this.focusId = id;
+  }
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -162,7 +167,7 @@ export class EnemyPressureView {
     );
     this.debug.add(text(360, 1060, "NEAR / WALL", 24));
     this.debug.add(
-      text(360, 1095, "빈 곳 탭: 자동 3점사 · 적 탭: 우선 공격", 22),
+      text(360, 1095, "자동 사격 · 적 탭: 집중 · 빈 곳 탭: 집중 해제", 22),
     );
     this.debug.add(
       text(360, 1130, "두 손가락 탭 / 마우스 좌우 동시 클릭: STIMPACK", 22),
@@ -303,8 +308,18 @@ export class EnemyPressureView {
         slowed ? 0xb2f7ff : enemy.elite ? 0xe8bd50 : colors[enemy.kind],
       )
       .setStrokeStyle(
-        enemy.elite ? 5 : enemy.phase === "attacking" ? 4 : 0,
-        enemy.elite ? 0xffedb5 : 0xff665f,
+        enemy.id === this.focusId
+          ? 7
+          : enemy.elite
+            ? 5
+            : enemy.phase === "attacking"
+              ? 4
+              : 0,
+        enemy.id === this.focusId
+          ? 0xffffff
+          : enemy.elite
+            ? 0xffedb5
+            : 0xff665f,
       );
   }
 
@@ -340,9 +355,9 @@ export class EnemyPressureView {
     return closest;
   }
 
-  showShot(target: Phaser.GameObjects.Container): void {
+  showShot(target: Phaser.GameObjects.Container, echo = false): void {
     const effect = this.scene.add.graphics();
-    effect.lineStyle(2, 0xffe69a, 0.9);
+    effect.lineStyle(echo ? 4 : 2, echo ? 0xd3a5ff : 0xffe69a, 0.9);
     effect.lineBetween(
       combatVisual.marineX,
       combatVisual.marineY,
@@ -350,7 +365,7 @@ export class EnemyPressureView {
       target.y,
     );
     effect
-      .fillStyle(0xfff4bc)
+      .fillStyle(echo ? 0xd3a5ff : 0xfff4bc)
       .fillCircle(combatVisual.marineX, combatVisual.marineY, 9);
     effect.fillCircle(target.x, target.y, 6);
     this.world.add(effect);
@@ -400,11 +415,12 @@ export class EnemyPressureView {
     shotTargetIds: readonly number[] = [],
     criticalIds: readonly number[] = [],
     explosionIds: readonly number[] = [],
+    echo = false,
   ): void {
     if (!targets.length) return;
     for (const [index, target] of targets.entries()) {
       if (index === 0 || shotTargetIds.includes(hitIds[index]!))
-        this.showShot(target);
+        this.showShot(target, echo);
     }
     const effect = this.scene.add.graphics();
     this.world.add(effect);
@@ -469,14 +485,18 @@ export class EnemyPressureView {
 
   // BuildBar owns the visible relic inventory; retained until scene integration.
   showImpacts(
-    kind: "frost" | "lightning",
+    kind: "frost" | "lightning" | "emergency",
     targets: readonly Phaser.GameObjects.Container[],
   ): void {
     if (!targets.length) return;
     const effect = this.scene.add.graphics();
     this.world.add(effect);
-    effect.lineStyle(5, kind === "frost" ? 0x93eeff : 0xffffbd, 0.9);
-    for (const target of targets) {
+    effect.lineStyle(
+      5,
+      kind === "emergency" ? 0x75ffc7 : kind === "frost" ? 0x93eeff : 0xffffbd,
+      0.9,
+    );
+    for (const target of targets.slice(0, 12)) {
       effect.strokeCircle(target.x, target.y, 70 * target.scaleX);
       if (kind === "lightning")
         effect.lineBetween(target.x - 12, target.y - 140, target.x, target.y);
@@ -527,7 +547,7 @@ export class EnemyPressureView {
     } else {
       effect.lineStyle(4, 0xe0c3ff, 1);
       let previous = { x: combatVisual.marineX, y: combatVisual.marineY };
-      for (const target of targets) {
+      for (const target of targets.slice(0, 12)) {
         const midX = (previous.x + target.x) / 2 + 14;
         const midY = (previous.y + target.y) / 2;
         effect.lineBetween(previous.x, previous.y, midX, midY);

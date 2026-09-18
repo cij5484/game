@@ -74,3 +74,12 @@
   margin: 3px 0;
   white-space: pre-line;
 }
+.build-icon[data-group="synergy"] {
+  color: #ffca81;
+  border-color: #ffad42;
+  background: #49331be8;
+}
+.build-icon[data-group="evolution"] {
+  color: #79ffff;
+  border-color: #79ffff;
+}

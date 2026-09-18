@@ -1,6 +1,8 @@
 import {
   upgradeCategory,
   type UpgradeDefinition,
+  type UpgradeChoice,
+  type ChoiceId,
   type UpgradeRanks,
 } from "../data/upgrades";
 import type { RelicDefinition, RelicId, RelicLevels } from "../data/relics";
@@ -26,9 +28,9 @@ export class LevelUpView {
 
   show(
     level: number,
-    choices: readonly UpgradeDefinition[],
+    choices: readonly UpgradeChoice[],
     ranks: UpgradeRanks,
-    select: (id: UpgradeDefinition["id"]) => void,
+    select: (id: ChoiceId) => void,
     traitLimit: number,
   ): void {
     this.render(
@@ -36,18 +38,24 @@ export class LevelUpView {
       choices.map((choice) => ({
         id: choice.id,
         title: choice.title,
-        level: levelChange(ranks[choice.id] ?? 0, choice.maxRank),
-        symbol: choiceFaces[choice.id].symbol,
-        compact:
-          choiceFaces[choice.id].lines[
-            Math.min(
-              ranks[choice.id] ?? 0,
-              choiceFaces[choice.id].lines.length - 1,
-            )
-          ]!,
+        level: choice.synergyId
+          ? "조합 완성 · 특성 슬롯 미사용"
+          : levelChange(
+              ranks[choice.growthId ?? (choice.id as keyof UpgradeRanks)] ?? 0,
+              choice.maxRank,
+            ),
+        symbol:
+          choice.symbol ??
+          choiceFaces[choice.growthId ?? choice.id]?.symbol ??
+          "✧",
+        compact: choice.description,
         description: choice.description,
         rarity: choice.rarity,
-        category: upgradeCategoryLabels[upgradeCategory(choice)],
+        category: choice.synergyId
+          ? display.synergy
+          : choice.branch && choice.ability === "gauss-rifle"
+            ? display.traitModification
+            : upgradeCategoryLabels[upgradeCategory(choice)],
       })),
       select,
       `${display.trait} ${weaponTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${
@@ -72,8 +80,8 @@ export class LevelUpView {
           id: choice.id,
           title: choice.title,
           level: levelChange(nextLevel - 1, choice.maxLevel),
-          symbol: choiceFaces[choice.id].symbol,
-          compact: choiceFaces[choice.id].lines[nextLevel - 1]!,
+          symbol: choiceFaces[choice.id]!.symbol,
+          compact: choiceFaces[choice.id]!.lines[nextLevel - 1]!,
           description: choice.levels[nextLevel - 1]!.description,
           category: display.relic,
         };
@@ -107,6 +115,8 @@ export class LevelUpView {
     this.dialog.append(heading, note);
     const row = document.createElement("div");
     row.className = "upgrade-cards";
+    row.dataset.count = String(choices.length);
+    row.style.setProperty("--choice-count", String(choices.length));
     for (const choice of choices) {
       const card = document.createElement("button");
       card.type = "button";
@@ -123,6 +133,7 @@ export class LevelUpView {
         ].join(" · "),
       );
       if (choice.rarity) card.dataset.rarity = choice.rarity;
+      card.dataset.category = choice.category;
       const icon = document.createElement("b");
       icon.className = "choice-symbol";
       icon.textContent = choice.symbol;

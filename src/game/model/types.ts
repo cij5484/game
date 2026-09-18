@@ -14,10 +14,7 @@ export interface MarineConfig {
 
 export interface GaussRifleConfig {
   id: "gauss-rifle";
-  roundsPerBurst: number;
-  roundIntervalMs: number;
-  burstRecoveryMs: number;
-  maxBufferedCommands: number;
+  shotIntervalMs: number;
   damagePerRound: number;
 }
 
