@@ -6,9 +6,9 @@
 
 새 계정은 Gauss·공용 강화·관통/점사·기본 연구 3종으로 시작합니다. Stimpack/V 필살기와 기존 희귀 사거리 카드는 유지합니다. 첫 자연 종료 후 수류탄/특수 슬롯1, 작전 기록을 통한 개조·트리·Overclock·연구, 숙련 **3/9/13/17/22**에서 유물/미사일/슬롯2/드론/시너지가 열립니다. 첫 Stage 1 Clear는 Core/증원 병력을 해금합니다. **28개 기록, 총40 Point**이며 숙련은 완료 기록의 합입니다. 수치는 Prototype Tuning이고 자동 해금 속도 분석은 하지 않습니다.
 
-Meta Hub의 **작전 기록 / 무장·해금 현황**에서 진행·직접 보상·잠금 조건을 확인합니다. Claim 없이 즉시 저장하며, 새 해금은 다음 Offer부터 사용하고 열린 카드는 보존합니다. Result는 이번 Run 기록/Point/해금을 요약합니다. Save v2는 기존 Meta key를 유지해 M11 v1을 이전하고 구매 연구/재화/기존 보상을 보존합니다. Balance JSON/Override는 별도이며 지우지 않습니다. `/dev`에는 기록 완료·전체 해금·진행 초기화·특수 슬롯 테스트를 추가했습니다. **M12 보완 포함 check: 66파일/479테스트·TypeScript·Vite build 통과.** 범위는 [M12 기록](docs/prototype-m12-mastery-unlocks.md#검증)을 따릅니다. **역사 기록 — M11 check: 59파일/416테스트·TypeScript·Vite build 통과.**
+Meta Hub의 **작전 기록 / 무장·해금 현황**에서 진행·직접 보상·잠금 조건을 확인합니다. Claim 없이 즉시 저장하며, 새 해금은 다음 Offer부터 사용하고 열린 카드는 보존합니다. Result는 이번 Run 기록/Point/해금을 요약합니다. Save v2는 기존 Meta key를 유지해 M11 v1을 이전하고 구매 연구/재화/기존 보상을 보존합니다. Balance JSON/Override는 별도이며 지우지 않습니다. `/dev`에는 기록 완료·전체 해금·진행 초기화·특수 슬롯 테스트를 추가했습니다. **M12 보완 포함 check: 70파일/501테스트·TypeScript·Vite build 통과.** 범위는 [M12 기록](docs/prototype-m12-mastery-unlocks.md#검증)을 따릅니다. **역사 기록 — M11 check: 59파일/416테스트·TypeScript·Vite build 통과.**
 
-M12 보완에서 기본 개조6종은 Lv5 단일 A/B → Lv10 완성 → Lv11+ 숙련을 사용합니다. 대성공도 Lv5 선택을 건너뛰지 않으며 전설 행동과 분기는 독립입니다. 상세와 최종 검사는 [M12 기록](docs/prototype-m12-mastery-unlocks.md)을 따릅니다.
+M12 보완에서 기본 개조6종은 Lv5 단일 A/B → Lv10 완성 → Lv11+ 숙련을 사용합니다. 대성공도 Lv5 선택을 건너뛰지 않으며 전설 행동과 분기는 독립입니다. 추가 보완에서 개조별 획득/성장 가중치를 분리하고 점사 추가탄은65%부터 품질로 성장합니다. `/dev`는 간편 조정(대표23개)/상세 설정 탭과 동일 Runtime key를 사용합니다. 상세와 최종 검사는 [M12 기록](docs/prototype-m12-mastery-unlocks.md)을 따릅니다.
 
 M10은 미사일을 기본 3발 시간차 일제사격으로 변경했습니다. Prototype 기본값은 발당90, 속도680, raw 발사간격270ms/주기4500ms(X1 약0.18초/3초), 기본 재유도1회입니다. 비행 중 예상 피해 예약으로 약한 적의 과잉 피해를 줄이고 강적에는 여러 발을 집중합니다. 세 성장 계열과 `/dev` 미사일 설정도 연결합니다. M11은 이 코드 기본값과 M9 성능 구조 위에 Meta를 합성합니다. **역사 기록 — M10 `npm run check`: 52파일/390테스트·TypeScript·Vite build 통과**. 상세는 M10 기록을 따릅니다.
 
@@ -23,7 +23,7 @@ M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID �
 아래 M7 게임 규칙을 유지하며 성장 Category 가중치에는 M12 보완 값을 적용합니다. 개발 패널의 사용자 Override는 코드 기본값과 별개입니다.
 
 - 특수무기 Lv5/Lv10 고정 지급을 제거했습니다. 일반 Level-Up3장에 첫 무기는 **Lv8부터 Category weight0.30**, 두 번째는 **Lv14+첫 무기 보유 시0.20**으로 등장합니다. 한 Offer 최대1장, 일반 선택1회 소비, 항상 Weapon Lv1, 희귀도/대성공/품질 개방 미적용입니다. 계정 특수 슬롯0→1→2·무장 Core는 해당 Run +1(최대3)이며 Hard Pity/획득 보장은 없습니다.
-- 기본 개조는 **신규 Category0.45 / 보유 성장0.60**, 한 Offer 합계 최대1장입니다. 개조 내부 Investment Bias는 최대×1.4, 기본3종·Core4종입니다. Range의 희소성과 별도 슬롯 규칙, 보유 특수 성장은 고정 Category0.65·내부 편향 최대×1.5·한 Offer 최대1장입니다. 숫자는 고정 등장 확률이 아닌 상대 weight입니다.
+- 기본 개조는 **신규 Category 보유0/1/2/3종별0.45/0.30/0.18/0.12 / 보유 성장0.60**, 한 Offer 합계 최대1장입니다. 개조 내부 Investment Bias는 최대×1.4, 기본3종·Core4종입니다. Range의 희소성과 별도 슬롯 규칙, 보유 특수 성장은 고정 Category0.65·내부 편향 최대×1.5·한 Offer 최대1장입니다. 숫자는 고정 등장 확률이 아닌 상대 weight입니다.
 - Stage18:50 공급 완화 후 **19:00 공성 거인(HP30,000)**이 등장합니다. 접근→6000combat ms 공성 충전→1800피해 Interrupt/3000ms Stagger·피해×1.5, 실패 시 Wall1800피해입니다. HP65% 증원,25% 최후 돌진과 강한 반복 Wall 공격을 사용합니다. 본체는 항상 공격 가능하며 Gauss Range를 우회하지 않습니다.
 - **Boss 처치만 Stage Clear**, Wall HP0이면 실패합니다.20:00 자동 종료는 없고 Boss 전투가 계속됩니다. 목표 약19~21분은 사용자 Playtest에서 조정합니다. M11부터 자연 종료 보상·완료 Run 수·Stage 1 Clear 기록을 Meta Save에 저장합니다.
 - M6 초기Horde36/cap700/CombatTempo1.5/기존Enemy속도/생성HP/XP/Grenade/Relic6·Core3·Synergy3를 유지합니다. Boss 경고부터 일반 공급은8/1400combat ms, 최후 돌진은32/700ms이며 새 Elite를 억제합니다. 상세 수치는 M7 기록을 따릅니다.

@@ -8,6 +8,14 @@ import { runBalance } from "../../src/game/data/run";
 import { enemyConfigs } from "../../src/game/data/enemies";
 import type { PrototypeSynergies } from "../../src/game/combat/prototypeSynergies";
 import { deriveMarineWeaponConfig } from "../../src/game/data/marineGrowth";
+import { balanceFields } from "../../src/game/dev/balanceFields";
+import {
+  configureFields,
+  getOverrides,
+  setOverrides,
+  updateOverride,
+} from "../../src/game/dev/runtimeBalance";
+import { validateBalanceGroups } from "../../src/game/dev/runtimeBridge";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("phaser", () => ({ default: { Scene: class {} } }));
 import { CombatScene } from "../../src/game/scenes/CombatScene";
@@ -152,6 +160,94 @@ it("scene fires without input and repeated focus taps cannot increase automatic 
     automatic.enemies.map((e) => e.state.hp),
   );
   expect(spam.run.elapsedMs).toBeCloseTo(999);
+});
+
+it("uses the action-local first/additional burst coefficient with snapshotted growth", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.refreshBuild();
+  const config = deriveMarineWeaponConfig(test.progression.growth);
+  test.update(0, 0);
+  const afterFirst = test.enemies[0]!.state.hp;
+  const firstDamage = 10000 - afterFirst;
+  expect(firstDamage).toBeCloseTo(10.35);
+  test.progression.quality.burst = 10;
+  test.update(0, config.roundIntervalMs! / runBalance.combatTempo);
+  expect(test.shotIndex).toBe(2);
+  expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(
+    firstDamage * 0.65,
+  );
+});
+
+it("copied bursts start at full first-round damage and copy additional rounds without recursion", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.relics.owned.add("replicator");
+  test.refreshBuild();
+  vi.mocked(Math.random).mockReturnValue(1).mockReturnValueOnce(0);
+  test.update(0, 0);
+  const afterOriginal = test.enemies[0]!.state.hp;
+  test.update(0, 0);
+  const afterCopy = test.enemies[0]!.state.hp;
+  expect(afterOriginal - afterCopy).toBeCloseTo(10000 - afterOriginal);
+  expect(test.shotIndex).toBe(2);
+  const config = deriveMarineWeaponConfig(test.progression.growth);
+  test.update(0, config.roundIntervalMs! / runBalance.combatTempo);
+  expect(afterCopy - test.enemies[0]!.state.hp).toBeCloseTo(
+    2 * (10000 - afterOriginal) * 0.65,
+  );
+  expect(test.shotIndex).toBe(4);
+  expect(test.copiedAttacks).toHaveLength(0);
+});
+
+it("live burst coefficient tuning changes actual additional-round damage, leaving first shots full", () => {
+  configureFields(balanceFields, validateBalanceGroups);
+  const original = getOverrides();
+  try {
+    const test = scene();
+    test.progression.ranks.burst = 1;
+    test.progression.quality.burst = 1;
+    test.refreshBuild();
+    test.update(0, 0);
+    const afterFirst = test.enemies[0]!.state.hp;
+    updateOverride("marineMods.burstAdditionalRoundDamageFactor", 0.2);
+    test.update(
+      0,
+      deriveMarineWeaponConfig(test.progression.growth).roundIntervalMs! /
+        runBalance.combatTempo,
+    );
+    expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(
+      (10000 - afterFirst) * 0.2,
+    );
+    const nextAction = scene();
+    nextAction.progression.ranks.burst = 1;
+    nextAction.progression.quality.burst = 1;
+    nextAction.refreshBuild();
+    nextAction.update(0, 0);
+    expect(nextAction.enemies[0]!.state.hp).toBeCloseTo(afterFirst);
+  } finally {
+    setOverrides(original);
+  }
+});
+
+it("reinforcement rifles each start a full first round and track their own additional rounds", () => {
+  const test = scene();
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.relics.owned.add("reinforcement");
+  test.refreshBuild();
+  test.update(0, 0);
+  const afterFirst = test.enemies[0]!.state.hp;
+  expect(10000 - afterFirst).toBeCloseTo(2 * 10.35);
+  test.update(
+    0,
+    deriveMarineWeaponConfig(test.progression.growth).roundIntervalMs! /
+      runBalance.combatTempo,
+  );
+  expect(afterFirst - test.enemies[0]!.state.hp).toBeCloseTo(2 * 10.35 * 0.65);
+  expect(test.shotIndex).toBe(4);
 });
 it("focused target survives across shots, blank tap releases it and death resumes smart targeting", () => {
   const test = scene();

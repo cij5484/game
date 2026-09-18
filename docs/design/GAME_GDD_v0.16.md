@@ -4,7 +4,7 @@
 
 작성일: 2026-09-18. [GDD v0.15](GAME_GDD_v0.15.md)의 전체 목표 설계·Prototype 수치·Future·역사 기록을 승계하며 원본은 수정하지 않는다. M11은 [PR26](https://github.com/cij5484/game/pull/26) / main `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`로 병합했다. M12 작업 branch는 `codex/prototype-m12-mastery-unlocks`이며 **commit/push까지만 진행하고 main merge 및 다음 Milestone 자동 시작은 하지 않는다.**
 
-M12의 우선 규칙은 **§1.27 / §1.28 / §2.12 / §3.14 / §3.15 / §5**이며, 최종 실행 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)을 따른다. 작전 기록·숙련·점진 해금·연구 공개가 미구현/Future라는 이전 문구, 개발용 전체 해금/기본 특수 슬롯2를 신규 계정에 적용하던 규칙, Lv3/Lv20 세 후보를 항상 공개하던 규칙은 이번 명시 범위에서 대체한다. 기존 전투 수치·M11 연구 효과/비용·M10 미사일·M9 성능 구조는 유지한다. **M12 보완 포함 통합 check: 66파일/479테스트·TypeScript·Vite build 통과. 아래 M11 이하 통과 숫자는 역사 기록이다.**
+M12의 우선 규칙은 **§1.27 / §1.28 / §2.12 / §3.14 / §3.15 / §3.16 / §5**이며, 최종 실행 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)을 따른다. 작전 기록·숙련·점진 해금·연구 공개가 미구현/Future라는 이전 문구, 개발용 전체 해금/기본 특수 슬롯2를 신규 계정에 적용하던 규칙, Lv3/Lv20 세 후보를 항상 공개하던 규칙은 이번 명시 범위에서 대체한다. 적 HP/물량·M11 연구 효과/비용·M10 미사일·M9 성능 구조는 유지하고, 이번 추가 보완의 파생 공격 효율·카드 가중치에는 §3.15/3.16을 적용한다. **M12 보완 포함 통합 check: 70파일/501테스트·TypeScript·Vite build 통과. 아래 M11 이하 통과 숫자는 역사 기록이다.**
 
 **아래 v0.15 서문은 Historical / Superseded 기록이다.** M11 당시의 진행 상태·향후 계획을 보존한 것으로, 현재 M12 구현 제외 선언으로 해석하지 않는다.
 
@@ -200,7 +200,7 @@ Pool: 공용 강화, 기본무기 전용 사거리 성장, 신규 기본무기 �
 
 신규 Basic Modification Acquisition과 Owned Basic Modification Growth는 각각 하나의 Category다. 먼저 Category를 추첨하고 내부 유효 개조 하나를 선택한다. 한 Offer에서 두 Category를 합쳐 개조 관련 최대1장만 제시한다. Range는 별도 카드라 이 제한에 포함하지 않는다. 개조3종이 차면 신규 Category를 제외하고 개조 확장 Core로4슬롯이 열리면 다시 허용한다. 공용 공격력/공격속도/치명타 카드가 일반 Pool의 기본 뼈대다.
 
-이미 투자한 방향은 조금 더 잘 등장할 수 있다. 기본 개조 내부 Investment Bias 최대×1.4는 유지하고 보유 특수무기 내부 Bias는 최대×1.5로 낮춘다. 특수 성장은 **고정 weight0.65의 단일 Category**를 먼저 뽑고, 그 안에서 보유 무기만 내부 추첨한다. 무기가2~3종이어도 Category weight를 합산하지 않는다. 보유 개조 성장0.60, 신규 개조0.45이며 이 숫자는 Prototype Tuning이다. 한 Offer에 Mod 합계≤1, Special Growth≤1, Acquisition≤1, Range는 별도다. 내부 구조는 `base weight × investment bonus`이며 보장이 아니다. **투자 가중치는 희귀도 확률을 바꾸지 않는다.** 강제 pity, N회 실패 후 보장, 고정 완성 순서는 두지 않는다. 시너지는 별도 카드를 뽑지 않고 조건 완성 시 자동 활성화한다. 현재 코드의 해금 시너지 한 자리 보장은 폐기 대상이다.
+이미 투자한 방향은 조금 더 잘 등장할 수 있다. 기본 개조 내부 Investment Bias 최대×1.4는 유지하고 보유 특수무기 내부 Bias는 최대×1.5로 낮춘다. 특수 성장은 **고정 weight0.65의 단일 Category**를 먼저 뽑고, 그 안에서 보유 무기만 내부 추첨한다. 무기가2~3종이어도 Category weight를 합산하지 않는다. 보유 개조 성장0.60, 신규 개조는 보유0/1/2/3종별0.45/0.30/0.18/0.12이며 이 숫자는 Prototype Tuning이다. 한 Offer에 Mod 합계≤1, Special Growth≤1, Acquisition≤1, Range는 별도다. 내부 구조는 `base weight × investment bonus`이며 보장이 아니다. **투자 가중치는 희귀도 확률을 바꾸지 않는다.** 강제 pity, N회 실패 후 보장, 고정 완성 순서는 두지 않는다. 시너지는 별도 카드를 뽑지 않고 조건 완성 시 자동 활성화한다. 현재 코드의 해금 시너지 한 자리 보장은 폐기 대상이다.
 
 ### 1.11 대성공과 선택 Queue
 
@@ -723,7 +723,7 @@ Meta Hub·Save v1·자연 종료 정산·11종 연구·Credits Reroll·Run 시�
 - M11 v1 Migration은 Gold/Credits·Reroll·연구 Level/효과·Stage 진척을 보존한다. 구매 연구 Level1 이상은 계속 unlocked다. 확인 가능한 완료 Run/Stage1 Clear로 첫 작전/첫 승리만 복원하고 저장되지 않은 과거 전투 행동을 추측해 완료하지 않는다. Save Export/Import/Reset 및 한 번만 정산하는 M11 흐름을 유지한다.
 - `/dev`는 숙련/잠금 상태, 특정 기록 완료, Prototype 전체 해금, 진행 초기화, 특수 슬롯0/1/2를 제공한다. 전체 해금은 테스트 상태이며 실제 기록 완료·숙련 Point를 위조하지 않는다. 진행 초기화는 구매 연구/재화를 보존하므로 완전 Fresh 연구 상태는 기존 전체 Meta Reset으로 만든다. Runtime Balance JSON/namespace와 분리하고 기존 Override/사용자 Preset은 삭제하지 않는다.
 
-M12는 공격·Enemy HP·공급·개조 효과를 약화시키는 작업이 아니다. M11의 Gold 효과/비용·Credits Reroll, M10 미사일 행동, M9 Frame 렌더링과 readonly snapshot을 승계한다. Credits 대형 콘텐츠 상점·Challenge·Endless·Stage2+·신규 Character·Awakening·희귀 영구 재화 소비·Variant·Final Art·Ranking/Backend·전체 Relic10/Core5/Synergy6 확장은 제외한다.
+M12 추가 보완은 Enemy HP·공급을 바꾸지 않고 초기 점사 추가탄의 효율과 개조 카드 등장 구조만 조정한다. Lv5/Lv10 분기·후반 숙련과 자유 조합은 유지한다. M11의 Gold 효과/비용·Credits Reroll, M10 미사일 행동, M9 Frame 렌더링과 readonly snapshot을 승계한다. Credits 대형 콘텐츠 상점·Challenge·Endless·Stage2+·신규 Character·Awakening·희귀 영구 재화 소비·Variant·Final Art·Ranking/Backend·전체 Relic10/Core5/Synergy6 확장은 제외한다.
 
 검증은 Fresh 첫 Run→자연 종료→수류탄/슬롯1의 실제 흐름과 필수 correctness·`npm run check`로 제한한다. 수십 Run 자동 분석, 평균 해금 Run 수·경제 밸런스·해금 속도 적절성 결론은 작성하지 않는다. 사용자가 직접 플레이해 속도를 결정한다.
 
@@ -737,7 +737,7 @@ M12는 공격·Enemy HP·공급·개조 효과를 약화시키는 작업이 아�
 | 평균 종료 Character Level | v0.4의 Lv40~50 첫안, 20분 구조에서 재검토 |
 | Character Lv5 도달 | v0.4의 약45~60초 첫안, 20분/점진 해금에 맞춰 재검토 |
 | Character Lv10 도달 | v0.4의 약2~3분 첫안, 재검토 |
-| 투자 가중치 | 기본 개조 성장 내부 선택은 최대×1.4. 다른 성장의 기존 최대×2 유지. `base weight × investment bonus` |
+| 투자 가중치 | 기본 개조 성장 내부 `growthWeight × min(1.4,1+.1×rank)`, 특수 성장 내부 `min(1.5,1+.1×(level−1))`. Category는 개수와 무관하게 고정 |
 | 대성공 | 대상 카드 선택 후 6%, 총 +2 Level |
 | Run 사거리 카드 | 약5단계 첫 방향; 증가율·낮은 가중치 수치 미정 |
 | 해금 Pool | 유물 처음 약3종→전체 약10종, Overclock 무기당 처음 약2종→전체5종 |
@@ -843,7 +843,7 @@ Stage/Challenge/Endless 상승으로 수입 증가, 기록/Challenge/Endless 별
 - XP `ceil(8+4(L−1)+.35(L−1)²)`. 적 XP는 유지한다.20분 성장 속도는 실제 자동 검사와 사용자 플레이로 평가한다.
 - `rank / quality / legendary` 분리. rarity가 Level을 대신하지 않는다. 공용3종과 개조는 반복 성장하고 안전 한계에서 효과 없는 카드는 제외한다.
 - 사거리5Level, type weight .25, 일반 없음. 희귀/유니크/전설당 최소 progress 감소 .03/.045/.06, 기본 .55에서 하한 .25. 형태 개조 슬롯 미사용.
-- type weight 공용1/개조1.3에 `min(2,1+.1×rank)` 투자 배율. 희귀도 표는 §3.1, 투자 가중치는 rarity에 영향 없음.
+- 공용 개별weight1, 개조는 신규/보유 Category 후 각각 acquisitionWeight 또는 growthWeight×최대1.4 투자 편향으로 추첨한다(§3.15). Special Growth는 고정 Category0.65 후 내부 최대1.5. 희귀도 표는 §3.1이며 투자 편향은 rarity에 영향 없음.
 - 대성공 독립6%로 총+2Level. 사거리MAX는 실제 증가분만 적용/표시한다.
 - 전설 관통은 끝점 충격파, 점사는 추가 마무리탄, 폭발탄은 처치 후 최대2곳 한 단계 재폭발. 다른3종의 별도 전설 행동은 후속이다.
 - Gauss 시간차 점사와 동시 다중탄을 구분한다. 기본 Cycle800ms, 내부 발사 간격과100ms recovery 하한을 둔다. 관통/도탄/다중탄/폭발의 검색·대상 수를 제한하고 Lv11+에는 피해/효율 숙련을 지속한다.
@@ -969,18 +969,18 @@ Gauss는 기본 성장의 최대8발에 Saturation +2발을 허용하는10발 �
 
 ### 3.9 M7 — 승계한 Prototype 기본값
 
-**성장 weight의 역사 기록:** 아래 Owned Mod0.35와 개별 Special Growth1.3×최대2는 M12 보완 §3.15로 대체한다. 나머지 M7 획득/Boss 규칙은 유지한다.
+**현재 가중치 정합:** 이 표의 성장 값은 M12 보완 §3.15로 갱신했다. M7 획득/Boss 규칙은 유지한다.
 
 공용 강화 카드 하나의 base weight1.0을 기준으로 한다. 아래 값은 최종 등장 확률(%)이 아니라 현재 유효 Pool에서 정규화하는 상대 weight다. 무기/개조 개수로 Category 전체 등장 weight가 늘어나지 않는다.
 
-| Category / 항목 | M7 첫값과 규칙 |
+| Category / 항목 | 현재 Prototype 값과 규칙 |
 | --- | --- |
 | 첫 Special Acquisition |0.30, Character Lv8 이상, 보유0종 |
 | 두 번째 / Core 허용 추가 Acquisition |0.20, Character Lv14 이상, 이미1종 이상 보유, 현재 capacity 미만 |
-| 신규 Basic Mod Category |0.45, 미보유 개조와 빈 슬롯이 있을 때만 |
-| 보유 Basic Mod Growth Category |0.35, 보유 개조가 있을 때만 |
+| 신규 Basic Mod Category |보유0/1/2/3종별0.45/0.30/0.18/0.12, 해금된 미보유 개조와 빈 슬롯이 있을 때만 |
+| 보유 Basic Mod Growth Category |0.60, 보유 개조가 있을 때만 |
 | Mod Investment Bias |내부 개조 선택 `min(1.4, 1+.1×rank)`; Category weight 자체는 고정 |
-| 보유 Special Growth |기존 `1.3×min(2,1+.1×(WeaponLevel−1))` 유지 |
+| 보유 Special Growth |고정 Category0.65 → 보유 무기 내부 `min(1.5,1+.1×(WeaponLevel−1))`, Offer당 최대1 |
 | Range |별도weight0.25, Rare 이상, 최대5, Mod Offer 제한·Slot 미사용 |
 | 한 Offer 제한 |Special Acquisition≤1, 신규+보유 Basic Mod 합계≤1 |
 
@@ -1131,16 +1131,49 @@ Gold 연구 공개는 효과 수식과 분리한다. 초기3종(기본 피해·�
 
 | Category / 내부 규칙 | 첫 Prototype 값 |
 | --- | --- |
-| New Basic Mod Category | **0.45 유지** |
-| Owned Basic Mod Growth Category | **0.35 → 0.60** |
+| New Basic Mod Category | **보유0종0.45 / 1종0.30 / 2종0.18 / 3종0.12**, 빈 슬롯이 있을 때만 |
+| Owned Basic Mod Growth Category | **0.60 유지**, 보유 개수로 합산하지 않음 |
 | Basic Mod 내부 Investment Bias | **최대×1.4 유지**, `min(1.4,1+0.1×rank)` |
 | Owned Special Weapon Growth Category | **0.65 고정**, 무기 수에 무관 |
 | Special 내부 Investment Bias | **최대×1.5**, `min(1.5,1+0.1×(WeaponLevel−1))` |
 | Offer 제한 | Basic Mod 합계≤1 / Special Growth≤1 / Acquisition≤1 / Range 별도 |
 
-보유 Special Growth는 Category가 당첨된 다음 실제 보유 무기 중 하나를 뽑는다. 개별 무기의 이전 `1.3×investment`를 일반 Pool에 각각 더하지 않는다. 새 Mod·Special Acquisition은 M12 계정 잠금을 유지하며 Growth는 실제 보유 무기만 대상으로 한다. 이미 열린 카드는 설정/해금 때문에 바뀌지 않는다. 공용 강화가 Pool의 기본 뼈대를 유지하도록 하는 첫안이며 실제 빈도는 사용자 Playtest로 판단한다.
+보유 Special Growth는 Category가 당첨된 다음 실제 보유 무기 중 하나를 뽑는다. 개별 무기 weight를 일반 Pool에 각각 더하지 않는다. 새 Mod·Special Acquisition은 M12 계정 잠금을 유지하며 Growth는 실제 보유 무기만 대상으로 한다. 이미 열린 카드는 설정/해금 때문에 바뀌지 않는다. 공용 강화가 Pool의 기본 뼈대를 유지하도록 하는 첫안이며 실제 빈도는 사용자 Playtest로 판단한다.
+
+신규 Category 내부는 각 개조의 `acquisitionWeight`, 보유 성장 내부는 `growthWeight × investment bias`를 사용한다. 계정 잠금과 슬롯 제한을 먼저 적용하며 기본3종을 채우면 신규 Category는 없다. Core4번째 슬롯이 있을 때만 보유3종의0.12를 사용한다. Category Weight와 내부 Weight는 서로 다른 설정이다.
+
+| 개조 | acquisitionWeight 첫값 | growthWeight 첫값 |
+| --- | --- | --- |
+| 관통 | 1.00 | 1.00 |
+| 도탄 | 0.90 | 1.00 |
+| 점사 | 0.60 | 1.00 |
+| 다중탄 | 0.70 | 1.00 |
+| 폭발탄 | 0.80 | 1.00 |
+| 고위력 단발 | 0.90 | 1.00 |
+
+각 값은 `/dev`에서 다음 Offer부터 조절 가능하며 이미 열린 카드는 유지한다. 구 `newModWeight`는 새 계산에서 사용하지 않는다. 과거 JSON/Preset에 명시된 단일 override는 보유수별4개 Key로 이전해 과거 의도를 보존하고, 명시된 새 Key가 함께 있으면 새 Key가 우선한다. Export에는 새 Key만 남긴다. 기존 저장/재화/Balance Override를 임의 초기화하지 않는다.
 
 6개 분기의 피해·대상 수·간격·Radius·Penalty 계수는 `marineGrowth.ts`의 분기 데이터와 구현 기록을 따르는 **Prototype Tuning**이다. Lv5/Lv10/Lv11+ 구조와 A/B 정체성은 확정, 최종 세부 수치는 미확정이다. 기존 계정 저장/작전 기록/해금 Threshold/Meta 효과/적·Stage 밸런스를 변경하지 않는다.
+
+### 3.16 M12 추가 보완 — 파생 공격 효율과 개발 패널
+
+**확정 방향:** 초기 개조는 Build의 시작이며 Lv5 방향 선택·Lv10 이후 Power Spike·Lv11+ 숙련을 유지한다. 후반 High-roll의 강력함과 자유 조합을 허용한다. 초기 두 개조만으로 화력이 급증하는 문제를 Enemy HP 상향, Horde 감소, 조합 금지, 두 번째 개조 Hard Lock/Pity로 덮지 않는다.
+
+**Prototype Tuning:** 첫 탄100%, 점사 추가탄 `min(1.00, 0.65 + 0.025 × max(0, 점사 누적품질−1))`. 일반 품질 Lv1 추가탄65%, Lv5 75%, Lv10 87.5%, Lv15 이후100% 상한 첫안이다. 상한 이후에도 기존 피해·발수·간격 숙련과 분기 효과가 유효하다. 이것은 DPS 평가나 적정 난이도 확정이 아니다.
+
+| 파생/개조 | 첫 Runtime 계수와 의미 |
+| --- | --- |
+| 다중탄 | 기존 기본 보조탄0.50 + 품질당0.065 유지(일반 Lv1 0.565). Lv5/Lv10 집중/광역 유지 |
+| 도탄 | 기본 retention0.60 및 기존 후속 성장 유지. 후속탄마다 Main100%로 초기화하지 않음 |
+| 폭발탄 | 기본 splash0.35 + 품질당0.075 유지. 반경 safety130 및 전설1회 재폭발 유지 |
+| 관통 | 기본 retention0.60 유지. 첫 직접 표적100%, 후방으로 retention 적용 |
+| 고위력 | 품질당 피해0.45, 주기 대가 `1.2 + 0.15/(1+0.15×품질)`를 Runtime 노출. 별도 파생탄 계수 없음 |
+
+추가탄 효율은 Main Shot 대비 비율이다. 기존 Base/Meta/Run Damage/Crit 계산 흐름에 **추가탄 계수를 한 번** 합성하며 추가탄에서 나온 다중탄·관통·도탄·Splash에도 함께 적용한다. 전역 shot counter가 아니라 **Attack Action 내부 Round**로 첫 탄을 구분하며 증원 Marine과 Ammo Duplicator도 각 행동의 첫 탄부터 시작한다. 점사 최소 간격/회복, bounded target/splash budget, 비재귀 도탄 Tree, Explosion 기본 재생성 금지, Legendary의 명시된 단발성 예외, Duplicator 자기 재귀 금지는 유지한다.
+
+**Prototype Development Tool / Not Final Feature:** `/dev` 기본 탭은 **간편 조정**, 나머지는 **상세 설정**이다. 첫 화면은 대표 항목 약20~30개만 보여주고 전투/Horde·Gauss·카드 등장·6개 개조·특수무기·XP 그룹으로 이동한다. 상세는 기능별 Category 하나를 표시하며 검색은 전체 Field를 대상으로 한다. 성능은 작은 실시간 상태, 긴 설명은 도움말, 현재값/기본값/변경 표시/적용 시점/Reset은 유지한다. Preset/JSON과 Meta/Unlock/Save는 상세에서 제공한다.
+
+Quick와 Detail은 **동일 runtime key와 입력을 재사용**한다. 변경값·기본값·Preset/JSON도 하나이며 별도 balance 저장소를 만들지 않는다. 전체 Spawn Density 시스템은 추가하지 않고 기존 초기 수량·초반 batch·cap 대표값을 노출하며 시간대별11개 설정은 상세에서 유지한다. 수치의 재미/초반 난이도/후반 High-roll은 사용자 Playtest로 판단한다. 자동 평균DPS·순위·장시간 확률/Run Simulation은 하지 않는다.
 
 ## 4. Future / Not in Prototype 및 미정
 
@@ -1210,11 +1243,11 @@ Awakening은 단순 공격력+50%가 아니라 캐릭터 기본 규칙 하나를
 | Endless 미상세 | Stage1 이후 방향, 이미 만난 정규 Stage Type만 등장 |
 | 치명 피해 Run 카드 없음 | 유지. 별도로 치명 피해 Gold 영구 연구 추가 |
 
-기본 개조6종·3슬롯, 무한 공용/숙련 성장, 독립 희귀도·전설, 특수무기 트리 및 전체 Overclock5종, 대성공, 유물 무레벨/무패널티, High-Variance, Portrait, 스팀팩·고유 Gesture, Reroll 기본0 방향은 유지한다. M11 Credits 연구로 Run당 최대3회 해금한다. v0.4/v0.5를 포함한 과거 버전은 역사 문서로 보존하며 상충 시 최신 v0.15를 우선한다.
+기본 개조6종·3슬롯, 무한 공용/숙련 성장, 독립 희귀도·전설, 특수무기 트리 및 전체 Overclock5종, 대성공, 유물 무레벨/무패널티, High-Variance, Portrait, 스팀팩·고유 Gesture, Reroll 기본0 방향은 유지한다. M11 Credits 연구로 Run당 최대3회 해금한다. v0.4/v0.5를 포함한 과거 버전은 역사 문서로 보존하며 상충 시 최신 v0.16을 우선한다.
 
 ## 5. Current Implementation Gap
 
-현재 기반은 M11 [PR26](https://github.com/cij5484/game/pull/26) merge `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`, 작업 branch는 `codex/prototype-m12-mastery-unlocks`다. M12는 아래 범위를 구현하며 최종 통합 check와 브라우저 확인 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)에 기록한다. **M12 보완 포함 통합 검사: 66파일/479테스트·TypeScript·Vite build 통과, 기존 Phaser chunk 경고 유지.** M11 이하 결과를 M12 통과 증거로 사용하지 않는다. commit/push 이후 정지하며 main merge는 하지 않는다.
+현재 기반은 M11 [PR26](https://github.com/cij5484/game/pull/26) merge `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`, 작업 branch는 `codex/prototype-m12-mastery-unlocks`다. M12는 아래 범위를 구현하며 최종 통합 check와 브라우저 확인 결과는 [M12 구현 기록](../prototype-m12-mastery-unlocks.md)에 기록한다. **M12 보완 포함 통합 검사: 70파일/501테스트·TypeScript·Vite build 통과, 기존 Phaser chunk 경고 유지.** M11 이하 결과를 M12 통과 증거로 사용하지 않는다. commit/push 이후 정지하며 main merge는 하지 않는다.
 
 | 영역 | M12 구현 범위 / 남은 확인 |
 | --- | --- |
@@ -1284,7 +1317,7 @@ Awakening은 단순 공격력+50%가 아니라 캐릭터 기본 규칙 하나를
 | 영역 | M7 실제 범위 / 남은 Gap |
 | --- | --- |
 | 획득 |Lv8/14 조건의 일반 Pool Acquisition, 최대2/Core3, 선택1회 소비, 한 Offer1장, Rarity/GreatSuccess/품질 미적용, 보장 없음 |
-| 기본 개조 |신규.45/보유.35 Category, 한 Offer 합계1장, 내부 투자상한1.4, Slot3/Core4, Range 별도 |
+| 기본 개조 |신규 보유수별.45/.30/.18/.12 / 보유.60 Category, 한 Offer 합계1장, 내부 투자상한1.4, Slot3/Core4, Range 별도 |
 | Boss/Stage |공성 거인19분, 접근/Charge/약점/Stagger/증원/최후돌진. Boss처치만Clear/Wall0실패/20분초과 계속 |
 | HUD/Result |기존 Header/Bottom 소유권, Empty Special Slot, 신규무장 카드, Boss HP·Phase·Telegraph·약점·Stagger, Run Boss Kill 기록 |
 | M6 유지 |초기36, cap700, CombatTempo1.5, 기존Enemy이동속도/HPScaling/XP/Grenade/6Relic/3Core/3Synergy. Boss 전후 공급만 §3.9로 교체 |

@@ -86,8 +86,18 @@ export function setOverrides(input: unknown): void {
   if (!import.meta.env.DEV) throw Error("개발 환경에서만 변경할 수 있습니다.");
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw Error("설정은 항목과 값으로 구성된 객체여야 합니다.");
+  // M12 legacy presets used one value at every ownership count. Preserve that intent.
+  let entries = Object.entries(input);
+  const legacy = entries.find(([id]) => id === "marineGrowth.newModWeight");
+  if (legacy && fields.has("marineGrowth.newModWeight0")) {
+    entries = entries.filter(([id]) => id !== legacy[0]);
+    for (let count = 0; count < 4; count++) {
+      const id = `marineGrowth.newModWeight${count}`;
+      if (!entries.some(([key]) => key === id)) entries.push([id, legacy[1]]);
+    }
+  }
   const next: Overrides = {};
-  for (const [id, value] of Object.entries(input)) {
+  for (const [id, value] of entries) {
     const field = fields.get(id);
     if (!field) throw Error("알 수 없는 설정: " + id);
     const base = getDefault(id);

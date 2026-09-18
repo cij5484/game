@@ -85,11 +85,11 @@ describe("M7 random acquisition categories", () => {
     expect(before.offer()[0]!.id).toBe("special-grenade");
   });
 
-  it("uses .45 new and .60 owned mod categories, with only one mod and acquisition per offer", () => {
-    // Two owned mods do not double the category weight: 3 + .45 + .60 + .25 = 4.30.
+  it("uses .18 new at two owned and .60 owned mod categories, with only one mod and acquisition per offer", () => {
+    // Two owned mods do not double the category weight: 3 + .18 + .60 + .25 = 4.03.
     for (const [pick, expected] of [
-      [3.01 / 4.3, "new"],
-      [3.46 / 4.3, "owned"],
+      [3.01 / 4.03, "new"],
+      [3.19 / 4.03, "owned"],
     ] as const) {
       const rolls = [pick, 0, 0];
       const p = new MarineProgression(() => rolls.shift() ?? 0.99999);
@@ -111,7 +111,7 @@ describe("M7 random acquisition categories", () => {
     }
     expect(
       marineUpgradeWeight(marineUpgrades.penetration, { penetration: 100 }),
-    ).toBeCloseTo(marineUpgrades.penetration.weight * 1.4);
+    ).toBeCloseTo(1.4);
     expect(
       marineUpgradeWeight(marineUpgrades["primary-damage"], {
         "primary-damage": 100,
@@ -121,7 +121,7 @@ describe("M7 random acquisition categories", () => {
   });
 
   it("blocks new mods at three, reopens a fourth with Core, and leaves range independent", () => {
-    const p = offerAt(1, 0.8);
+    const p = offerAt(1, 3.05 / 3.97);
     Object.assign(p.ranks, { penetration: 1, burst: 1, heavy: 1 });
     expect(
       p

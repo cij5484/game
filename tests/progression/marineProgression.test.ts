@@ -64,15 +64,13 @@ describe("Marine M4 growth", () => {
     expect(p.offer()).toEqual([]);
   });
   it("keeps mod investment bounded at 1.4 base and separate from rarity", () => {
-    expect(marineUpgradeWeight(marineUpgrades.penetration, {})).toBe(
-      marineUpgrades.penetration.weight,
-    );
+    expect(marineUpgradeWeight(marineUpgrades.penetration, {})).toBe(1);
     expect(
       marineUpgradeWeight(marineUpgrades.penetration, { penetration: 100 }),
-    ).toBe(marineUpgrades.penetration.weight * 1.4);
+    ).toBe(1.4);
     expect(
       marineUpgradeWeight(marineUpgrades.penetration, { heavy: 100 }),
-    ).toBe(marineUpgrades.penetration.weight);
+    ).toBe(1);
     const p = new MarineProgression(() => 0.1);
     p.ranks.penetration = 100;
     p.gainXp(8);

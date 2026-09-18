@@ -4,6 +4,8 @@ import type { GameStatus } from "../../src/game/dev/runtimeBridge";
 const state = vi.hoisted(() => ({
   values: {
     "run.combatTempo": 1.5,
+    "enemyLevelScaling.linear": 0.02,
+    "enemyLevelScaling.quadratic": 0.0008,
     "relic.guaranteed": true,
     "rarity.a": 0.78,
     "rarity.b": 0.22,
@@ -11,6 +13,8 @@ const state = vi.hoisted(() => ({
     "special.missile.cycleMs": 4500,
     "special.missileBehavior.salvoIntervalMs": 270,
     "special.missileLifetimeMs": 6000,
+    "marineMods.burstAdditionalRoundDamageFactor": 0.65,
+    "marineModWeights.burst.acquisitionWeight": 0.6,
   } as Record<string, number | boolean>,
   overrides: {} as Record<string, number | boolean>,
   listeners: new Set<() => void>(),
@@ -52,6 +56,13 @@ vi.mock("../../src/game/dev/runtimeBalance", () => ({
 }));
 vi.mock("../../src/game/dev/balanceFields", () => ({
   balanceFields: [
+    ...["linear", "quadratic"].map((key) => ({
+      id: `enemyLevelScaling.${key}`,
+      label: `적 HP ${key}`,
+      group: "적 / 물량",
+      description: "생성 시 HP 배율",
+      apply: "다음 적 생성부터",
+    })),
     {
       id: "run.combatTempo",
       label: "전투 속도",
@@ -99,6 +110,20 @@ vi.mock("../../src/game/dev/balanceFields", () => ({
       max: 1,
       step: 0.01,
     })),
+    {
+      id: "marineMods.burstAdditionalRoundDamageFactor",
+      label: "점사 추가탄 피해",
+      group: "기본무기",
+      description: "추가탄 피해율",
+      apply: "다음 공격부터",
+    },
+    {
+      id: "marineModWeights.burst.acquisitionWeight",
+      label: "점사 신규 획득 가중치",
+      group: "카드 등장 / 가중치",
+      description: "개조 내부 가중치",
+      apply: "다음 레벨업부터",
+    },
   ],
 }));
 vi.mock("../../src/game/dev/runtimeBridge", () => ({
@@ -125,8 +150,16 @@ class ElementStub extends EventTarget {
   type = "";
   dataset: Record<string, string> = {};
   children: ElementStub[] = [];
+  parentElement?: ElementStub;
   setAttribute = vi.fn();
   append(...children: ElementStub[]) {
+    for (const child of children) {
+      if (child.parentElement)
+        child.parentElement.children = child.parentElement.children.filter(
+          (node) => node !== child,
+        );
+      child.parentElement = this;
+    }
     this.children.push(...children);
   }
   replaceChildren(...children: ElementStub[]) {
@@ -167,6 +200,76 @@ beforeEach(() => {
       return element;
     },
   });
+});
+
+it("defaults to Quick and moves one shared input between Quick and selected Detail category", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  const input = byId("balance-marineMods.burstAdditionalRoundDamageFactor");
+  const row = elements.find(
+    (node) =>
+      node.dataset.field === "marineMods.burstAdditionalRoundDamageFactor",
+  )!;
+  expect(byId("balance-tab-quick")).toBeDefined();
+  expect(row.hidden).toBe(false);
+  expect(row.parentElement!.dataset.quickCard).toBeDefined();
+  change(input.id, "0.7");
+  byId("balance-tab-detail").click();
+  change("balance-category", "기본무기 개조 · 점사");
+  expect(row.hidden).toBe(false);
+  expect(row.parentElement!.dataset.category).toBe("기본무기 개조 · 점사");
+  expect(byId(input.id)).toBe(input);
+  expect(input.value).toBe("0.7");
+  change(input.id, "0.8");
+  byId("balance-tab-quick").click();
+  byId("balance-quick-mods").click();
+  expect(input.value).toBe("0.8");
+  expect(row.parentElement!.dataset.quickCard).toBe("burst");
+  expect(elements.filter((node) => node.id === input.id)).toHaveLength(1);
+});
+
+it("searches all Detail fields from Quick and round trips new keys through preset/JSON/reset", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  change("balance-marineMods.burstAdditionalRoundDamageFactor", "0.72");
+  byId("balance-quick-mods").click();
+  change("balance-marineModWeights.burst.acquisitionWeight", "0.4");
+  byId("balance-search").value = "추가탄";
+  byId("balance-search").dispatchEvent(new Event("input"));
+  expect(
+    elements.find((node) => node.className === "dev-balance-panel")!.dataset
+      .view,
+  ).toBe("detail");
+  expect(
+    elements
+      .filter((node) => node.dataset.field && !node.hidden)
+      .map((node) => node.dataset.field),
+  ).toEqual(["marineMods.burstAdditionalRoundDamageFactor"]);
+  byId("balance-search").value = "";
+  byId("balance-search").dispatchEvent(new Event("input"));
+  change("balance-category", "프리셋 / JSON");
+  byId("balance-preset-name").value = "새 개조 조정";
+  button("프리셋 저장").click();
+  button("JSON 내보내기").click();
+  const settings = JSON.parse(byId("balance-json").value);
+  expect(settings.overrides).toEqual({
+    "marineMods.burstAdditionalRoundDamageFactor": 0.72,
+    "marineModWeights.burst.acquisitionWeight": 0.4,
+  });
+  button("모든 값 기본값으로").click();
+  expect(
+    byId("balance-marineMods.burstAdditionalRoundDamageFactor").value,
+  ).toBe("0.65");
+  button("불러오기").click();
+  expect(state.overrides).toEqual(settings.overrides);
+  byId("balance-json").value = JSON.stringify({
+    ...settings,
+    overrides: { "marineModWeights.burst.acquisitionWeight": 0.3 },
+  });
+  button("JSON 불러오기").click();
+  byId("balance-tab-quick").click();
+  byId("balance-quick-mods").click();
+  expect(byId("balance-marineModWeights.burst.acquisitionWeight").value).toBe(
+    "0.3",
+  );
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -431,4 +534,15 @@ it("shows missile salvo interval, cycle and lifetime in X1 seconds and keeps raw
     "special.missileBehavior.salvoIntervalMs": 300,
     "special.missileLifetimeMs": 7500,
   });
+});
+
+it("shows enemy HP examples on the first category visit without editing any value", () => {
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  byId("balance-tab-detail").click();
+  change("balance-category", "적 / Horde");
+  const examples = elements.find(
+    (node) => node.className === "balance-hp-examples",
+  )!;
+  expect(examples.hidden).toBe(false);
+  expect(examples.textContent).toContain("Lv20 ×1.67");
 });

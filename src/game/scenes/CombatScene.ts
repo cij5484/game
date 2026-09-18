@@ -683,7 +683,9 @@ export class CombatScene extends Phaser.Scene {
           });
       }
       const action = copy?.action ?? this.primaryActions.get(rifle)!;
-      rifle.advance(0, () => this.firePrimary(action, !!copy));
+      // GaussRifle advances its round cursor before invoking the firing callback.
+      const roundIndex = rifle.roundInBurst - 1;
+      rifle.advance(0, () => this.firePrimary(action, !!copy, roundIndex));
       if (copy && --copy.rounds === 0)
         this.copiedAttacks.splice(this.copiedAttacks.indexOf(copy), 1);
       if (this.choosing || this.run.status !== "running") break;
@@ -700,7 +702,11 @@ export class CombatScene extends Phaser.Scene {
     this.stateSnapshot = states;
   }
 
-  private firePrimary(action: PrimaryAction, copied: boolean): void {
+  private firePrimary(
+    action: PrimaryAction,
+    copied: boolean,
+    roundIndex: number,
+  ): void {
     this.refreshProtection();
     const target = this.primaryTarget();
     this.view.setFocus(this.focus.targetId);
@@ -729,6 +735,7 @@ export class CombatScene extends Phaser.Scene {
           );
         },
         shotIndex: this.shotIndex,
+        roundIndex,
         random: Math.random,
       },
     );

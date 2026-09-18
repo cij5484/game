@@ -410,6 +410,12 @@ for (const [id, label] of [
 }
 for (const [id, label, max] of [
   ["heavyDamagePerQuality", "고위력 · 숙련 피해 계수", 5],
+  ["heavyPenaltyBase", "고위력 · 기본 주기 배율", 5],
+  ["heavyPenaltyExtra", "고위력 · 추가 주기 대가", 5],
+  ["heavyPenaltyQualityDecay", "고위력 · 숙련 주기 대가 완화", 5],
+  ["burstAdditionalRoundDamageFactor", "점사 · 추가탄 기본 피해율", 1],
+  ["burstAdditionalRoundDamagePerQuality", "점사 · 추가탄 숙련 피해 증가", 1],
+  ["burstAdditionalRoundDamageMax", "점사 · 추가탄 피해율 상한", 1],
   ["burstDamagePerQuality", "점사 · 숙련 피해 계수", 1],
   ["burstIntervalMs", "점사 · 내부 발사 간격", 2000],
   ["burstSpeedPerQuality", "점사 · 숙련 속도 계수", 1],
@@ -429,17 +435,55 @@ for (const [id, label, max] of [
     `marineMods.${id}`,
     label,
     "기본무기",
-    id === "burstIntervalMs"
-      ? "점사 안에서 탄환 사이의 기준 간격입니다. 낮추면 점사가 빨라집니다."
-      : "보유한 개조의 실제 행동에 사용되는 계수입니다. 높이면 해당 피해·대상 수·범위 성장이 커지며 안전 상한은 유지됩니다.",
+    id.startsWith("burstAdditionalRound")
+      ? "첫 탄은 100%이며 추가탄에만 기본율 + 숙련 증가 × max(0,품질−1)을 상한까지 적용합니다. 피해·치명타와 합성하고 파생 효과에도 한 번만 곱합니다."
+      : id === "heavyPenaltyBase"
+        ? "고위력 공격주기의 기준 배율입니다. 1은 기본 주기이며 숙련 대가와 A/B 분기 배율이 추가 합성됩니다."
+        : id === "heavyPenaltyExtra"
+          ? "고위력 기준 주기에 더하는 대가입니다. 실제 추가량은 이 값을 (1 + 숙련 완화 계수 × 품질)로 나눕니다."
+          : id === "heavyPenaltyQualityDecay"
+            ? "고위력 품질이 높을 때 추가 주기 대가를 줄이는 계수입니다. 높이면 숙련에 따라 추가 대가가 더 빠르게 줄어듭니다."
+            : id === "burstIntervalMs"
+              ? "점사 안에서 탄환 사이의 기준 간격입니다. 낮추면 점사가 빨라지며 기존 최소 간격 안전장치는 유지됩니다."
+              : "보유한 개조의 실제 행동에 사용되는 계수입니다. 높이면 해당 피해·대상 수·범위 성장이 커지며 안전 상한은 유지됩니다.",
     "다음 공격부터",
-    id === "burstIntervalMs" ? 55 : 0,
+    id === "burstIntervalMs" ? 55 : id === "heavyPenaltyBase" ? 1 : 0,
     max,
     id === "burstIntervalMs" ? 5 : 0.005,
   );
 
+for (const [id, label] of [
+  ["penetration", "관통"],
+  ["ricochet", "도탄"],
+  ["burst", "점사"],
+  ["multishot", "다중탄"],
+  ["explosive", "폭발탄"],
+  ["heavy", "고위력"],
+] as const) {
+  for (const [kind, kindLabel] of [
+    ["acquisitionWeight", "신규 획득 가중치"],
+    ["growthWeight", "성장 가중치"],
+  ] as const)
+    field(
+      `marineModWeights.${id}.${kind}`,
+      `${label} · ${kindLabel}`,
+      "카드 등장 / 가중치",
+      kind === "acquisitionWeight"
+        ? "신규 개조 Category가 당첨된 뒤 해금된 미보유 개조 중 하나를 고르는 상대 가중치입니다. Category 자체 빈도는 바꾸지 않습니다."
+        : "보유 개조 성장 Category 안에서 이 가중치와 투자 편향을 곱해 선택합니다. Category 전체 가중치는 보유 개수와 무관하게 고정입니다.",
+      "다음 레벨업부터",
+      0,
+      20,
+      0.05,
+    );
+}
+
 for (const [id, label, min, max, step] of [
-  ["newModWeight", "신규 개조 획득 가중치", 0, 20, 0.05],
+  ["newModWeight0", "신규 개조 Category · 보유 0종", 0, 20, 0.01],
+  ["newModWeight1", "신규 개조 Category · 보유 1종", 0, 20, 0.01],
+  ["newModWeight2", "신규 개조 Category · 보유 2종", 0, 20, 0.01],
+  ["newModWeight3", "신규 개조 Category · 보유 3종/Core", 0, 20, 0.01],
+  ["rangeWeight", "사거리 카드 등장 가중치", 0, 20, 0.01],
   ["ownedModWeight", "보유 개조 성장 가중치", 0, 20, 0.05],
   ["maxModInvestment", "개조 투자 편향 상한", 1, 10, 0.05],
   ["specialGrowthWeight", "보유 특수무기 성장 카테고리 가중치", 0, 20, 0.05],

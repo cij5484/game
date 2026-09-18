@@ -368,6 +368,7 @@ export class MarineProgression {
     const eligible = Object.values(marineUpgrades).filter(
       (card) =>
         this.eligible(card) &&
+        marineUpgradeWeight(card, this.ranks) > 0 &&
         marineRarityWeights(
           this.level,
           card.id === "range",
@@ -391,14 +392,20 @@ export class MarineProgression {
           kind: "mod",
           weight: owned
             ? marineGrowthBalance.ownedModWeight
-            : marineGrowthBalance.newModWeight,
+            : marineGrowthBalance[
+                `newModWeight${Math.min(3, Object.keys(this.traitLevels).length) as 0 | 1 | 2 | 3}`
+              ],
           cards,
         });
     }
     for (const card of eligible.filter(
       (card) => card.category === "weapon-growth",
     ))
-      pool.push({ kind: "card", weight: card.weight, cards: [card] });
+      pool.push({
+        kind: "card",
+        weight: marineUpgradeWeight(card, this.ranks),
+        cards: [card],
+      });
     if (this.special.weapons.length)
       pool.push({
         kind: "special-growth",

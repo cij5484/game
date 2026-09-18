@@ -32,11 +32,13 @@ Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It 
 
 ### M12 supplement
 
-- Current supplement check: **66files/479tests, TypeScript and Vite build passed**. Existing Phaser chunk warning remains. No new browser/device playtest or long probability simulation.
+- Current additional supplement check: **70files/501tests, TypeScript and Vite build passed**. Existing Phaser chunk warning remains. Isolated DEV browser checked Quick/Detail synchronization, search, JSON/reset and390px navigation. No long probability/DPS simulation or balance judgment.
 
 - Basic mods now branch once at Lv5(A/B), complete the chosen direction at Lv10, keep mastery beyond11. Great Success stops at5, resumes leftover growth after mandatory selection; branch has no RNG/reroll/extra normal choice. Legendary remains independent.
-- Special Growth fixed category.65 then owned-weapon internal bias max1.5; at most one per offer regardless of weapon count. Owned Mod.60/New Mod.45/internal bias1.4. Acquisition/range/account locks unchanged.
+- Special Growth fixed category.65 then owned-weapon internal bias max1.5; at most one per offer regardless of weapon count. Owned Mod.60/New Mod owned-count.45/.30/.18/.12/internal bias1.4. Acquisition/range/account locks unchanged.
 - Gauss-owned branch/completion badges and existing detail/card UI; attack snapshots include branches. See the M12 implementation supplement for current check/tuning; no main merge.
+
+- Per-mod acquisition/growth runtime weights: acquisition1/.9/.6/.7/.8/.9 (penetration/ricochet/burst/multishot/explosive/heavy), growth1. Burst first round1, additional min(1,.65+.025×max(0,quality−1)); copies and companion use independent action round indices. Other initial derived factors unchanged. DEV defaults Quick23, Detail categories; same DOM/key, legacy single newModWeight overrides migrate to four count keys without resetting saves.
 
 ### Preserved M10 missile baseline
 
@@ -64,7 +66,7 @@ Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It 
 ### Preserved M7 game baseline
 
 - No Lv5/Lv10 special weapon grants. Normal Level-Up offers can include one acquisition card: first Lv8+ with Category weight.30; later Lv14+ with one weapon owned, weight.20. Account capacity0→1→2 plus Core+1(max3), no pity, consumes one normal choice, always Weapon Lv1, no rarity/Great Success/quality promotion.
-- New basic modification Category.45 and owned-growth Category.60; at most one combined modification card per offer. Internal investment bias cap1.4. Mod slots3/Core4. Range remains separate/Rare+/max5/weight.25. Special Growth is now category.65/internal cap1.5; existing special milestone Queue remains.
+- New basic modification Category by owned-count.45/.30/.18/.12 and owned-growth Category.60; at most one combined modification card per offer. Internal investment bias cap1.4. Mod slots3/Core4. Range remains separate/Rare+/max5/weight.25. Special Growth is now category.65/internal cap1.5; existing special milestone Queue remains.
 - Boss supply relief18:50, spawn19:00, HP30,000. Approach.025 progress/combat sec→charge at.60 for6000combat ms.1800 accumulated damage interrupts into3000ms vulnerability×1.5; failure hits Wall1800. Reinforcement at65%HP:24Grunts+8Runners once, queued if cap full. Final at25%HP: speed.09 and1000Wall damage every1800ms after arrival.
 - Warning/Boss Horde8 per1400combat ms, final32 per700ms, cap700. Suppress new elites from warning. Preserve M6 tuning before warning. Boss remains targetable and body-damageable, respects Gauss range and existing special ranges; resists weak knockback/gravity pull and cannot receive shield aura protection.
 - Boss kill is the only Stage Clear; Wall0 is failure and stays failed. Stage time continues beyond20min. M11 now settles natural Run rewards and persists completed Run/Stage 1 Clear records.

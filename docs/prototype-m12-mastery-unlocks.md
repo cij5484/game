@@ -128,3 +128,20 @@ Challenge, Endless, Stage2+, 신규 캐릭터/Awakening, 희귀 재화 소비, V
 세부 계수는 Prototype Tuning이며 자동 확률 Simulation이나 밸런스 적정성 결론을 내리지 않는다. 처리량 상한은 추가 관통12·도탄10·보조탄8·전설 포함 점사8·폭발 반경130이며 상한 이후에도 품질 기반 숙련이 이어진다. 실제 X1 시간은 기존 CombatTempo/연구/Build 배율을 합성한다.
 
 보완 검증: 신규 분기·UI·Scene 연결 테스트의 실패를 확인한 뒤 구현했다. **`npm.cmd run check`: 66파일 / 479테스트 통과, TypeScript 및 Vite build 성공.** Lv5 대성공 보류/선택 재개·반대 분기 잠금·Lv10 효과·Lv11+·전설 동시 적용·집중탄 실제 피해·고정 Category/내부 편향/Offer 제한·기존 계정 필터링을 확인했다. 기존 Phaser 500kB 초과 chunk 경고는 유지된다. 이번 보완에서는 새 브라우저/실기기 Playtest나 장시간 확률 검증을 실행하지 않았고, 위 브라우저 기록은 보완 전 결과다.
+
+
+## M12 추가 보완 — 카드 내부 가중치 / 파생 공격 효율 / DEV
+
+기준 `42cf1bd` 이후 동일 브랜치 보완이다. 위 66파일/479테스트는 앞선 분기 보완 기록이다. 기존 Lv5 A/B·Lv10·Lv11+·대성공 Queue·계정 해금은 유지하며 적 HP/물량/Meta 연구를 변경하지 않는다.
+
+- 개조별 `marineModWeights.<id>.acquisitionWeight/growthWeight` 분리. 획득 첫값: 관통1.00/도탄0.90/점사0.60/다중탄0.70/폭발탄0.80/고위력0.90, 성장은 모두1.00. 획득은 잠금/미보유 필터 후 내부 추첨, 성장은 `growthWeight × min(1.4,1+.1×rank)`.
+- `marineGrowth.newModWeight0/1/2/3`: 0.45/0.30/0.18/0.12. 기본3슬롯을 채우면 신규 없음, Core4번째 슬롯이면0.12. 보유 Category0.60/Special Growth0.65/내부편향1.5/각 Offer 제한 유지. Range weight0.25도 Runtime 조정 연결.
+- 점사 추가탄 `min(1,0.65+0.025×max(0,quality−1))`, 첫 탄1.0. 발사 callback 전에 행동 내부 Round를 캡처하고 실제 피해에 한 번 곱한다. Crit/Run/Meta·후속 관통/도탄/다중탄/폭발 흐름은 유지한다. 복제/증원은 각 행동 기준 첫 탄이며 재귀 복제를 허용하지 않는다. 기존 대상·Splash budget/반경·발수·간격 safety 유지.
+- 기존 다중탄 기본0.50/품질증가0.065, 도탄 기본retention0.60, 폭발 기본0.35/품질증가0.075, 관통 기본retention0.60 유지. 고위력 주기 `1.2+.15/(1+.15×quality)` 계수도 Runtime 노출. 모든 수치는 Prototype Tuning이며 DPS/순위/적정 난이도를 자동 판단하지 않는다.
+- DEV 기본 탭 `간편 조정`, 대표 화면 약23개. 그룹: 전투/Horde(속도·Wall·적 이동·생성HP계수·초반cap/batch/interval), Gauss(피해·주기·사거리·치명타), 카드 등장(보유수별 신규4/보유/Special/내부편향/획득/Range/GS), 기본 개조6개 Grid(각 획득·성장·화력 대표값), 특수무기(수류탄/미사일/드론 각각3개), 성장/XP(기본/선형/후반).
+- Detail Category: 전체 게임, 적/Horde, Boss, Gauss, 기본 개조6종, 성장/Level-Up, 카드 등장, 희귀도/GS, 수류탄, 미사일, 드론, Relic, Core, Synergy, Meta, Unlock/Save, Performance/Debug, Preset/JSON. 한 Category씩 표시하고 전체 검색 유지. 성능은 작은 상태 카드, 긴 설명은 도움말로 분리한다.
+- Quick/Detail은 같은 DOM 입력과 Runtime key를 이동해 사용한다. 변경/Reset/기본값/적용 시점도 공유하며 Preset/JSON에 중복 key가 생기지 않는다. 이전 단일 `newModWeight` override는 네 보유수 key로 이전(명시 새key 우선), 기존 사용자 Save/Override/Preset은 초기화하지 않는다. Spawn density 새 시스템은 만들지 않고 기존 초반 대표값을 사용한다.
+
+추가 보완 최종 검증: 신규 테스트의 실제 FAIL 후 구현. `npm.cmd run check` **70파일/501테스트 PASS, TypeScript/Vite build 성공**. 기존 Phaser 500kB chunk 경고 유지. per-mod 내부 가중치·보유수 Category·슬롯/해금 필터·열린 Offer 보존·추가탄 실피해·복제/증원 Round·파생 조합 budget·Quick/Detail 동일 입력·Search/Reset·Preset/JSON/구 key 이전을 검증했다.
+
+브라우저는 사용자 localhost 저장과 분리한 `127.0.0.2:5173/dev`에서 확인: 첫 화면23/275개, Quick .4→Detail .4→Detail .5→Quick .5, 전체검색, JSON 동일key1개, 기본값 복원, Desktop 카드/390px Category select 정상. 테스트 Override는 원래 기본값으로 복원했고 Console error는 없었다. 실제 게임 난이도/모바일 Playtest 적정성은 판단하지 않았다. main merge나 다음 Milestone은 진행하지 않는다.

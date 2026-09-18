@@ -2,6 +2,7 @@ import {
   getMarineStats,
   getMarineTraitEffects,
   getMarineModBranch,
+  getBurstRoundDamageFactor,
   type MarineGrowthState,
 } from "../data/marineGrowth";
 import { combatGeometry, combatPosition } from "../battlefield/combatGeometry";
@@ -41,6 +42,8 @@ export function primaryAttack(
     growth?: MarineGrowthState;
     minTargetProgress01?: number;
     shotIndex: number;
+    /** Zero-based round within this attack action; omitted legacy calls are first rounds. */
+    roundIndex?: number;
     random: () => number;
     synergyMultiplier?: number;
     branches?: GrowthBranches;
@@ -67,6 +70,11 @@ export function primaryAttack(
   const stats = context.growth
     ? getMarineStats(context.growth)
     : getGeneralStats(ranks);
+  const roundDamage =
+    baseDamage *
+    (context.growth
+      ? getBurstRoundDamageFactor(context.growth, context.roundIndex ?? 0)
+      : 1);
   const synergyMultiplier = Math.max(
     1,
     Math.min(2, context.synergyMultiplier ?? 1),
@@ -210,7 +218,7 @@ export function primaryAttack(
         ? (relicModifiers.shieldDamageMultiplier ?? 1)
         : 1;
     const amount =
-      baseDamage *
+      roundDamage *
       stats.primaryDamageMultiplier *
       (relicModifiers.damageMultiplier ?? 1) *
       (context.targetDamageMultiplier?.(enemy.id) ?? 1) *

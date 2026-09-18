@@ -189,6 +189,11 @@ export const marineGrowthBalance = runtimeObject("marineGrowth", {
   maxInvestment: 2,
   maxModInvestment: 1.4,
   newModWeight: 0.45,
+  newModWeight0: 0.45,
+  newModWeight1: 0.3,
+  newModWeight2: 0.18,
+  newModWeight3: 0.12,
+  rangeWeight: 0.25,
   ownedModWeight: 0.6,
   specialGrowthWeight: 0.65,
   maxSpecialInvestment: 1.5,
@@ -204,6 +209,14 @@ export const marineGrowthBalance = runtimeObject("marineGrowth", {
   maxMultishotTargets: 5,
   maxExplosionRadius: 130,
 } as const);
+export const marineModWeights = runtimeObject("marineModWeights", {
+  penetration: { acquisitionWeight: 1, growthWeight: 1 },
+  ricochet: { acquisitionWeight: 0.9, growthWeight: 1 },
+  burst: { acquisitionWeight: 0.6, growthWeight: 1 },
+  multishot: { acquisitionWeight: 0.7, growthWeight: 1 },
+  explosive: { acquisitionWeight: 0.8, growthWeight: 1 },
+  heavy: { acquisitionWeight: 0.9, growthWeight: 1 },
+});
 const increments = (
   COMMON: number,
   RARE: number,
@@ -264,14 +277,16 @@ export function marineUpgradeWeight(
   definition: MarineUpgradeDefinition,
   ranks: MarineRanks,
 ): number {
+  if (definition.id === "range") return marineGrowthBalance.rangeWeight;
   if (definition.category !== "weapon-trait") return definition.weight;
+  const rank = positive(ranks[definition.id] ?? 0);
+  const weights = marineModWeights[definition.id as MarineTraitId];
+  if (!rank) return weights.acquisitionWeight;
   return (
-    definition.weight *
+    weights.growthWeight *
     Math.min(
       marineGrowthBalance.maxModInvestment,
-      1 +
-        positive(ranks[definition.id] ?? 0) *
-          marineGrowthBalance.investmentPerRank,
+      1 + rank * marineGrowthBalance.investmentPerRank,
     )
   );
 }
@@ -287,7 +302,13 @@ export const marineRarityBalance = runtimeObject("marineRarity", {
 
 export const marineModBalance = runtimeObject("marineMods", {
   heavyDamagePerQuality: 0.45,
+  heavyPenaltyBase: 1.2,
+  heavyPenaltyExtra: 0.15,
+  heavyPenaltyQualityDecay: 0.15,
   burstDamagePerQuality: 0.035,
+  burstAdditionalRoundDamageFactor: 0.65,
+  burstAdditionalRoundDamagePerQuality: 0.025,
+  burstAdditionalRoundDamageMax: 1,
   burstIntervalMs: 155,
   burstSpeedPerQuality: 0.055,
   penetrationCountPerLevel: 0.7,
@@ -302,6 +323,18 @@ export const marineModBalance = runtimeObject("marineMods", {
   explosionBaseDamage: 0.35,
   explosionDamagePerQuality: 0.075,
 } as const);
+export function getBurstRoundDamageFactor(
+  state: MarineGrowthState,
+  roundIndex: number,
+): number {
+  if (roundIndex <= 0) return 1;
+  return Math.min(
+    marineModBalance.burstAdditionalRoundDamageMax,
+    marineModBalance.burstAdditionalRoundDamageFactor +
+      marineModBalance.burstAdditionalRoundDamagePerQuality *
+        Math.max(0, marineStrength(state, "burst") - 1),
+  );
+}
 
 export function marineRarityWeights(
   level: number,
@@ -393,7 +426,12 @@ export function deriveMarineWeaponConfig(
         ? 0.7 - 0.15 * burstProgress - 0.1 * branchComplete(state, "burst")
         : 1),
   );
-  let heavyPenalty = heavy > 0 ? 1.2 + 0.15 / (1 + 0.15 * heavy) : 1;
+  let heavyPenalty =
+    heavy > 0
+      ? marineModBalance.heavyPenaltyBase +
+        marineModBalance.heavyPenaltyExtra /
+          (1 + marineModBalance.heavyPenaltyQualityDecay * heavy)
+      : 1;
   const heavyBranch = getMarineModBranch(state, "heavy");
   if (heavyBranch === "a")
     heavyPenalty *= 1.2 + 0.1 * branchProgress(state, "heavy");
