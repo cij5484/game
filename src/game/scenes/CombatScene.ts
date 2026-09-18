@@ -42,7 +42,10 @@ import { createPrototypeEnemy } from "../enemies/enemyFactory";
 import { advanceEnemy } from "../enemies/enemySimulation";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { advanceWallAttack } from "../enemies/wallAttack";
-import { advanceRun, createRunState } from "../model/runState";
+import { advanceRun, clearRun, createRunState } from "../model/runState";
+import { createSiegeBoss, advanceSiegeBoss } from "../enemies/siegeBoss";
+import { siegeBossBalance } from "../data/boss";
+import type { EnemyKind } from "../model/types";
 import { Burst } from "../combat/burst";
 import { suppressiveBarrage } from "../combat/barrage";
 import { burstBalance } from "../data/burst";
@@ -67,6 +70,9 @@ export class CombatScene extends Phaser.Scene {
   private result!: ResultView;
   private resultShown = false;
   private kills = 0;
+  private bossSpawned = false;
+  private bossKilled = false;
+  private bossReinforcements: EnemyKind[] = [];
   private view!: EnemyPressureView;
   private enemies: {
     state: EnemyState;
@@ -110,6 +116,9 @@ export class CombatScene extends Phaser.Scene {
   create(): void {
     this.run = createRunState(runBalance.wallMaxHp);
     this.kills = 0;
+    this.bossSpawned = false;
+    this.bossKilled = false;
+    this.bossReinforcements = [];
     this.resultShown = false;
     this.result = new ResultView();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
@@ -290,11 +299,50 @@ export class CombatScene extends Phaser.Scene {
         ),
         progress01: spawn.progress01,
       };
-      this.enemies.push({
-        state,
-        attackElapsedMs: 0,
-        visual: this.view.createEnemy(state, false),
-      });
+      this.addEnemy(state);
+    }
+  }
+
+  private addEnemy(state: EnemyState): void {
+    this.enemies.push({
+      state,
+      attackElapsedMs: 0,
+      visual: this.view.createEnemy(state, false),
+    });
+  }
+
+  private updateBossEncounter(): void {
+    if (
+      this.run.elapsedMs >= siegeBossBalance.warningMs &&
+      !this.director.bossPhase
+    )
+      this.director.bossPhase = "warning";
+    if (!this.bossSpawned && this.run.elapsedMs >= siegeBossBalance.spawnMs) {
+      this.bossSpawned = true;
+      this.director.bossPhase = "active";
+      this.addEnemy(createSiegeBoss(this.nextEnemyId++));
+      this.view.showNotice("공성 거인\n공성 준비 중 집중 공격으로 중단");
+    }
+    // Finite reinforcement queue: a full horde delays the summons instead of dropping it.
+    while (
+      this.bossReinforcements.length &&
+      this.enemies.length < this.director.settings.maxActiveEnemies
+    ) {
+      const kind = this.bossReinforcements.shift()!;
+      const lane = (["left", "center", "right"] as const)[
+        this.nextEnemyId % 3
+      ]!;
+      this.addEnemy(
+        createPrototypeEnemy(
+          kind,
+          lane,
+          this.nextEnemyId++,
+          0.2 + Math.random() * 0.6,
+          false,
+          this.run.elapsedMs,
+          this.progression.level,
+        ),
+      );
     }
   }
 
@@ -350,7 +398,11 @@ export class CombatScene extends Phaser.Scene {
     );
     this.view.renderWall(this.run.wallHp, runBalance.wallMaxHp);
     this.renderAbilities();
-    this.view.renderRun(this.run.elapsedMs, runBalance.durationMs);
+    this.view.renderRun(
+      this.run.elapsedMs,
+      siegeBossBalance.spawnMs,
+      this.bossSpawned,
+    );
     const settings = this.director.settings;
     this.view.renderDirector(
       `${settings.name} · ${Math.floor(this.director.elapsedMs / 1000)}s · ${settings.phase}\nACTIVE ${this.enemies.length}/${settings.maxActiveEnemies} · batch ${settings.batchSize} / ${settings.spawnIntervalMs}ms`,
@@ -374,6 +426,7 @@ export class CombatScene extends Phaser.Scene {
         status: this.run.status,
         elapsedMs: this.run.elapsedMs,
         kills: this.kills,
+        bossKilled: this.bossKilled,
         level: this.progression.level,
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
@@ -575,7 +628,10 @@ export class CombatScene extends Phaser.Scene {
       }
       if (entry.state.hp <= 0) {
         kills++;
-        xp += enemyConfigs[entry.state.kind].xpOnKill;
+        if (entry.state.boss) {
+          this.bossKilled = true;
+          this.run = clearRun(this.run);
+        } else xp += enemyConfigs[entry.state.kind].xpOnKill;
         if (entry.state.elite) {
           const core = this.cores.tryDrop(this.progression.validCoreIds);
           if (core) {
@@ -594,6 +650,11 @@ export class CombatScene extends Phaser.Scene {
     this.focus.resolve(this.enemies.map((e) => e.state));
     this.view.setFocus(this.focus.targetId);
     this.kills += kills;
+    if (this.run.status !== "running") {
+      // Input-triggered Ultimate can end a run outside update().
+      this.finishRun();
+      return;
+    }
     this.synergies.advance(
       0,
       this.enemies.map((e) => e.state),
@@ -756,14 +817,39 @@ export class CombatScene extends Phaser.Scene {
     // New enemies receive only time after their spawn boundary.
     let remaining = Math.max(0, deltaMs);
     while (remaining > 0 && this.run.status === "running") {
+      this.updateBossEncounter();
       const step = Math.min(
         remaining,
         16,
         this.director.timeToSpawnMs,
-        (runBalance.durationMs - this.run.elapsedMs) * runBalance.combatTempo,
+        this.bossSpawned
+          ? Infinity
+          : (siegeBossBalance.spawnMs - this.run.elapsedMs) *
+              runBalance.combatTempo,
       );
       this.refreshProtection();
       for (const entry of this.enemies) {
+        if (entry.state.boss) {
+          const boss = advanceSiegeBoss(entry.state, step);
+          entry.state = boss.enemy;
+          this.takeWallDamage(boss.wallDamage);
+          if (boss.reinforcement) {
+            this.bossReinforcements.push(
+              ...Array<EnemyKind>(siegeBossBalance.reinforcement.grunt).fill(
+                "grunt",
+              ),
+              ...Array<EnemyKind>(siegeBossBalance.reinforcement.runner).fill(
+                "runner",
+              ),
+            );
+            this.view.showNotice("공성 거인 · 지원군 호출");
+          }
+          if (entry.state.boss!.phase === "final-charge")
+            this.director.bossPhase = "final";
+          this.view.renderEnemy(entry.visual, entry.state, false);
+          if (this.run.status !== "running") break;
+          continue;
+        }
         const config = enemyConfigs[entry.state.kind];
         const movement = advanceEnemy(entry.state, step, config, 1);
         entry.state = movement.enemy;
@@ -791,11 +877,7 @@ export class CombatScene extends Phaser.Scene {
       );
 
       this.burst.advanceCharge(step);
-      this.run = advanceRun(
-        this.run,
-        step / runBalance.combatTempo,
-        runBalance.durationMs,
-      );
+      this.run = advanceRun(this.run, step / runBalance.combatTempo);
       remaining -= step;
       if (
         this.run.status === "running" &&
@@ -811,6 +893,7 @@ export class CombatScene extends Phaser.Scene {
           this.applyEnemyStates(result.enemies);
       }
       if (this.choosing) break;
+      if (this.run.status === "running") this.updateBossEncounter();
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
         this.spawnBatch();
       }

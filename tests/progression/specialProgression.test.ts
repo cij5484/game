@@ -7,19 +7,15 @@ import {
 } from "../../src/game/data/specialWeapons";
 
 describe("M5 special progression", () => {
-  it("queues two distinct acquisitions at character 5/10 without consuming normal choices", () => {
+  it("does not queue acquisitions at character 5/10 and guards direct acquisition capacity", () => {
     const p = new MarineProgression(() => 0.5);
     while (p.level < 10) p.gainXp(p.threshold);
     expect(p.pendingChoices).toBe(9);
-    expect(p.special.offer()?.choices).toHaveLength(3);
-    expect(p.special.choose("grenade")).toBe(true);
-    expect(p.special.offer()?.choices.map((c) => c.id)).toEqual([
-      "missile",
-      "drone",
-    ]);
-    expect(p.special.choose("grenade")).toBe(false);
-    expect(p.special.choose("drone")).toBe(true);
-    p.special.acquireAtCharacterLevel(30);
+    expect(p.special.offer()).toBeNull();
+    expect(p.special.acquireWeapon("grenade")).toBe(true);
+    expect(p.special.acquireWeapon("grenade")).toBe(false);
+    expect(p.special.acquireWeapon("drone")).toBe(true);
+    expect(p.special.acquireWeapon("missile")).toBe(false);
     expect(p.special.pending).toBe(false);
     expect(p.special.weapons.map((w) => [w.id, w.level, w.quality])).toEqual([
       ["grenade", 1, 0],
@@ -30,8 +26,7 @@ describe("M5 special progression", () => {
 
   it("stops leftover levels at each choice and automatically completes the selected path at ten", () => {
     const p = new SpecialProgression();
-    p.acquireAtCharacterLevel(5);
-    p.choose("grenade");
+    p.acquireWeapon("grenade");
     const weapon = p.weapons[0]!;
     p.addLevels("grenade", 3, 1.6);
     expect(weapon.level).toBe(3);
@@ -65,11 +60,9 @@ describe("M5 special progression", () => {
 
   it("serializes acquisition and two weapon milestones while rejecting invalid growth", () => {
     const p = new SpecialProgression();
-    p.acquireAtCharacterLevel(4);
     expect(p.offer()).toBeNull();
-    p.acquireAtCharacterLevel(5);
-    p.choose("grenade");
-    p.acquireAtCharacterLevel(10);
+    p.acquireWeapon("grenade");
+    p.expandCapacity();
     p.addLevels("grenade", 2, 1);
     expect(p.offer()?.kind).toBe("acquire");
     expect(p.weapons[0]!.level).toBe(1);
@@ -94,8 +87,7 @@ describe("M5 special progression", () => {
       expect(definition.overclocks).toHaveLength(3);
       for (const tree of definition.trees) {
         const p = new SpecialProgression();
-        p.acquireAtCharacterLevel(5);
-        p.choose(definition.id);
+        p.acquireWeapon(definition.id);
         p.addLevels(definition.id, 20, 1);
         expect(p.choose(tree.id)).toBe(true);
         expect(p.offer()?.choices).toHaveLength(2);
@@ -117,8 +109,7 @@ describe("M5 special progression", () => {
     p.pendingChoices = 1;
     expect(p.offer().some((c) => c.category === "special-growth")).toBe(false);
     p.choose(p.offer()[0]!.id);
-    p.special.acquireAtCharacterLevel(5);
-    p.special.choose("missile");
+    p.special.acquireWeapon("missile");
     p.pendingChoices = 1;
     roll = 0.9999;
     const cards = p.offer();

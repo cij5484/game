@@ -91,21 +91,25 @@ export class LevelUpView {
         id: choice.id,
         title: choice.title,
         level:
-          choice.category === "special-growth"
-            ? `${choice.currentLevel} → ${choice.nextLevel}레벨`
-            : levelChange(ranks[choice.id] ?? 0, choice.maxRank),
+          choice.category === "special-acquisition"
+            ? "신규 무장 · Lv1 획득"
+            : choice.category === "special-growth"
+              ? `${choice.currentLevel} → ${choice.nextLevel}레벨`
+              : levelChange(ranks[choice.id] ?? 0, choice.maxRank),
         symbol: choice.symbol,
         compact: choice.description,
         description: choice.description,
-        rarity: choice.rarity,
+        ...(choice.rarity ? { rarity: choice.rarity } : {}),
         category:
-          choice.category === "special-growth"
-            ? `특수무기 강화 · ${choice.title}`
-            : choice.owner === "global"
-              ? "기본 강화 · 공용"
-              : choice.id === "range"
-                ? "사거리 성장 · 가우스"
-                : "무기 특성 · 가우스",
+          choice.category === "special-acquisition"
+            ? "신규 무장 · 일반 선택 1회"
+            : choice.category === "special-growth"
+              ? `특수무기 강화 · ${choice.title}`
+              : choice.owner === "global"
+                ? "기본 강화 · 공용"
+                : choice.id === "range"
+                  ? "사거리 성장 · 가우스"
+                  : "무기 특성 · 가우스",
       })),
       select,
       `${display.trait} ${marineTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${

@@ -1,5 +1,6 @@
 import { hordeBalance } from "../data/horde";
 import { eliteBalance } from "../data/elite";
+import { siegeBossBalance } from "../data/boss";
 import type { EnemyKind, LaneId } from "../model/types";
 
 export interface SpawnSpec {
@@ -26,12 +27,14 @@ function weightedChoice<T extends string>(
 }
 
 export class SpawnDirector {
+  bossPhase: "warning" | "active" | "final" | null = null;
   private elapsed = 0;
   private nextSpawnAtMs = 0;
   private eliteIndex = 0;
   private eliteTimes: number[];
   private laneRoles: EnemyKind[];
   private get nextEliteAtMs() {
+    if (this.bossPhase) return Infinity;
     return this.eliteTimes[this.eliteIndex] ?? Infinity;
   }
   private elitePending = false;
@@ -71,6 +74,15 @@ export class SpawnDirector {
       (value) => value.atMs <= this.elapsed,
     );
     const values = hordeBalance.stages[stage]!;
+    if (this.bossPhase)
+      return {
+        stage,
+        ...values,
+        ...siegeBossBalance.supply[
+          this.bossPhase === "final" ? "final" : "active"
+        ],
+        name: this.bossPhase === "final" ? "FINAL CHARGE" : "SIEGE GIANT",
+      };
     return { stage, ...values };
   }
 
@@ -81,9 +93,17 @@ export class SpawnDirector {
   spawn(activeCount: number): SpawnSpec[] {
     if (this.timeToSpawnMs > 0) return [];
     const settings = this.settings;
+    // Reserve the Boss place once the final capacity is reached, before its exact spawn time.
+    const bossReserve =
+      this.bossPhase !== "active" &&
+      this.bossPhase !== "final" &&
+      settings.maxActiveEnemies === hordeBalance.stages.at(-1)!.maxActiveEnemies
+        ? 1
+        : 0;
     const spawns: SpawnSpec[] = [];
     if (this.elapsed >= this.nextEliteAtMs) {
-      this.elitePending = activeCount >= settings.maxActiveEnemies;
+      this.elitePending =
+        activeCount >= settings.maxActiveEnemies - bossReserve;
       if (!this.elitePending) {
         spawns.push({
           kind:
@@ -111,8 +131,12 @@ export class SpawnDirector {
                 ) -
                 hordeBalance.batchVariation,
             ),
-        // Keep one place available for the next elite, even during a full horde.
-        settings.maxActiveEnemies - 1 - activeCount - spawns.length,
+        // Boss phases suppress elites; otherwise reserve space for the next elite.
+        settings.maxActiveEnemies -
+          (this.bossPhase ? 0 : 1) -
+          bossReserve -
+          activeCount -
+          spawns.length,
       ),
     );
     this.initial = false;

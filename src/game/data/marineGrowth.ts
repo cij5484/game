@@ -93,6 +93,13 @@ export const marineGrowthBalance = {
   traitLimit: 3,
   investmentPerRank: 0.1,
   maxInvestment: 2,
+  maxModInvestment: 1.4,
+  newModWeight: 0.45,
+  ownedModWeight: 0.35,
+  firstAcquisitionWeight: 0.3,
+  laterAcquisitionWeight: 0.2,
+  firstAcquisitionLevel: 8,
+  laterAcquisitionLevel: 14,
   greatSuccessChance: 0.06,
   minimumRecoveryMs: 100,
   maxBurstRounds: 8,
@@ -141,10 +148,11 @@ export function marineUpgradeWeight(
   definition: MarineUpgradeDefinition,
   ranks: MarineRanks,
 ): number {
+  if (definition.category !== "weapon-trait") return definition.weight;
   return (
     definition.weight *
     Math.min(
-      marineGrowthBalance.maxInvestment,
+      marineGrowthBalance.maxModInvestment,
       1 +
         positive(ranks[definition.id] ?? 0) *
           marineGrowthBalance.investmentPerRank,

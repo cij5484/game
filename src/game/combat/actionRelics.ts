@@ -34,6 +34,7 @@ export function applyImpact(
     const previous = old.get(enemy.id);
     if (
       !previous ||
+      enemy.boss ||
       enemy.hp <= 0 ||
       (enemy.hp >= previous.hp &&
         (enemy.shieldHp ?? 0) >= (previous.shieldHp ?? 0)) ||

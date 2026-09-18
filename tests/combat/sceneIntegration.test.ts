@@ -16,6 +16,8 @@ import { stimpackBalance } from "../../src/game/data/balance";
 import type { PrototypeRelics } from "../../src/game/progression/highroll";
 import type { SpecialWeapons } from "../../src/game/combat/specialWeapons";
 import type { RunState } from "../../src/game/model/runState";
+import { createSiegeBoss } from "../../src/game/enemies/siegeBoss";
+import { siegeBossBalance } from "../../src/game/data/boss";
 
 interface SceneHarness {
   spawnBatch(): void;
@@ -65,6 +67,8 @@ function scene(): SceneHarness {
   // Only presentation is replaced; real scene, clocks, combat, focus, magic and rewards run.
   Object.assign(instance, {
     time: { timeScale: 1, paused: false },
+    result: { show: vi.fn() },
+    choices: { hide: noop },
     view: {
       createEnemy: () => ({ destroy: noop }),
       showImpacts: noop,
@@ -382,13 +386,9 @@ it("scales gameplay once at update entry while pause and focus input remain unsc
   expect(fast.focus.targetId).toBeNull();
 });
 
-it("special acquisition pauses without spending normal choices; special kills credit XP once", () => {
+it("owned special kills credit XP once", () => {
   const test = scene();
-  test.progression.special.acquireAtCharacterLevel(5);
-  test.update(0, 1000);
-  expect(test.run.elapsedMs).toBe(0);
-  expect(test.progression.special.offer()?.choices).toHaveLength(3);
-  expect(test.progression.special.choose("grenade")).toBe(true);
+  expect(test.progression.special.acquireWeapon("grenade")).toBe(true);
   expect(test.progression.pendingChoices).toBe(0);
   test.enemies.forEach((e) => {
     e.state.progress01 = 0.1;
@@ -404,8 +404,7 @@ it("X4 shares special projectile, cooldown and Stim clocks with ordinary simulat
   const normal = scene(),
     fast = scene();
   for (const test of [normal, fast]) {
-    test.progression.special.acquireAtCharacterLevel(5);
-    test.progression.special.choose("missile");
+    test.progression.special.acquireWeapon("missile");
     test.activateStim();
   }
   Object.assign(fast, { gameSpeed: 4 });
@@ -514,4 +513,81 @@ it("saturation increases even a capped Gauss burst without removing recovery", (
   test.update(0, (config.shotIntervalMs - 100) / 1.5);
   expect(test.shotIndex).toBe(10);
   expect(test.rifle.timeToEventMs).toBeCloseTo(100);
+});
+
+it("M7 spawns one Boss at19:00, keeps it range-bound, and runs beyond20min", () => {
+  const test = scene();
+  test.enemies = [];
+  test.run.elapsedMs = siegeBossBalance.spawnMs - 10;
+  Object.assign(test.director, {
+    elapsed: test.run.elapsedMs * 1.5,
+    nextSpawnAtMs: Infinity,
+    eliteIndex: 5,
+  });
+  test.update(0, 20);
+  expect(test.enemies.filter((e) => e.state.boss)).toHaveLength(1);
+  expect(test.shotIndex).toBe(0);
+  test.run.elapsedMs = 20 * 60000;
+  test.update(0, 10);
+  expect(test.run.status).toBe("running");
+  expect(test.run.elapsedMs).toBeGreaterThan(20 * 60000);
+  expect(test.enemies.filter((e) => e.state.boss)).toHaveLength(1);
+});
+it("M7 Boss kill clears once and a prior Wall failure cannot become a clear", () => {
+  for (const failed of [false, true]) {
+    const test = scene();
+    const boss = createSiegeBoss(50);
+    test.enemies = [
+      { state: boss, attackElapsedMs: 0, visual: { destroy: noop } },
+    ];
+    if (failed) test.takeWallDamage(test.run.wallHp);
+    test.applyEnemyStates([{ ...boss, hp: 0 }]);
+    expect(test.run.status).toBe(failed ? "failed" : "cleared");
+    expect(test.progression.xp).toBe(0);
+    test.applyEnemyStates([{ ...boss, hp: 0 }]);
+    expect(test.kills).toBe(1);
+  }
+});
+it("M7 charge attacks Wall, reinforcements spawn once, pause freezes Boss", () => {
+  const test = scene();
+  const boss = createSiegeBoss(50);
+  boss.hp = boss.maxHp! * 0.65;
+  boss.progress01 = siegeBossBalance.siegeProgress01;
+  boss.boss!.phase = "siege-charge";
+  boss.boss!.phaseRemainingMs = 1;
+  test.enemies = [
+    { state: boss, attackElapsedMs: 0, visual: { destroy: noop } },
+  ];
+  test.advanceWorld(2);
+  expect(test.run.wallHp).toBe(12000 - siegeBossBalance.siegeWallDamage);
+  expect(test.enemies.filter((e) => !e.state.boss)).toHaveLength(32);
+  test.advanceWorld(2);
+  expect(test.enemies.filter((e) => !e.state.boss)).toHaveLength(32);
+  const remaining = test.enemies.find((e) => e.state.boss)!.state.boss!
+    .phaseRemainingMs;
+  test.manualPaused = true;
+  test.update(0, 1000);
+  expect(
+    test.enemies.find((e) => e.state.boss)!.state.boss!.phaseRemainingMs,
+  ).toBe(remaining);
+});
+
+it("Boss killed by input-triggered Ultimate immediately shows Result exactly once", () => {
+  const test = scene();
+  const boss = { ...createSiegeBoss(99), hp: 1, progress01: 0.6 };
+  test.enemies = [
+    { state: boss, attackElapsedMs: 0, visual: { destroy: noop } },
+  ];
+  test.burst.credit({ eliteKills: 20 });
+  expect(test.activateUltimate()).toBe(true);
+  const result = (
+    test as unknown as { result: { show: ReturnType<typeof vi.fn> } }
+  ).result;
+  expect(result.show).toHaveBeenCalledTimes(1);
+  expect(result.show.mock.calls[0]![0]).toMatchObject({
+    status: "cleared",
+    bossKilled: true,
+  });
+  test.update(0, 16);
+  expect(result.show).toHaveBeenCalledTimes(1);
 });

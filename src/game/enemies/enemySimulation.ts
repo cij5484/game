@@ -1,8 +1,10 @@
 import { eliteBalance } from "../data/elite";
 import type { EnemyConfig, EnemyKind, LaneId } from "../model/types";
+import type { SiegeBossState } from "./siegeBoss";
 
 export interface EnemyState {
   id: number;
+  boss?: SiegeBossState;
   elite?: boolean;
   shieldHp?: number;
   maxShieldHp?: number;

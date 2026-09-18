@@ -15,20 +15,16 @@ export function applyWallDamage(state: RunState, damage: number): RunState {
   return { ...state, wallHp, status: wallHp > 0 ? "running" : "failed" };
 }
 
-/** Choice pauses pass no time; Rhythm passes only its slowed simulation time. */
-export function advanceRun(
-  state: RunState,
-  deltaMs: number,
-  durationMs: number,
-): RunState {
+/** Paused frames pass no time. Only an explicit Boss kill clears the run. */
+export function advanceRun(state: RunState, deltaMs: number): RunState {
   if (state.status !== "running") return state;
-  const elapsedMs = Math.min(
-    durationMs,
-    state.elapsedMs + Math.max(0, deltaMs),
-  );
   return {
     ...state,
-    elapsedMs,
-    status: elapsedMs >= durationMs ? "cleared" : "running",
+    elapsedMs: state.elapsedMs + Math.max(0, deltaMs),
   };
+}
+
+/** Called only after the Stage boss dies; wall destruction keeps failure sticky. */
+export function clearRun(state: RunState): RunState {
+  return state.status === "running" ? { ...state, status: "cleared" } : state;
 }
