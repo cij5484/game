@@ -9,6 +9,7 @@ import {
   subscribe,
 } from "./runtimeBalance";
 import { startBalanceBridge } from "./runtimeBridge";
+import { createTelemetryCard } from "./TelemetryCard";
 import { metaStore } from "../meta/metaSave";
 import { researchDefinitions } from "../data/meta";
 import {
@@ -130,6 +131,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   });
   performance.append(metrics);
   const liveDock = element("div");
+  const telemetry = createTelemetryCard();
 
   const notice = element(
     "p",
@@ -843,7 +845,9 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
     }
     for (const [category, panel] of specialPanels)
       panel.hidden = quick || !!query || category !== activeCategory;
-    (quick ? liveDock : groupsRoot).append(performance);
+    (quick ? liveDock : groupsRoot).append(telemetry.root, performance);
+    telemetry.root.hidden =
+      !quick && (!!query || activeCategory !== "Performance / Debug");
     performance.hidden =
       !quick && (!!query || activeCategory !== "Performance / Debug");
     const visible = rows.filter(({ row }) => !row.hidden).length;
@@ -861,6 +865,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   attempt(() => refreshPresets());
   const unsubscribe = subscribe(refresh);
   const stopBridge = startBalanceBridge("panel", (state) => {
+    telemetry.update(state);
     status.textContent = state.connected ? "게임 연결됨" : "게임 연결 대기 중";
     status.dataset.connected = String(state.connected);
     gameState.textContent = state.connected

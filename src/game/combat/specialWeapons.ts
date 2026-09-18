@@ -35,6 +35,11 @@ export interface SpecialContext {
   random?: () => number;
   relics?: ReadonlySet<PrototypeRelicId>;
   synergy?: PrototypeSynergies;
+  onDamage?: (
+    before: EnemyState,
+    after: EnemyState,
+    source: "Grenade" | "Missile" | "Drone",
+  ) => void;
 }
 export interface SpecialResult {
   enemies: readonly EnemyState[];
@@ -321,6 +326,15 @@ export class SpecialWeapons {
       bypass,
     );
     if (next.hp < enemy.hp || (next.shieldHp ?? 0) < (enemy.shieldHp ?? 0)) {
+      context.onDamage?.(
+        enemy,
+        next,
+        weapon === "grenade"
+          ? "Grenade"
+          : weapon === "missile"
+            ? "Missile"
+            : "Drone",
+      );
       if (critical) this.criticalHitCount++;
       context.synergy?.registerHits([enemy.id]);
     }

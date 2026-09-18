@@ -1,3 +1,4 @@
+import { BalanceTelemetry } from "../dev/BalanceTelemetry";
 import {
   operationRecords,
   type OperationEvidence,
@@ -32,6 +33,7 @@ import {
   getMarineStats,
   deriveMarineWeaponConfig,
   marineGrowthBalance,
+  marineTraitIds,
 } from "../data/marineGrowth";
 import { LevelUpView } from "../ui/LevelUpView";
 import { PrototypeRelics, PrototypeCores } from "../progression/highroll";
@@ -84,6 +86,7 @@ export class CombatScene extends Phaser.Scene {
       level: this.progression.level,
       ...(import.meta.env.DEV
         ? {
+            telemetry: this.telemetry.report(),
             performance: {
               fps: this.game?.loop.actualFps ?? 0,
               enemies: this.enemies.length,
@@ -95,6 +98,8 @@ export class CombatScene extends Phaser.Scene {
         : {}),
     };
   }
+  private telemetry = new BalanceTelemetry();
+  private telemetryBuild: string[] = [];
   private wallMaxHp = runBalance.wallMaxHp;
   private run = createRunState(this.wallMaxHp);
   private result!: ResultView;
@@ -186,6 +191,8 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private prepareRun(): void {
+    this.telemetry = new BalanceTelemetry();
+    this.telemetryBuild = [];
     this.runTicket = metaStore.beginRun();
     this.unlocks = this.runTicket.unlocks;
     this.operationEvidence = {};
@@ -425,6 +432,10 @@ export class CombatScene extends Phaser.Scene {
       this.bossSpawned = true;
       this.director.bossPhase = "active";
       this.addEnemy(createSiegeBoss(this.nextEnemyId++));
+      if (import.meta.env.DEV) {
+        this.updateTelemetry();
+        this.telemetry.bossSpawn();
+      }
       this.view.showNotice("공성 거인\n공성 준비 중 집중 공격으로 중단");
     }
     // Finite reinforcement queue: a full horde delays the summons instead of dropping it.
@@ -489,6 +500,7 @@ export class CombatScene extends Phaser.Scene {
       }
     } while (remaining > 0 && this.run.status === "running" && !this.choosing);
     this.inFrame = false;
+    this.updateTelemetry();
     const second = Math.floor(this.run.elapsedMs / 1000);
     if (second !== this.lastOperationSecond) {
       this.lastOperationSecond = second;
@@ -535,6 +547,8 @@ export class CombatScene extends Phaser.Scene {
   private finishRun(): void {
     if (this.run.status === "running" || this.resultShown) return;
     this.trackOperations();
+    this.updateTelemetry();
+    this.telemetry.finish(this.run.status);
     this.resultShown = true;
     this.time.paused = true;
     this.choices.hide();
@@ -762,20 +776,22 @@ export class CombatScene extends Phaser.Scene {
     );
     const states = applyImpact(before, result.enemies, this.relics.owned);
     // Extra Marines and copied attacks repeat only Gauss; never duplicate special-weapon actions.
-    if (action.reinforcement || copied) this.applyEnemyStates(states);
+    if (action.reinforcement || copied)
+      this.applyEnemyStates(states, true, true);
     else {
       const synchronized = this.specialWeapons.onPrimary(target.id, {
         ...this.specialContext(),
         enemies: states,
       });
       this.view.showSpecialEffects(synchronized.effects);
-      this.applyEnemyStates(synchronized.enemies);
+      this.applyEnemyStates(synchronized.enemies, true, true);
     }
   }
 
   private applyEnemyStates(
     states: readonly EnemyState[],
     chargeBurst = true,
+    damageObserved = false,
   ): void {
     if (states === this.states) return;
     let byId: Map<number, EnemyState> | undefined;
@@ -793,6 +809,10 @@ export class CombatScene extends Phaser.Scene {
       }
       if (!next || next === entry.state) continue;
       changed = true;
+      if (import.meta.env.DEV && !damageObserved) {
+        this.telemetry.setTime(this.run.elapsedMs);
+        this.telemetry.damage(entry.state, next, "Other");
+      }
       const oldHp = entry.state.hp;
       const oldShield = entry.state.shieldHp ?? 0;
       entry.state = next;
@@ -820,6 +840,7 @@ export class CombatScene extends Phaser.Scene {
           this.relics.onElite();
           eliteKills++;
         }
+        if (import.meta.env.DEV) this.telemetry.removeEnemy(entry.state.id);
         entry.visual.destroy();
       }
     }
@@ -863,6 +884,10 @@ export class CombatScene extends Phaser.Scene {
         !(next.hp < old.hp || (next.shieldHp ?? 0) < (old.shieldHp ?? 0))
       )
         continue;
+      if (import.meta.env.DEV) {
+        this.telemetry.setTime(this.run.elapsedMs);
+        this.telemetry.damage(old, next, "Gauss");
+      }
       action.hitIds.add(old.id);
       if (critical.has(old.id)) this.operationEvidence.criticalHits = 1;
       if (next.hp <= 0) {
@@ -1072,6 +1097,16 @@ export class CombatScene extends Phaser.Scene {
         this.synergies.active,
       ),
     ];
+    if (import.meta.env.DEV) {
+      this.telemetryBuild = summary.map(
+        (item) =>
+          `[${item.owner}/${item.group}] ${item.title}${item.level ? ` Lv${item.level}` : ""}${item.level ? "" : ` · ${item.detail.split("\n")[0]}`}`,
+      );
+      this.updateTelemetry();
+      for (const item of summary)
+        if (marineTraitIds.some((id) => id === item.id))
+          this.telemetry.acquireMod(item.id, item.title);
+    }
     this.buildBar.render(summary);
     this.burstUi.renderBuild(summary);
     this.burstUi.renderSpecialWeapons(
@@ -1082,12 +1117,25 @@ export class CombatScene extends Phaser.Scene {
     this.pauseUi.setBuildDetails(summary);
   }
 
+  private updateTelemetry(): void {
+    if (!import.meta.env.DEV) return;
+    this.telemetry.update({
+      stageMs: this.run.elapsedMs,
+      level: this.progression.level,
+      wallHp: this.run.wallHp,
+      wallMaxHp: this.wallMaxHp,
+      enemies: this.enemies.length,
+      build: this.telemetryBuild,
+    });
+  }
+
   private takeWallDamage(damage: number): void {
     if (damage <= 0 || this.run.status !== "running") return;
     const wallHp = Math.max(
       0,
       this.run.wallHp - damage * this.progression.meta.wallDamageMultiplier,
     );
+    if (import.meta.env.DEV) this.telemetry.wallDamage(this.run.wallHp, wallHp);
     this.run = {
       ...this.run,
       wallHp,
@@ -1104,6 +1152,18 @@ export class CombatScene extends Phaser.Scene {
       random: Math.random,
       relics: this.relics.owned,
       synergy: this.synergies,
+      ...(import.meta.env.DEV
+        ? {
+            onDamage: (
+              before: EnemyState,
+              after: EnemyState,
+              source: "Grenade" | "Missile" | "Drone",
+            ) => {
+              this.telemetry.setTime(this.run.elapsedMs);
+              this.telemetry.damage(before, after, source);
+            },
+          }
+        : {}),
     };
   }
 
@@ -1122,11 +1182,14 @@ export class CombatScene extends Phaser.Scene {
               runBalance.combatTempo,
       );
       if (step > 0) this.frameSubsteps++;
+      if (import.meta.env.DEV) this.telemetry.setTime(this.run.elapsedMs);
       this.refreshProtection();
       for (const entry of this.enemies) {
         if (entry.state.boss) {
           const boss = advanceSiegeBoss(entry.state, step);
           entry.state = boss.enemy;
+          if (import.meta.env.DEV && entry.state.progress01 >= 1)
+            this.telemetry.wallReach(entry.state.id);
           this.takeWallDamage(boss.wallDamage);
           if (boss.reinforcement) {
             this.bossReinforcements.push(
@@ -1152,6 +1215,8 @@ export class CombatScene extends Phaser.Scene {
           enemyScalingBalance.movementMultiplier,
         );
         entry.state = movement.enemy;
+        if (import.meta.env.DEV && entry.state.progress01 >= 1)
+          this.telemetry.wallReach(entry.state.id);
         const attack = advanceWallAttack(
           entry.attackElapsedMs,
           movement.wallTimeMs,
@@ -1174,6 +1239,7 @@ export class CombatScene extends Phaser.Scene {
 
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step / runBalance.combatTempo);
+      if (import.meta.env.DEV) this.telemetry.setTime(this.run.elapsedMs);
       remaining -= step;
       if (
         this.run.status === "running" &&
@@ -1182,7 +1248,7 @@ export class CombatScene extends Phaser.Scene {
         const result = this.specialWeapons.advance(step, this.specialContext());
         this.view.showSpecialEffects(result.effects);
         if (result.enemies !== this.states)
-          this.applyEnemyStates(result.enemies);
+          this.applyEnemyStates(result.enemies, true, true);
       }
       if (this.choosing) break;
       if (this.run.status === "running") this.updateBossEncounter();
