@@ -31,15 +31,18 @@ it("runner elite stops to telegraph before charging", () => {
   expect(charge.chargePhase).toBe("charging");
   expect(charge.progress01).toBeGreaterThan(ready.progress01);
 });
-it("20-minute director delays shield and has relief windows", () => {
+it("20-minute director delays shields until stage minute six while pressure grows", () => {
   expect(runBalance.durationMs).toBe(1200000);
-  const d = new SpawnDirector(() => 0.5);
+  const d = new SpawnDirector(() => 0.99999);
   d.spawn(0);
-  d.advance(300000);
-  expect(d.settings.phase).toBe("relief");
+  d.advance(300000 * runBalance.combatTempo);
+  expect(d.settings.phase).toBe("pressure");
   expect(d.spawn(0).every((e) => e.kind !== "shield")).toBe(true);
-  d.advance(360000);
-  expect(d.settings.phase).toBe("relief");
+  const earlierBatchSize = d.settings.batchSize;
+  d.advance(60000 * runBalance.combatTempo);
+  expect(d.settings.phase).toBe("pressure");
+  expect(d.spawn(0).some((e) => e.kind === "shield")).toBe(true);
+  expect(d.settings.batchSize).toBeGreaterThan(earlierBatchSize);
 });
 
 it("elite shield protects only four nearby ordinary enemies behind it and stops on shield break", () => {

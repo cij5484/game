@@ -100,10 +100,10 @@ it("caps rounds and gives even an extreme attack speed positive recovery", () =>
     shotIntervalMs: 0.001,
   });
   const times: number[] = [];
-  rifle.advance(14, (offset) => {
+  rifle.advance(18, (offset) => {
     times.push(offset);
   });
-  expect(times).toEqual([0, 2, 4, 6, 8, 10, 12, 14]);
+  expect(times).toEqual([0, 2, 4, 6, 8, 10, 12, 14, 16, 18]);
   expect(rifle.timeToEventMs).toBe(1);
   expect(rifle.startsAttack).toBe(true);
 });

@@ -22,6 +22,10 @@ import {
   upgradeCategoryLabels,
 } from "../data/display";
 import { weaponTraitIds, weaponTraits } from "../data/traits";
+import type {
+  PrototypeRelicDefinition,
+  PrototypeRelicId,
+} from "../data/highroll";
 
 export class LevelUpView {
   private readonly dialog = document.createElement("dialog");
@@ -147,6 +151,54 @@ export class LevelUpView {
         };
       }),
       select,
+    );
+  }
+
+  showPrototypeRelics(
+    choices: readonly PrototypeRelicDefinition[],
+    select: (id: PrototypeRelicId) => void,
+  ): void {
+    this.render(
+      "유물 획득",
+      choices.map((choice) => ({
+        ...choice,
+        level: "즉시 완성",
+        compact: choice.summary,
+        category: display.relic,
+      })),
+      select,
+      "무레벨 유물 · 최대 2개 · 중복 없음",
+    );
+  }
+
+  showRelicReplacement(
+    incoming: PrototypeRelicDefinition,
+    owned: readonly PrototypeRelicDefinition[],
+    replace: (id: PrototypeRelicId) => void,
+    skip: () => void,
+  ): void {
+    this.render<PrototypeRelicId | "skip">(
+      "유물 교체 또는 포기",
+      [
+        ...owned.map((relic) => ({
+          ...relic,
+          title: relic.title,
+          level: "이 유물 교체",
+          compact: relic.summary,
+          category: display.relic,
+        })),
+        {
+          id: "skip",
+          title: "새 유물 포기",
+          level: "기존 유물 유지",
+          symbol: "×",
+          compact: `${incoming.title} 포기`,
+          description: "보유한 유물 2개를 유지합니다.",
+          category: display.relic,
+        },
+      ],
+      (id) => (id === "skip" ? skip() : replace(id)),
+      `새 유물: ${incoming.title}\n${incoming.description}`,
     );
   }
 

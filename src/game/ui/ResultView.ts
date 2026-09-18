@@ -1,4 +1,4 @@
-import { specialBuildSummary } from "./buildSummary";
+import { specialBuildSummary, type BuildIcon } from "./buildSummary";
 import type { SpecialWeaponState } from "../data/specialWeapons";
 import {
   marineUpgrades,
@@ -28,6 +28,7 @@ export interface RunResult {
   ranks: UpgradeRanks;
   growth?: MarineGrowthState;
   specialWeapons?: readonly SpecialWeaponState[];
+  highroll?: readonly BuildIcon[];
   branches: GrowthBranches;
   activeSynergyIds: ReadonlySet<string>;
   relics: RelicLevels;
@@ -79,6 +80,13 @@ export class ResultView {
           )
           .join(" · ") || display.baseWeapon;
     const seconds = Math.floor(result.elapsedMs / 1000);
+    const highroll = (group: BuildIcon["group"]) =>
+      result.highroll === undefined
+        ? undefined
+        : result.highroll
+            .filter((entry) => entry.group === group)
+            .map((entry) => entry.title)
+            .join(" · ") || display.none;
     const rows = [
       [
         display.time,
@@ -116,24 +124,29 @@ export class ResultView {
       [display.magicGrowth, selections(["frost-nova", "chain-lightning"])],
       [
         display.relic,
-        Object.values(relics)
-          .filter((module) => (result.relics[module.id] ?? 0) > 0)
-          .map(
-            (module) =>
-              `${module.title} ${levelLabel(result.relics[module.id]!)}`,
-          )
-          .join(" · ") || display.none,
+        highroll("relic") ??
+          (Object.values(relics)
+            .filter((module) => (result.relics[module.id] ?? 0) > 0)
+            .map(
+              (module) =>
+                `${module.title} ${levelLabel(result.relics[module.id]!)}`,
+            )
+            .join(" · ") ||
+            display.none),
       ],
       [
         display.core,
-        [...result.cores].map((id) => cores[id].title).join(" · ") ||
-          display.none,
+        highroll("core") ??
+          ([...result.cores].map((id) => cores[id].title).join(" · ") ||
+            display.none),
       ],
       [
         display.synergy,
-        activeSynergies(result.ranks, result.activeSynergyIds)
-          .map((recipe) => recipe.title)
-          .join(" · ") || display.none,
+        highroll("synergy") ??
+          (activeSynergies(result.ranks, result.activeSynergyIds)
+            .map((recipe) => recipe.title)
+            .join(" · ") ||
+            display.none),
       ],
       [
         display.evolution,

@@ -8,10 +8,10 @@ export const enemyScalingBalance = {
   maxSpeedMultiplier: 1.53,
 } as const;
 
-// M5 prototype: mild spawn-only HP growth; movement retains the M3 curve.
+// M6 prototype: mild spawn-only HP growth; movement retains the M3 curve.
 export const enemyLevelScaling = {
-  linear: 0.015,
-  quadratic: 0.0005,
+  linear: 0.02,
+  quadratic: 0.0008,
 } as const;
 
 export function enemyLevelHpMultiplier(characterLevel: number): number {

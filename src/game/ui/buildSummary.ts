@@ -24,6 +24,16 @@ import { cores, type CoreId } from "../data/cores";
 import { choiceFaces, magicLabels } from "../data/display";
 import { activeSynergies } from "../progression/synergy";
 import { evolutionRecipes, type RecipeRequirements } from "../data/evolutions";
+import {
+  prototypeCores,
+  prototypeRelics,
+  type PrototypeCoreId,
+  type PrototypeRelicId,
+} from "../data/highroll";
+import {
+  prototypeSynergyDefinitions,
+  type PrototypeSynergyId,
+} from "../data/prototypeSynergies";
 export interface BuildIcon {
   id: string;
   owner:
@@ -33,6 +43,34 @@ export interface BuildIcon {
   symbol: string;
   level?: number;
   detail: string;
+}
+
+export function highrollBuildSummary(
+  relics: ReadonlySet<PrototypeRelicId>,
+  cores: ReadonlySet<PrototypeCoreId>,
+  synergies: ReadonlySet<PrototypeSynergyId>,
+): BuildIcon[] {
+  return [
+    ...[...relics].map((id) => ({
+      ...prototypeRelics[id],
+      group: "relic" as const,
+    })),
+    ...[...cores].map((id) => ({
+      ...prototypeCores[id],
+      group: "core" as const,
+    })),
+    ...[...synergies].map((id) => ({
+      ...prototypeSynergyDefinitions[id],
+      group: "synergy" as const,
+    })),
+  ].map(({ id, title, symbol, description, group }) => ({
+    id,
+    title,
+    symbol,
+    detail: description,
+    group,
+    owner: "global",
+  }));
 }
 export function buildSummary(
   ranks: UpgradeRanks,

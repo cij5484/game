@@ -1,3 +1,4 @@
+import { gaussActionRoundLimit } from "../data/weapons";
 import type { GaussRifleConfig } from "../model/types";
 /** Autonomous weapon clock. Focus input never starts, buffers or speeds up an attack. */
 export class GaussRifle {
@@ -47,7 +48,7 @@ export class GaussRifle {
         this.burstRounds = Math.max(
           1,
           Math.min(
-            8,
+            gaussActionRoundLimit,
             Math.floor(
               Number.isFinite(this.config.burstRounds)
                 ? this.config.burstRounds!

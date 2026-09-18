@@ -1,18 +1,18 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.9 — Marine Special Weapons](docs/design/GAME_GDD_v0.9.md)**. 목표 설계와 구현 범위를 구분하며 [Current Implementation Gap](docs/design/GAME_GDD_v0.9.md#5-current-implementation-gap)을 따릅니다. [GDD v0.8](docs/design/GAME_GDD_v0.8.md) 및 이전 버전은 historical record로 보존합니다. [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.10 — High-roll / Combat Tempo](docs/design/GAME_GDD_v0.10.md)**. 목표 설계와 구현 범위를 구분하며 [Current Implementation Gap](docs/design/GAME_GDD_v0.10.md#5-current-implementation-gap)을 따릅니다. [v0.9](docs/design/GAME_GDD_v0.9.md)와 이전 버전은 historical record로 보존합니다. Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
 
-최신 구현은 [Prototype M5 — Marine Special Weapons](docs/prototype-m5-special-weapons.md)입니다. M4는 [PR19](https://github.com/cij5484/game/pull/19)로 main `68b9922`에 merge했고, M5는 `codex/prototype-m5-special-weapons`에서 commit/push까지만 합니다. M4 초기80명/후반cap700/Spawn 공급량과 M3 이동속도1.5배를 유지합니다. 추가 요청으로 생성 시 Character Level HP 배율 `1+.015(L−1)+.0005(L−1)²`을 일반·정예 본체와 방패에 적용하며 이미 생성된 적은 바뀌지 않습니다.
+최신 구현은 [Prototype M6](docs/prototype-m6-highroll-tempo.md)입니다. M5 `0ca568c`를 [PR20](https://github.com/cij5484/game/pull/20)로 main `4bee754`에 병합한 뒤 `codex/prototype-m6-highroll-tempo`에서 진행합니다. M6은 commit/push 후 멈추며 main merge와 다음 Milestone은 하지 않습니다.
 
-공용 공격력/공격속도/치명 확률과 관통·도탄·점사·다중탄·폭발탄·고위력6종 중 최대3종, 별도 사거리5Level 카드, 독립 희귀도/quality/투자 가중치/6% 대성공은 유지합니다. 공용 강화는 특수무기에도 무기별 coefficient로 적용합니다. Header에는 공용 강화, Gauss에는 기본무기 전용 성장, 특수 슬롯에는 해당 무기 전용 성장만 표시하고 Tap/Click으로 상세를 확인합니다.
+정상 Combat Tempo는 M5 X1 대비 **1.5배**, Stage Clock은 분리해 정상 X1에서 실제 약20분을 유지합니다. X1→X2→X4→X1은 개발 도구이며 X2/X4는 Stage 시간도 빠르게 진행합니다. 실제 입력/UI 시간은 가속하지 않습니다. Enemy 생성 시 `1+.020x+.0008x²`, 다음 Level XP는 `ceil(8+5x+.50x²)`이며 `x=L−1`입니다. 기존 적 HP는 Level-Up 때 바뀌지 않습니다. 수류탄은 기본 피해65/반경110/내부 Cycle7800ms로 정상 X1 반복 주기5.2초입니다. 기존 M3 Enemy 이동속도1.5배는 유지합니다. 후속 사용자 요청으로 초기80→36명, 공급은 평균 batch3→96/내부 간격1800→550ms로 점점 강화하고 후반 cap700을 유지합니다. 실제 Stage분에 맞춘 전체 표는 M6 기록을 따릅니다.
 
-[M1](docs/prototype-m1-combat-foundation.md)의 기본 Range `progress01 ≥ .55`·단발800ms·피해10, [M2](docs/prototype-m2-stage1-core.md)의 물리 방패·두Elite·20분 임시 종료, [M3](docs/prototype-m3-layout-build-hud.md)의 화면 구조와 첫 교전을 계승합니다. Marine은 기본 공격·스팀팩·V 필살기를 사용하고 Legacy Magic은 코드만 보존합니다. 새 유물·코어/명명 시너지/Boss/Meta는 아직 구현하지 않았습니다.
+새 High-roll은 **무레벨 Relic6종(최대2·교체/포기), Core3종(Run1개), 자동 Synergy3종**입니다. 첫 Elite는 Relic 기회 보장, 이후32%; Core는 Elite3%로 유효 Pool 랜덤1개 즉시 지급합니다. 무장 확장2→3, 개조 확장3→4, 품질 개방은 과거·미래 일반 성장의 실제 효과를1단계 올립니다. Synergy는 지정 기본 개조와 두 특수무기 Lv10 완성 조건으로 자동 활성화하며 별도 카드/Lv15·20은 요구하지 않습니다.
 
-M5는 **수류탄(공간/AoE), 유도 미사일(위험 표적), 드론(지속 유닛)**을 개발 테스트용으로 모두 해금합니다. 시작은 특수2슬롯 Unlocked/Empty, Character Lv5/10에 중복 없이1종씩 획득하며 일반 레벨업을 소비하지 않습니다. 보유 무기의 성장 카드로 독립 Weapon Level을 올리고 Lv3 Tree/Lv6 Branch/Lv10 자동 Completion/Lv15 초월/Lv20 Overclock을 사용합니다. 초월·Overclock은 무기당3종씩 실제 구현했고 전체 Overclock5종 목표 중 나머지2종씩과 드론 요격/점진 해금은 Future입니다. 특별 Queue는 대성공의 잔여 Level을 보존합니다.
+Header는 공용 강화·Relic·Core·Synergy, Bottom은 기본무기/개조·특수무기 전용 성장·Stimpack·Ultimate를 소유합니다. 무장 확장은 세 번째 슬롯을 추가하고 기존 Tap/Click 상세를 사용합니다. M5 수류탄/미사일/드론과 Lv3/6/10/15/20 성장·Queue를 유지합니다. Marine Magic과 Legacy 보상/선택형 시너지의 충돌 연결은 제외하며 자산은 보존합니다. 전체10 Relic/5 Core/6 Synergy와 Boss/Meta/Stage2+/Final Art는 현재 완성 범위가 아닙니다.
 
-Pause 바로 왼쪽 **X1→X2→X4→X1**은 개발용 게임 배속입니다. 전투 시간만 배속하며 실제 터치·Gesture·UI 입력 시간은 유지하고 재시작은X1입니다. 최신 `npm run check`는40개 파일/292개 테스트·TypeScript·Vite build를 통과했습니다(기존 chunk 경고 유지). 438×974 브라우저에서 배속/Lv5·10 획득/대성공 Lv3 Queue/슬롯 상세/지속 드론을 확인했습니다. 모든 분기의 브라우저 순회를 뜻하지 않으며 실제 난이도/성장 체감/모바일 성능은 사용자 Playtest 영역입니다. 장시간 자동 밸런스 분석은 수행하지 않습니다.
+**M6 통합 `npm run check`: 43파일/323테스트·TypeScript·Vite build 통과**, 기존500kB 초과 bundle 경고는 유지합니다. localhost에서 기본 HUD/자동 공격/일반 성장/Pause/배속 순환을 확인했고,360×780 임시 UI fixture로 Header/3특수슬롯/유물 선택·교체를 확인한 뒤 제거했습니다. 자연 Run의 희귀 Core/전체 Synergy 시각 검증과 구분하며 해당 로직은 단위/통합 테스트로 확인했습니다. 난이도·재미·속도감·성장감과 실기기 성능은 사용자 직접 Playtest로 판단합니다. 장시간 자동 Run/최종 Level/DPS/생존시간/Clear 분석은 하지 않습니다. M5의40파일/292테스트와 이전 검증은 해당 역사 기록에 남깁니다.
 
-아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4/M5 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다. 이 과거 검증 숫자를 현재 검증 결과로 읽지 않습니다.
+아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4/M5/M6 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다. 이 과거 검증 숫자를 현재 검증 결과로 읽지 않습니다.
 
 ## 한 판과 조작
 
@@ -122,4 +122,4 @@ npm run check
 
 `check`는 테스트 후 TypeScript 검사와 프로덕션 빌드를 실행합니다.
 
-현재 작업은 `codex/prototype-m5-special-weapons`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.
+현재 작업은 `codex/prototype-m6-highroll-tempo`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.

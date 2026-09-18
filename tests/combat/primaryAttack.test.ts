@@ -22,6 +22,19 @@ const selected = (...ids: string[]) => ({
   activeSynergyIds: new Set(ids),
 });
 
+it("adds prototype precision chance to Gauss critical rolls", () => {
+  const target = enemy(1);
+  const context = { shotIndex: 1, random: () => 0.1 };
+  const ordinary = primaryAttack(target, [target], {}, 10, {}, [], context);
+  const precise = primaryAttack(target, [target], {}, 10, {}, [], {
+    ...context,
+    criticalChanceBonus: 0.12,
+  });
+  expect(ordinary.criticalIds).toEqual([]);
+  expect(precise.criticalIds).toEqual([target.id]);
+  expect(precise.enemies[0]!.hp).toBeLessThan(ordinary.enemies[0]!.hp);
+});
+
 it.each(["penetration", "explosive"] as const)(
   "applies target damage bonuses only to each marked %s hit, including secondary damage",
   (trait) => {

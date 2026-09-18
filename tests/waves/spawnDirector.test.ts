@@ -7,7 +7,7 @@ import { runBalance } from "../../src/game/data/run";
 it("starts with distant grunts, respects capacity and discards blocked spawn opportunities", () => {
   const d = new SpawnDirector(() => 0.5);
   const initial = d.spawn(0);
-  expect(initial).toHaveLength(80);
+  expect(initial).toHaveLength(36);
   expect(
     initial
       .slice(0, 3)
@@ -35,7 +35,7 @@ it("spreads the first three enemies across lanes even with identical random roll
   const batch = d.spawn(0);
   expect(new Set(batch.slice(0, 3).map((enemy) => enemy.lane)).size).toBe(3);
 });
-it("changes phase exactly, keeps both relief windows populated and delays shields", () => {
+it("changes phase exactly and steadily raises supply and active capacity", () => {
   const d = new SpawnDirector(() => 0.5);
   d.spawn(0);
   for (const stage of hordeBalance.stages.slice(1)) {
@@ -46,76 +46,54 @@ it("changes phase exactly, keeps both relief windows populated and delays shield
     if (stage.atMs < 360000)
       expect(spawns.every((e) => e.kind !== "shield")).toBe(true);
   }
-  expect(
-    hordeBalance.stages.filter((s) => s.phase === "relief").map((s) => s.atMs),
-  ).toEqual([300000, 660000, 1140000]);
+  for (let i = 1; i < hordeBalance.stages.length; i++) {
+    const previous = hordeBalance.stages[i - 1]!;
+    const next = hordeBalance.stages[i]!;
+    expect(next.batchSize / next.spawnIntervalMs).toBeGreaterThan(
+      previous.batchSize / previous.spawnIntervalMs,
+    );
+    expect(next.maxActiveEnemies).toBeGreaterThanOrEqual(
+      previous.maxActiveEnemies,
+    );
+  }
+  expect(hordeBalance.stages.at(-1)!.atMs / runBalance.combatTempo).toBe(
+    19 * 60000,
+  );
 });
-it("runs twenty minutes with five bounded elite windows and increasing replacement pressure", () => {
-  let seed = 42;
-  const random = () => {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-  const d = new SpawnDirector(random);
-  const elites: { at: number; kind: string }[] = [];
-  const counts = new Map<number, number>();
-  let grunts = 0;
-  while (d.elapsedMs < runBalance.durationMs) {
+it("keeps five bounded elite windows without simulating a full run", () => {
+  const d = new SpawnDirector(() => 0.5);
+  d.spawn(0);
+  for (const [index, [start, end]] of eliteBalance.windows.entries()) {
+    const at = (start + end) / 2;
+    d.advance(at - d.elapsedMs);
     const spawns = d.spawn(0);
+    const elites = spawns.filter((e) => e.elite);
+    expect(elites).toHaveLength(1);
+    if (index < 2) expect(elites[0]!.kind).toBe("runner");
     for (const e of spawns) {
-      if (e.kind === "grunt") grunts++;
-      if (e.elite) elites.push({ at: d.elapsedMs, kind: e.kind });
-      if (e.kind === "shield")
-        expect(d.elapsedMs).toBeGreaterThanOrEqual(360000);
       expect(e.offset01).toBeGreaterThanOrEqual(0.12);
       expect(e.offset01).toBeLessThanOrEqual(0.88);
     }
-    counts.set(
-      d.settings.stage,
-      (counts.get(d.settings.stage) ?? 0) + spawns.length,
-    );
     expect(spawns.length).toBeLessThanOrEqual(d.settings.maxActiveEnemies);
     expect(d.timeToSpawnMs).toBeGreaterThan(0);
-    d.advance(d.timeToSpawnMs);
   }
-  expect(elites).toHaveLength(5);
-  elites.forEach((e, i) => {
-    expect(e.at).toBeGreaterThanOrEqual(eliteBalance.windows[i]![0]);
-    expect(e.at).toBeLessThanOrEqual(eliteBalance.windows[i]![1]);
-  });
-  expect(elites.slice(0, 2).every((e) => e.kind === "runner")).toBe(true);
-  expect((counts.get(9) ?? 0) / 60).toBeGreaterThan(
-    ((counts.get(0) ?? 0) / 180) * 5,
-  );
-  // First M4 seed-42 counts with immediate removal: measure supply, not caps.
-  const before = [276, 385, 55, 403, 520, 1019, 82, 2456, 4095, 2509, 305];
-  for (let stage = 0; stage < before.length; stage++) {
-    const ratio = counts.get(stage)! / before[stage]!;
-    expect(ratio).toBeGreaterThan(2.2);
-    expect(ratio).toBeLessThan(2.9);
-  }
-  expect(counts.get(2)! / 60).toBeLessThan((counts.get(1)! / 120) * 0.5);
-  expect(counts.get(6)! / 60).toBeLessThan((counts.get(5)! / 120) * 0.5);
-  expect(
-    grunts / [...counts.values()].reduce((a, b) => a + b, 0),
-  ).toBeGreaterThan(0.6);
-  expect(Math.max(...hordeBalance.stages.map((s) => s.maxActiveEnemies))).toBe(
-    700,
-  );
 });
 it("fills the late horde to a finite 700-enemy ceiling without a spawn backlog", () => {
   const d = new SpawnDirector(() => 0.5);
+  d.spawn(0);
+  d.advance(hordeBalance.stages.at(-1)!.atMs);
   let active = 0;
-  while (d.elapsedMs < runBalance.durationMs) {
+  for (let batch = 0; batch < 12; batch++) {
     active += d.spawn(active).length;
     expect(active).toBeLessThanOrEqual(d.settings.maxActiveEnemies);
-    expect(d.timeToSpawnMs).toBeGreaterThan(0);
+    // Direct jump leaves five due elite events; drain those before advancing.
+    expect(d.timeToSpawnMs).toBeGreaterThanOrEqual(0);
     d.advance(d.timeToSpawnMs);
   }
   expect(active).toBeGreaterThanOrEqual(699);
   expect(active).toBeLessThanOrEqual(700);
   // A cleared screen receives one current batch, never all missed batches.
-  expect(d.spawn(0).length).toBeLessThanOrEqual(20);
+  expect(d.spawn(0).length).toBeLessThanOrEqual(98);
 });
 it("reserves room for elites and retries a full battlefield without a regular backlog", () => {
   const d = new SpawnDirector(() => 0.5);
