@@ -8,6 +8,8 @@ import {
   subscribe,
 } from "./runtimeBalance";
 import { startBalanceBridge } from "./runtimeBridge";
+import { metaStore } from "../meta/metaSave";
+import { researchDefinitions } from "../data/meta";
 import "./dev-panel.css";
 
 type Settings = { version: 1; overrides: Record<string, number | boolean> };
@@ -538,7 +540,79 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
           .join(" · ") +
         " · 다음 적 생성부터 적용";
   }
-  root.append(header, performance, sticky, examples, groupsRoot, storage);
+  root.append(header, performance);
+  let stopMeta = () => {};
+  if (import.meta.env.DEV) {
+    const meta = element("details", "", "balance-group");
+    meta.open = true;
+    meta.append(element("summary", "메타 진행"));
+    const body = element("div", "", "balance-storage-body");
+    const state = element("p");
+    state.id = "balance-meta-state";
+    const levels = element("p");
+    levels.id = "balance-meta-research";
+    const refreshMeta = () => {
+      try {
+        const save = metaStore.read();
+        state.textContent = `Gold ${save.account.gold} · Credits ${save.account.credits} · 새로고침 Lv${save.account.rerollLevel}/3`;
+        levels.textContent = Object.values(researchDefinitions)
+          .map(
+            (definition) =>
+              `${definition.title} Lv${save.characters.marine.research[definition.id] ?? 0}/${definition.maxLevel}`,
+          )
+          .join(" · ");
+      } catch (error) {
+        state.textContent = `메타 저장 확인 필요: ${error instanceof Error ? error.message : String(error)}`;
+        levels.textContent =
+          "메인 화면의 저장 관리에서 백업 가져오기 또는 초기화를 진행하세요.";
+      }
+    };
+    body.append(
+      element(
+        "p",
+        "Run 밖 영구 진행입니다. 밸런스 초기화·JSON과 별개이며 연구 효과는 다음 출격부터 적용됩니다.",
+      ),
+      state,
+      levels,
+      button(
+        "Gold +1000",
+        "영구 메타 저장에 개발용 Gold 1000을 더합니다.",
+        () => {
+          metaStore.grantDevCurrencies(1000, 0);
+          refreshMeta();
+        },
+      ),
+      button(
+        "Credits +100",
+        "영구 메타 저장에 개발용 Credits 100을 더합니다.",
+        () => {
+          metaStore.grantDevCurrencies(0, 100);
+          refreshMeta();
+        },
+      ),
+      button(
+        "메타 저장 초기화",
+        "확인 후 영구 진행만 초기화합니다. 개발 밸런스 설정은 유지합니다.",
+        () => {
+          if (
+            !window.confirm(
+              "Gold·Credits·영구 연구·진행 기록을 모두 초기화할까요? 개발 밸런스 설정은 유지됩니다.",
+            )
+          )
+            return;
+          metaStore.reset();
+          refreshMeta();
+          report("영구 메타 저장을 초기화했습니다.");
+        },
+      ),
+    );
+    meta.append(body);
+    root.append(meta);
+    refreshMeta();
+    window.addEventListener("storage", refreshMeta);
+    stopMeta = () => window.removeEventListener("storage", refreshMeta);
+  }
+  root.append(sticky, examples, groupsRoot, storage);
   parent.append(root);
   refresh();
   attempt(() => refreshPresets());
@@ -561,6 +635,7 @@ export function mountBalancePanel(parent: HTMLElement): () => void {
   return () => {
     unsubscribe();
     stopBridge();
+    stopMeta();
     root.remove();
   };
 }

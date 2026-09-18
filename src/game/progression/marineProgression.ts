@@ -1,3 +1,4 @@
+import { neutralMetaModifiers, type MetaModifiers } from "../data/meta";
 import {
   deriveMarineWeaponConfig,
   describeMarineUpgrade,
@@ -105,12 +106,34 @@ export class MarineProgression {
   private offeredGreatSuccessChance = marineGrowthBalance.greatSuccessChance;
   private choices: MarineLevelChoice[] | null = null;
   private readonly random: () => number;
-  constructor(random = Math.random) {
+  readonly meta: Readonly<MetaModifiers>;
+  rerollsRemaining: number;
+  constructor(
+    random = Math.random,
+    meta: Readonly<MetaModifiers> = neutralMetaModifiers,
+    rerolls = 0,
+  ) {
     this.random = random;
+    this.meta = Object.freeze({ ...meta });
+    this.rerollsRemaining = Math.max(0, Math.min(3, Math.floor(rerolls)));
+  }
+  reroll(): boolean {
+    if (
+      !this.choices?.length ||
+      this.pendingChoices <= 0 ||
+      this.special.pending ||
+      this.rerollsRemaining <= 0
+    )
+      return false;
+    this.rerollsRemaining--;
+    this.choices = null;
+    this.offer();
+    return true;
   }
   get growth(): MarineGrowthState {
     return {
       ranks: this.ranks,
+      meta: this.meta,
       quality: this.quality,
       legendary: this.legendary,
     };
@@ -218,6 +241,7 @@ export class MarineProgression {
   ): MarineGrowthState {
     return {
       ranks: { ...this.ranks, [id]: (this.ranks[id] ?? 0) + 1 },
+      meta: this.meta,
       quality: {
         ...this.quality,
         [id]:

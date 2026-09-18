@@ -84,6 +84,7 @@ export class LevelUpView {
     ranks: MarineRanks,
     select: (id: string) => void,
     traitLimit: number,
+    reroll?: { remaining: number; run: () => void },
   ): void {
     this.render(
       `${levelLabel(level)} · ${display.choose}`,
@@ -119,6 +120,21 @@ export class LevelUpView {
           .join(" + ") || display.none
       }`,
     );
+    if (reroll) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `새로고침 ${reroll.remaining}`;
+      button.disabled = reroll.remaining <= 0;
+      button.addEventListener(
+        "click",
+        () => {
+          button.disabled = true;
+          reroll.run();
+        },
+        { once: true },
+      );
+      this.dialog.append(button);
+    }
   }
 
   showSpecial(selection: SpecialSelection, select: (id: string) => void) {

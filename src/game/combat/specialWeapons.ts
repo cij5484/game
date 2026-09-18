@@ -267,7 +267,8 @@ export class SpecialWeapons {
         1,
         stats.criticalChance + precisionBonus(context.relics ?? noRelics),
       )
-      ? tune.criticalMultiplier
+      ? tune.criticalMultiplier +
+          (context.growth.meta?.criticalMultiplierBonus ?? 0)
       : 1;
   }
 
@@ -291,7 +292,15 @@ export class SpecialWeapons {
           (weapon === "drone"
             ? (context.synergy?.killZoneDamageMultiplier(enemy) ?? 1)
             : 1);
-    const next = applyPrimaryDamage(enemy, damage * multiplier, bypass);
+    const threatMultiplier =
+      enemy.elite || enemy.boss
+        ? (context.growth.meta?.eliteBossDamageMultiplier ?? 1)
+        : 1;
+    const next = applyPrimaryDamage(
+      enemy,
+      damage * multiplier * threatMultiplier,
+      bypass,
+    );
     if (next.hp < enemy.hp || (next.shieldHp ?? 0) < (enemy.shieldHp ?? 0))
       context.synergy?.registerHits([enemy.id]);
     return applyImpact(
@@ -794,6 +803,9 @@ export class SpecialWeapons {
         ),
       ) *
       (context.synergy?.huntDamageMultiplier(target) ?? 1) *
+      (target.elite || target.boss
+        ? (context.growth.meta?.eliteBossDamageMultiplier ?? 1)
+        : 1) *
       (target.incomingDamageMultiplier ?? 1);
     this.reservations.set(
       target.id,

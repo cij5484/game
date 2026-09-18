@@ -289,3 +289,30 @@ it("keeps owned legendary traits growing without offering the same legendary aga
   expect(p.ranks.penetration).toBe(2);
   expect(p.legendary.size).toBe(1);
 });
+
+it("M11 reroll only replaces a normal offer, consumes one use, and never grants growth", () => {
+  const p = new MarineProgression(() => 0.5, undefined, 2);
+  expect(p.reroll()).toBe(false);
+  p.gainXp(p.threshold);
+  const before = p.offer();
+  const snapshot = { level: p.level, xp: p.xp, pending: p.pendingChoices };
+  expect(p.reroll()).toBe(true);
+  expect(p.offer()).not.toBe(before);
+  expect({ level: p.level, xp: p.xp, pending: p.pendingChoices }).toEqual(
+    snapshot,
+  );
+  expect(p.history).toEqual([]);
+  expect(p.ranks).toEqual({});
+  expect(p.rerollsRemaining).toBe(1);
+  p.special.acquireWeapon("grenade");
+  p.special.addLevels("grenade", 2, 1);
+  expect(p.special.pending).toBe(true);
+  expect(p.reroll()).toBe(false);
+  expect(p.rerollsRemaining).toBe(1);
+  p.special.choose(p.special.offer()!.choices[0]!.id);
+  expect(p.reroll()).toBe(true);
+  expect(p.reroll()).toBe(false);
+  expect(new MarineProgression(() => 0.5, undefined, 2).rerollsRemaining).toBe(
+    2,
+  );
+});

@@ -1,3 +1,10 @@
+import {
+  metaStore,
+  MetaStore,
+  META_STORAGE_KEY,
+} from "../../src/game/meta/metaSave";
+import { runBalance } from "../../src/game/data/run";
+import { enemyConfigs } from "../../src/game/data/enemies";
 import type { PrototypeSynergies } from "../../src/game/combat/prototypeSynergies";
 import { deriveMarineWeaponConfig } from "../../src/game/data/marineGrowth";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -678,4 +685,67 @@ it("M9 primary and Ultimate effects use current state snapshots before deferred 
   expect(points).toEqual(point.mock.results.map((result) => result.value));
   expect(points[0].y).toBeGreaterThan(540);
   expect(view.renderEnemy).not.toHaveBeenCalled();
+});
+
+it("M11 scene snapshots wall/XP/defense research and settles natural endings once", () => {
+  const values = new Map<string, string>();
+  const store = new MetaStore({
+    getItem: (k) => values.get(k) ?? null,
+    setItem: (k, v) => {
+      values.set(k, v);
+    },
+  });
+  store.importSave(
+    JSON.stringify({
+      kind: "horde-meta",
+      version: 1,
+      account: { rerollLevel: 2 },
+      characters: {
+        marine: { research: { "wall-hp": 20, "wall-defense": 10, xp: 10 } },
+      },
+    }),
+  );
+  vi.spyOn(metaStore, "beginRun").mockImplementation(() => store.beginRun());
+  const settle = vi
+    .spyOn(metaStore, "settleRun")
+    .mockImplementation((id, summary) => store.settleRun(id, summary));
+  const test = scene();
+  const lifecycle = test as unknown as {
+    prepareRun(): void;
+    finishRun(): void;
+    resultShown: boolean;
+    result: { show: ReturnType<typeof vi.fn> };
+    runTicket: { id: string };
+  };
+  lifecycle.prepareRun();
+  expect(test.run.wallHp).toBe(runBalance.wallMaxHp * 4.5);
+  expect(test.progression.rerollsRemaining).toBe(2);
+  test.takeWallDamage(100);
+  expect(test.run.wallHp).toBe(runBalance.wallMaxHp * 4.5 - 55);
+  const gain = vi.spyOn(test.progression, "gainXp");
+  test.applyEnemyStates(
+    test.enemies.map((e, i) => (i === 0 ? { ...e.state, hp: 0 } : e.state)),
+  );
+  expect(gain).toHaveBeenCalledWith(enemyConfigs.grunt.xpOnKill * 2.3);
+  const abandonedId = lifecycle.runTicket.id;
+  lifecycle.prepareRun(); // same entry point as pause restart; no settlement
+  expect(settle).not.toHaveBeenCalled();
+  expect(store.read().progress.completedRuns).toBe(0);
+  expect(store.read().activeRunId).not.toBe(abandonedId);
+  test.run = { ...test.run, status: "failed", elapsedMs: 600000 };
+  lifecycle.finishRun();
+  lifecycle.finishRun();
+  expect(settle).toHaveBeenCalledTimes(1);
+  expect(store.read().progress.completedRuns).toBe(1);
+  expect(
+    lifecycle.result.show.mock.calls[0]![0].settlement.reward.gold,
+  ).toBeGreaterThan(0);
+  lifecycle.prepareRun();
+  lifecycle.resultShown = false;
+  test.run = { ...test.run, status: "cleared" };
+  lifecycle.finishRun();
+  lifecycle.finishRun();
+  expect(store.read().progress.stage1ClearCount).toBe(1);
+  expect(store.read().progress.completedRuns).toBe(2);
+  expect(values.has(META_STORAGE_KEY)).toBe(true);
 });

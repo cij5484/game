@@ -194,6 +194,9 @@ export function primaryAttack(
       stats.primaryDamageMultiplier *
       (relicModifiers.damageMultiplier ?? 1) *
       (context.targetDamageMultiplier?.(enemy.id) ?? 1) *
+      (enemy.elite || enemy.boss
+        ? (context.growth?.meta?.eliteBossDamageMultiplier ?? 1)
+        : 1) *
       factor *
       shieldBonus;
     return executions.has(enemy.id) ? Math.max(enemy.hp, amount) : amount;

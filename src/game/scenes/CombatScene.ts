@@ -1,3 +1,8 @@
+import {
+  metaStore,
+  type RunTicket,
+  type RunSettlement,
+} from "../meta/metaSave";
 import Phaser from "phaser";
 import { EnemyPressureView } from "../battlefield/EnemyPressureView";
 import {
@@ -88,7 +93,10 @@ export class CombatScene extends Phaser.Scene {
   private run = createRunState(this.wallMaxHp);
   private result!: ResultView;
   private resultShown = false;
+  private startupError = false;
   private kills = 0;
+  private eliteKills = 0;
+  private runTicket?: RunTicket;
   private bossSpawned = false;
   private bossKilled = false;
   private bossReinforcements: EnemyKind[] = [];
@@ -165,10 +173,33 @@ export class CombatScene extends Phaser.Scene {
     );
   }
 
-  create(): void {
-    this.wallMaxHp = runBalance.wallMaxHp;
+  private prepareRun(): void {
+    this.runTicket = metaStore.beginRun();
+    this.wallMaxHp =
+      runBalance.wallMaxHp * this.runTicket.modifiers.wallHpMultiplier;
     this.run = createRunState(this.wallMaxHp);
+    this.progression = new MarineProgression(
+      Math.random,
+      this.runTicket.modifiers,
+      this.runTicket.rerolls,
+    );
+  }
+
+  create(): void {
+    this.startupError = false;
+    try {
+      this.prepareRun();
+    } catch (error) {
+      this.startupError = true;
+      const message = error instanceof Error ? error.message : String(error);
+      setTimeout(
+        () => this.registry.get("onMain")?.(`출격 저장 실패: ${message}`),
+        0,
+      );
+      return;
+    }
     this.kills = 0;
+    this.eliteKills = 0;
     this.bossSpawned = false;
     this.bossKilled = false;
     this.bossReinforcements = [];
@@ -186,7 +217,6 @@ export class CombatScene extends Phaser.Scene {
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
-    this.progression = new MarineProgression();
     this.relics = new PrototypeRelics();
     this.synergies = new PrototypeSynergies();
     this.companion = null;
@@ -317,7 +347,7 @@ export class CombatScene extends Phaser.Scene {
     if (!this.canUseAbility || !this.burst.activate()) return false;
     this.ultimateRemainingMs = burstBalance.ultimate.presentationMs;
     this.refreshProtection();
-    const result = suppressiveBarrage(this.states);
+    const result = suppressiveBarrage(this.states, this.progression.meta);
     this.view.showBarrage(
       result.hitIds.flatMap((id) => {
         const entry = this.entriesById.get(id);
@@ -403,6 +433,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
+    if (this.startupError) return;
     this.time.timeScale = this.gameSpeed * runBalance.combatTempo;
     this.frameSubsteps = 0;
     this.view.beginFrame();
@@ -483,12 +514,31 @@ export class CombatScene extends Phaser.Scene {
     this.resultShown = true;
     this.time.paused = true;
     this.choices.hide();
+    let settlement: RunSettlement | undefined;
+    let settlementError: string | undefined;
+    if (this.runTicket) {
+      try {
+        settlement = metaStore.settleRun(this.runTicket.id, {
+          status: this.run.status,
+          elapsedMs: this.run.elapsedMs,
+          kills: this.kills,
+          eliteKills: this.eliteKills,
+          bossKills: this.bossKilled ? 1 : 0,
+        });
+      } catch (error) {
+        settlementError =
+          error instanceof Error ? error.message : String(error);
+      }
+    }
     this.result.show(
       {
         status: this.run.status,
         elapsedMs: this.run.elapsedMs,
         kills: this.kills,
         bossKilled: this.bossKilled,
+        eliteKills: this.eliteKills,
+        ...(settlement ? { settlement } : {}),
+        ...(settlementError ? { settlementError } : {}),
         level: this.progression.level,
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
@@ -507,6 +557,11 @@ export class CombatScene extends Phaser.Scene {
         evolutions: this.evolutions,
       },
       () => this.scene.restart(),
+      () => this.registry?.get("onMain")?.(),
+      () => {
+        this.resultShown = false;
+        this.finishRun();
+      },
     );
   }
 
@@ -581,6 +636,7 @@ export class CombatScene extends Phaser.Scene {
         const action: PrimaryAction = {
           growth: {
             ranks: { ...growth.ranks },
+            meta: this.progression.meta,
             quality: { ...growth.quality },
             legendary: new Set(growth.legendary),
           },
@@ -728,6 +784,7 @@ export class CombatScene extends Phaser.Scene {
     this.focus.resolve(this.states);
     this.view.setFocus(this.focus.targetId);
     this.kills += kills;
+    this.eliteKills += eliteKills;
     if (this.run.status !== "running") {
       // Input-triggered Ultimate can end a run outside update().
       this.finishRun();
@@ -735,7 +792,7 @@ export class CombatScene extends Phaser.Scene {
     }
     this.synergies.advance(0, this.states);
     if (buildChanged) this.refreshBuild();
-    this.progression.gainXp(xp);
+    this.progression.gainXp(xp * this.progression.meta.xpMultiplier);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
     if (hits || kills) this.renderProgression();
     if (this.choosing) this.showChoices();
@@ -805,6 +862,13 @@ export class CombatScene extends Phaser.Scene {
         this.applyBuildChoice();
       },
       this.progression.traitLimit,
+      {
+        remaining: this.progression.rerollsRemaining,
+        run: () => {
+          if (!this.relics.pending && this.progression.reroll())
+            this.showChoices();
+        },
+      },
     );
   }
 
@@ -865,7 +929,10 @@ export class CombatScene extends Phaser.Scene {
 
   private takeWallDamage(damage: number): void {
     if (damage <= 0 || this.run.status !== "running") return;
-    const wallHp = Math.max(0, this.run.wallHp - damage);
+    const wallHp = Math.max(
+      0,
+      this.run.wallHp - damage * this.progression.meta.wallDamageMultiplier,
+    );
     this.run = {
       ...this.run,
       wallHp,

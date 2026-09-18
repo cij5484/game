@@ -1,3 +1,4 @@
+import type { RunSettlement } from "../meta/metaSave";
 import { specialBuildSummary, type BuildIcon } from "./buildSummary";
 import type { SpecialWeaponState } from "../data/specialWeapons";
 import {
@@ -24,6 +25,9 @@ export interface RunResult {
   elapsedMs: number;
   kills: number;
   bossKilled?: boolean;
+  eliteKills?: number;
+  settlement?: RunSettlement;
+  settlementError?: string;
   level: number;
   wallHp: number;
   ranks: UpgradeRanks;
@@ -47,7 +51,12 @@ export class ResultView {
     document.body.append(this.dialog);
   }
 
-  show(result: RunResult, retry: () => void): void {
+  show(
+    result: RunResult,
+    retry: () => void,
+    main?: () => void,
+    retrySettlement?: () => void,
+  ): void {
     this.dialog.replaceChildren();
     const title = document.createElement("h2");
     title.textContent =
@@ -94,6 +103,19 @@ export class ResultView {
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
       ],
       [display.killsLevel, `${result.kills} / ${levelLabel(result.level)}`],
+      ["정예 처치", String(result.eliteKills ?? 0)],
+      ...(result.settlement
+        ? [
+            [
+              "획득 Gold / Credits",
+              `${result.settlement.reward.gold} / ${result.settlement.reward.credits}`,
+            ],
+            [
+              "보유 Gold / Credits",
+              `${result.settlement.save.account.gold} / ${result.settlement.save.account.credits}`,
+            ],
+          ]
+        : []),
       ["공성 거인", result.bossKilled ? "처치 완료" : "미처치"],
       [display.wall, String(Math.ceil(result.wallHp))],
       [`${display.trait} (${result.traitLimit})`, direction],
@@ -165,20 +187,43 @@ export class ResultView {
       detail.textContent = value!;
       stats.append(term, detail);
     }
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = display.retry;
-    button.addEventListener(
-      "click",
-      () => {
-        button.disabled = true;
-        retry();
-      },
-      { once: true },
-    );
-    this.dialog.append(title, stats, button);
-    this.dialog.showModal();
+    this.dialog.append(title, stats);
+    const actions = document.createElement("div");
+    const addAction = (label: string, run: () => void) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        for (const action of actions.querySelectorAll("button"))
+          action.disabled = true;
+        run();
+      });
+      actions.append(button);
+    };
+    if (result.settlementError) {
+      const error = document.createElement("p");
+      error.setAttribute("role", "alert");
+      error.textContent = `보상 저장 실패: ${result.settlementError}`;
+      this.dialog.append(error);
+      if (retrySettlement) addAction("보상 저장 다시 시도", retrySettlement);
+      if (main)
+        addAction("보상 포기 · 메인으로", () => {
+          if (
+            window.confirm("저장되지 않은 보상을 포기하고 메인으로 이동할까요?")
+          )
+            main();
+          else
+            for (const action of actions.querySelectorAll("button"))
+              action.disabled = false;
+        });
+    } else {
+      addAction(display.retry, retry);
+      if (main) addAction("메인으로", main);
+    }
+    this.dialog.append(actions);
+    if (!this.dialog.open) this.dialog.showModal();
   }
+
   destroy(): void {
     this.dialog.remove();
   }

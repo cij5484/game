@@ -173,18 +173,21 @@ export function getSpecialWeaponStats(
     damage:
       base.damage *
       (1 + 0.11 * mastery) *
-      (1 + marineStrength(growth, "primary-damage") * base.damageCoefficient),
+      (1 + marineStrength(growth, "primary-damage") * base.damageCoefficient) *
+      (growth.meta?.specialDamageMultiplier ?? 1),
     cycleMs: Math.max(
       specialWeaponBalance.minimumCycleMs,
-      base.cycleMs /
+      (base.cycleMs /
         (1 +
           marineStrength(growth, "attack-speed") * base.speedCoefficient +
-          Math.min(0.45, 0.012 * mastery)),
+          Math.min(0.45, 0.012 * mastery))) *
+        (growth.meta?.specialCycleMultiplier ?? 1),
     ),
     radius: base.radius * (1 + Math.min(0.3, mastery * 0.008)),
     criticalChance: Math.min(
-      1 - Number.EPSILON,
-      0.05 + (0.95 * crit) / (1 + crit),
+      1,
+      Math.min(1 - Number.EPSILON, 0.05 + (0.95 * crit) / (1 + crit)) +
+        (growth.meta?.criticalChanceBonus ?? 0),
     ),
   };
 }

@@ -19,10 +19,45 @@ async function start() {
         "개발자 밸런스 패널은 개발 환경에서만 사용할 수 있습니다.";
     return;
   }
-  const { createGame } = await import("./game/createGame");
-  const game = createGame(parent!);
+  const { mountMetaHub } = await import("./game/ui/MetaHub");
+  let game: import("phaser").Game | undefined;
+  let stopHub: (() => void) | undefined;
+  let disposed = false;
+  const stopGame = () => {
+    const current = game;
+    game = undefined;
+    if (!current) return;
+    for (const scene of current.scene.getScenes(true))
+      current.scene.stop(scene.sys.settings.key);
+    current.destroy(true);
+  };
+  const showHub = (error = "") => {
+    if (disposed) return;
+    stopGame();
+    stopHub?.();
+    parent!.removeAttribute("role");
+    parent!.removeAttribute("aria-label");
+    stopHub = mountMetaHub(
+      parent!,
+      async () => {
+        const { createGame } = await import("./game/createGame");
+        if (disposed) return;
+        stopHub?.();
+        stopHub = undefined;
+        parent!.setAttribute("role", "img");
+        parent!.setAttribute("aria-label", "호드 디펜스 전장");
+        try {
+          game = createGame(parent!, (error) => showHub(error));
+        } catch (error) {
+          showHub(error instanceof Error ? error.message : String(error));
+        }
+      },
+      error,
+    );
+  };
+  showHub();
   const stop = bridge?.startBalanceBridge("game", undefined, () => {
-    const scene = game.scene.getScenes(true)[0] as
+    const scene = game?.scene.getScenes(true)[0] as
       | {
           developerStatus?: Omit<
             import("./game/dev/runtimeBridge").GameStatus,
@@ -33,8 +68,10 @@ async function start() {
     return scene?.developerStatus ?? { speed: 1, level: 1 };
   });
   import.meta.hot?.dispose(() => {
+    disposed = true;
     stop?.();
-    game.destroy(true);
+    stopHub?.();
+    stopGame();
   });
 }
 void start();

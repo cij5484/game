@@ -1,10 +1,12 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.14 — 미사일 일제사격](docs/design/GAME_GDD_v0.14.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.14.md#5-current-implementation-gap)으로 구분합니다. [v0.13](docs/design/GAME_GDD_v0.13.md)과 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.15 — Meta Foundation](docs/design/GAME_GDD_v0.15.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.15.md#5-current-implementation-gap)으로 구분합니다. [v0.14](docs/design/GAME_GDD_v0.14.md)와 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
-최신 작업은 [Prototype M10](docs/prototype-m10-missile-salvo.md)입니다. M9 `2b889434b162e01c222c2f42077cb8b2f852687d`를 [PR24](https://github.com/cij5484/game/pull/24)로 main `0bcc4fb`에 병합한 뒤 `codex/prototype-m10-missile-salvo`에서 진행합니다. M10은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
+최신 작업은 [Prototype M11](docs/prototype-m11-meta-foundation.md)입니다. M10 `4f34ee41053c210c0646864d82afb07f9b4f29a7`을 [PR25](https://github.com/cij5484/game/pull/25)로 main `f6f831a`에 병합한 뒤 `codex/prototype-m11-meta-foundation`에서 진행합니다. M11은 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
 
-M10은 미사일을 기본 3발 시간차 일제사격으로 변경합니다. Prototype 기본값은 발당90, 속도680, raw 발사간격270ms/주기4500ms(X1 약0.18초/3초), 기본 재유도1회입니다. 비행 중 예상 피해 예약으로 약한 적의 과잉 피해를 줄이고 강적에는 여러 발을 집중합니다. 세 성장 계열과 `/dev` 미사일 설정도 연결합니다. 다른 무기·Horde 밸런스와 M9 성능 구조는 유지합니다. M10 `npm run check`: **52파일/390테스트·TypeScript·Vite build 통과**. 상세는 M10 기록을 따릅니다.
+시작 화면은 **Meta Hub**입니다. 출격→자연 종료 보상→Gold 연구/Credits 새로고침 해금→다음 Run 성장으로 이어집니다. Marine 연구 11종, Run당 Reroll 0~3회, Stage 1 Clear 기록, 별도 localStorage Meta Save v1과 JSON Export/Import/확인 후 Reset을 제공합니다. Meta는 출격 Snapshot으로 적용하며 개발 Balance 저장과 분리합니다. 실제 점진 해금·작전 기록·숙련은 M12로 남깁니다. **M11 통합 `npm run check`: 59파일/416테스트·TypeScript·Vite build 통과.**
+
+M10은 미사일을 기본 3발 시간차 일제사격으로 변경했습니다. Prototype 기본값은 발당90, 속도680, raw 발사간격270ms/주기4500ms(X1 약0.18초/3초), 기본 재유도1회입니다. 비행 중 예상 피해 예약으로 약한 적의 과잉 피해를 줄이고 강적에는 여러 발을 집중합니다. 세 성장 계열과 `/dev` 미사일 설정도 연결합니다. M11은 이 코드 기본값과 M9 성능 구조 위에 Meta를 합성합니다. **역사 기록 — M10 `npm run check`: 52파일/390테스트·TypeScript·Vite build 통과**. 상세는 M10 기록을 따릅니다.
 
 M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID 색인을 재사용합니다. Damage/Focus의 전체 redraw를 제거하고 순간 VFX를 제한·재사용합니다. `/dev`의 읽기 전용 **성능**에서 FPS·적 수·특수 유닛 수·전투 효과 수·Frame simulation 단계 수를 확인합니다. **Horde cap 700은 유지합니다. 역사 기록 — M9 통합 `npm run check`: 51파일/373테스트·TypeScript·Vite build 통과.** 기존 Phaser chunk 경고는 남으며 실제 끊김은 사용자 Playtest로 판단합니다.
 
@@ -19,13 +21,13 @@ M9는 simulation과 Frame Rendering을 분리하고 Enemy snapshot·Target ID �
 - 특수무기 Lv5/Lv10 고정 지급을 제거했습니다. 일반 Level-Up3장에 첫 무기는 **Lv8부터 Category weight0.30**, 두 번째는 **Lv14+첫 무기 보유 시0.20**으로 등장합니다. 한 Offer 최대1장, 일반 선택1회 소비, 항상 Weapon Lv1, 희귀도/대성공/품질 개방 미적용입니다. 기본2종·무장 Core3종이며 Hard Pity/획득 보장은 없습니다.
 - 기본 개조는 **신규 Category0.45 / 보유 성장0.35**, 한 Offer 합계 최대1장입니다. 개조 내부 Investment Bias는 최대×1.4, 기본3종·Core4종입니다. Range의 희소성과 별도 슬롯 규칙, 보유 특수무기의 기존 성장 빈도는 유지합니다. 숫자는 고정 등장 확률이 아닌 상대 weight입니다.
 - Stage18:50 공급 완화 후 **19:00 공성 거인(HP30,000)**이 등장합니다. 접근→6000combat ms 공성 충전→1800피해 Interrupt/3000ms Stagger·피해×1.5, 실패 시 Wall1800피해입니다. HP65% 증원,25% 최후 돌진과 강한 반복 Wall 공격을 사용합니다. 본체는 항상 공격 가능하며 Gauss Range를 우회하지 않습니다.
-- **Boss 처치만 Stage Clear**, Wall HP0이면 실패합니다.20:00 자동 종료는 없고 Boss 전투가 계속됩니다. 목표 약19~21분은 사용자 Playtest에서 조정합니다. Result에 해당 Run의 Boss Kill을 표시하며 영구 저장·경제는 없습니다.
+- **Boss 처치만 Stage Clear**, Wall HP0이면 실패합니다.20:00 자동 종료는 없고 Boss 전투가 계속됩니다. 목표 약19~21분은 사용자 Playtest에서 조정합니다. M11부터 자연 종료 보상·완료 Run 수·Stage 1 Clear 기록을 Meta Save에 저장합니다.
 - M6 초기Horde36/cap700/CombatTempo1.5/기존Enemy속도/생성HP/XP/Grenade/Relic6·Core3·Synergy3를 유지합니다. Boss 경고부터 일반 공급은8/1400combat ms, 최후 돌진은32/700ms이며 새 Elite를 억제합니다. 상세 수치는 M7 기록을 따릅니다.
 - Header는 공용 강화·Relic·Core·Synergy, Bottom은 기본무기/개조·특수무기 성장·Stimpack·Ultimate를 소유합니다. Special Slot은 시작 시 Unlocked/Empty이며 무기 획득 순서대로 채웁니다. Boss HP/상태/약점/충전 예고는 최소 UI로 표시합니다.
 
 **역사 기록 — M7 통합 `npm.cmd run check`:46파일/342테스트·TypeScript·Vite build 통과.** 기존500kB 초과 bundle 경고는 유지합니다.390×844의 짧은 UI fixture로 Boss Charge 표시·Lv8 획득 카드·시작 Empty Slot을 확인했습니다. 전체 Boss Run Playtest와는 구분합니다. M6의43파일/323테스트와 이전 브라우저 확인은 [M6 역사 기록](docs/prototype-m6-highroll-tempo.md)에 남기며 M7 검증으로 재사용하지 않습니다. 장시간 자동 Run/밸런스/최종Level/평균DPS/자동Clear 분석은 하지 않습니다. 난이도·재미·획득시점·성장감·실기기 성능은 사용자 직접 Playtest 영역입니다.
 
-Gold/Credits/작전기록/영구보상/점진Unlock/Challenge/Endless/Stage2+/신규Character/Awakening/FinalArt/전체 추가 Pool은 구현 범위 밖입니다.
+M11의 Gold/Credits·연구·Reroll·영구 저장 외에 작전기록/숙련/실제 점진Unlock/Challenge/Endless/Stage2+/신규Character/Awakening/FinalArt/전체 추가 Pool은 구현 범위 밖입니다.
 
 ## Historical gameplay snapshot
 
