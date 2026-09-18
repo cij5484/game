@@ -1,8 +1,9 @@
+import type { MarineLevelChoice } from "../progression/marineProgression";
+import type { SpecialSelection } from "../progression/specialProgression";
 import {
   marineTraitIds,
   marineUpgrades,
   type MarineRanks,
-  type MarineChoice,
 } from "../data/marineGrowth";
 import {
   upgradeCategory,
@@ -75,7 +76,7 @@ export class LevelUpView {
 
   showMarine(
     level: number,
-    choices: readonly MarineChoice[],
+    choices: readonly MarineLevelChoice[],
     ranks: MarineRanks,
     select: (id: string) => void,
     traitLimit: number,
@@ -85,17 +86,22 @@ export class LevelUpView {
       choices.map((choice) => ({
         id: choice.id,
         title: choice.title,
-        level: levelChange(ranks[choice.id] ?? 0, choice.maxRank),
+        level:
+          choice.category === "special-growth"
+            ? `${choice.currentLevel} → ${choice.nextLevel}레벨`
+            : levelChange(ranks[choice.id] ?? 0, choice.maxRank),
         symbol: choice.symbol,
         compact: choice.description,
         description: choice.description,
         rarity: choice.rarity,
         category:
-          choice.owner === "global"
-            ? "기본 강화 · 공용"
-            : choice.id === "range"
-              ? "사거리 성장 · 가우스"
-              : "무기 특성 · 가우스",
+          choice.category === "special-growth"
+            ? `특수무기 강화 · ${choice.title}`
+            : choice.owner === "global"
+              ? "기본 강화 · 공용"
+              : choice.id === "range"
+                ? "사거리 성장 · 가우스"
+                : "무기 특성 · 가우스",
       })),
       select,
       `${display.trait} ${marineTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${
@@ -104,6 +110,20 @@ export class LevelUpView {
           .map((id) => marineUpgrades[id].title)
           .join(" + ") || display.none
       }`,
+    );
+  }
+
+  showSpecial(selection: SpecialSelection, select: (id: string) => void) {
+    this.render(
+      selection.title,
+      selection.choices.map((choice) => ({
+        ...choice,
+        level: "특별 선택 · 일반 강화 소모 없음",
+        compact: choice.description,
+        category:
+          selection.kind === "acquire" ? "특수무기 획득" : "특수무기 개조",
+      })),
+      select,
     );
   }
 
@@ -168,7 +188,7 @@ export class LevelUpView {
           choice.title,
           choice.category,
           choice.level,
-          choice.rarity ? rarityLabels[choice.rarity] : display.relic,
+          choice.rarity ? rarityLabels[choice.rarity] : choice.category,
           choice.description,
         ].join(" · "),
       );

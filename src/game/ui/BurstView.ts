@@ -1,3 +1,7 @@
+import {
+  specialWeaponDefinitions,
+  type SpecialWeaponState,
+} from "../data/specialWeapons";
 import { battlefieldLayout, readSafeArea } from "../battlefield/layout";
 import { burstBalance } from "../data/burst";
 import type { Burst } from "../combat/burst";
@@ -14,6 +18,9 @@ export type WeaponSlotState = {
   symbol: string;
   detail: string;
   upgrades?: readonly BuildIcon[];
+  owner?: BuildIcon["owner"];
+  status?: string;
+  level?: number;
 };
 export function weaponSlot(
   slot: WeaponSlotState,
@@ -37,17 +44,18 @@ export function weaponSlot(
       ? "잠김"
       : slot.state === "empty"
         ? "미장착"
-        : "장착";
+        : (slot.status ?? "장착");
   button.append(symbol, name, status);
   button.addEventListener("click", () =>
     inspect([
       {
         id: slot.title,
-        owner: "basicWeapon",
+        owner: slot.owner ?? "basicWeapon",
         group: "trait",
         title: slot.title,
         symbol: slot.symbol,
         detail: slot.detail,
+        ...(slot.level === undefined ? {} : { level: slot.level }),
       },
       ...(slot.upgrades ?? []),
     ]),
@@ -99,6 +107,10 @@ export class BurstView {
   private blocked = false;
   private row = document.createElement("div");
   private basic = document.createElement("div");
+  private specialSlots = [
+    document.createElement("div"),
+    document.createElement("div"),
+  ];
   private stimBadges = document.createElement("div");
   private inspect: (entries: readonly BuildIcon[]) => void;
   constructor(actions: {
@@ -122,18 +134,8 @@ export class BurstView {
         : [this.stim, this.ultimate];
     this.row.className = "loadout-row";
     this.row.append(this.basic);
-    for (let i = 1; i <= 2; i++)
-      this.row.append(
-        weaponSlot(
-          {
-            state: "locked",
-            title: `특수 ${i}`,
-            symbol: "🔒",
-            detail: "특수무기 시스템 미구현 · 현재 잠김",
-          },
-          this.inspect,
-        ),
-      );
+    this.row.append(...this.specialSlots);
+    this.renderSpecialWeapons([], []);
     for (const c of equipped) {
       const slot = document.createElement("div");
       slot.className = "ability-slot";
@@ -207,6 +209,39 @@ export class BurstView {
         .filter((e) => e.owner === "stimpack")
         .map((e) => buildBadge(e, this.inspect)),
     );
+  }
+  renderSpecialWeapons(
+    weapons: readonly SpecialWeaponState[],
+    entries: readonly BuildIcon[],
+  ) {
+    this.specialSlots.forEach((slot, index) => {
+      const weapon = weapons[index];
+      const data = weapon ? specialWeaponDefinitions[weapon.id] : undefined;
+      slot.replaceChildren(
+        weaponSlot(
+          weapon && data
+            ? {
+                state: "equipped",
+                title: data.title,
+                symbol: data.symbol,
+                owner: weapon.id,
+                status: `Lv${weapon.level}`,
+                level: weapon.level,
+                detail: data.description,
+                upgrades: entries.filter(
+                  (e) => e.owner === weapon.id && e.id !== weapon.id,
+                ),
+              }
+            : {
+                state: "empty",
+                title: `특수 ${index + 1}`,
+                symbol: "+",
+                detail: `해금됨 · 캐릭터 Lv${index === 0 ? 5 : 10}에 선택`,
+              },
+          this.inspect,
+        ),
+      );
+    });
   }
   render(burst: Burst, blocked: boolean, ultimate: boolean) {
     this.blocked = blocked;

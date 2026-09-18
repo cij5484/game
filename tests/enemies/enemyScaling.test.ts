@@ -5,6 +5,49 @@ import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 
 describe("spawn-time enemy growth", () => {
   it.each([
+    [1, 1],
+    [10, 1.1755],
+    [20, 1.4655],
+    [40, 2.3455],
+    [60, 3.6255],
+  ])(
+    "applies character level %i to body and shield HP only at spawn",
+    (level, multiplier) => {
+      for (const kind of ["grunt", "runner", "shield"] as const) {
+        for (const elite of [false, true]) {
+          const base = createPrototypeEnemy(
+            kind,
+            "center",
+            1,
+            0.5,
+            elite,
+            600000,
+          );
+          const scaled = createPrototypeEnemy(
+            kind,
+            "center",
+            1,
+            0.5,
+            elite,
+            600000,
+            level,
+          );
+          expect(scaled.hp).toBeCloseTo(base.hp * multiplier);
+          expect(scaled.maxHp).toBe(scaled.hp);
+          expect(scaled.speedMultiplier).toBe(base.speedMultiplier);
+          if (kind === "shield") {
+            expect(scaled.shieldHp).toBeCloseTo(base.shieldHp! * multiplier);
+            expect(scaled.maxShieldHp).toBe(scaled.shieldHp);
+          }
+          expect(
+            advanceEnemy(scaled, 1000, enemyConfigs[scaled.kind]).enemy.hp,
+          ).toBe(scaled.hp);
+        }
+      }
+    },
+  );
+
+  it.each([
     [-1000, 8, 0.0312],
     [0, 8, 0.0312],
     [600000, 8.4, 0.04008],

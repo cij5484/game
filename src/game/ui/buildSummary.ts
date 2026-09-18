@@ -1,4 +1,10 @@
 import {
+  specialWeaponDefinitions,
+  getSpecialCompletion,
+  type SpecialWeaponState,
+  type SpecialWeaponId,
+} from "../data/specialWeapons";
+import {
   marineUpgrades,
   describeMarineUpgrade,
   type MarineGrowthState,
@@ -20,7 +26,8 @@ import { activeSynergies } from "../progression/synergy";
 import { evolutionRecipes, type RecipeRequirements } from "../data/evolutions";
 export interface BuildIcon {
   id: string;
-  owner: "global" | "basicWeapon" | "stimpack" | "legacyMagic";
+  owner:
+    "global" | "basicWeapon" | "stimpack" | "legacyMagic" | SpecialWeaponId;
   group: "upgrade" | "trait" | "relic" | "core" | "synergy" | "evolution";
   title: string;
   symbol: string;
@@ -134,6 +141,7 @@ export function marineBuildSummary(
   growth: MarineGrowthState,
   relicLevels: RelicLevels,
   ownedCores: ReadonlySet<CoreId>,
+  specialWeapons: readonly SpecialWeaponState[] = [],
 ): BuildIcon[] {
   const items: BuildIcon[] = Object.values(marineUpgrades)
     .filter((card) => (growth.ranks[card.id] ?? 0) > 0)
@@ -150,5 +158,53 @@ export function marineBuildSummary(
       level: growth.ranks[card.id]!,
       detail: describeMarineUpgrade(card.id, growth),
     }));
-  return [...items, ...buildSummary({}, relicLevels, ownedCores)];
+  return [
+    ...items,
+    ...buildSummary({}, relicLevels, ownedCores),
+    ...specialWeapons.flatMap(specialBuildSummary),
+  ];
+}
+
+export function specialBuildSummary(weapon: SpecialWeaponState): BuildIcon[] {
+  const definition = specialWeaponDefinitions[weapon.id];
+  const tree = definition.trees.find((t) => t.id === weapon.tree);
+  const branch = weapon.branch ? tree?.branches[weapon.branch] : undefined;
+  const completion = getSpecialCompletion(weapon);
+  const options = [
+    tree,
+    branch,
+    definition.transcendences.find((t) => t.id === weapon.transcendence),
+    definition.overclocks.find((t) => t.id === weapon.overclock),
+  ].filter((x) => x !== undefined);
+  return [
+    {
+      id: weapon.id,
+      owner: weapon.id,
+      group: "upgrade",
+      title: definition.title,
+      symbol: definition.symbol,
+      level: weapon.level,
+      detail: definition.description,
+    },
+    ...options.map((option) => ({
+      id: `${weapon.id}-${option.id}`,
+      owner: weapon.id,
+      group: "upgrade" as const,
+      title: option.title,
+      symbol: option.symbol,
+      detail: option.description,
+    })),
+    ...(completion
+      ? [
+          {
+            id: `${weapon.id}-complete`,
+            owner: weapon.id,
+            group: "upgrade" as const,
+            title: completion,
+            symbol: "★",
+            detail: "Lv10 완성형 · 선택한 주요 트리와 세부 분기의 행동 강화",
+          },
+        ]
+      : []),
+  ];
 }

@@ -2,7 +2,10 @@ import type { EnemyKind, LaneId } from "../model/types";
 import type { EnemyState } from "./enemySimulation";
 import { enemyConfigs } from "../data/enemies";
 import { eliteBalance } from "../data/elite";
-import { enemyScalingBalance } from "../data/enemyScaling";
+import {
+  enemyLevelHpMultiplier,
+  enemyScalingBalance,
+} from "../data/enemyScaling";
 
 export function createPrototypeEnemy(
   kind: EnemyKind,
@@ -11,6 +14,7 @@ export function createPrototypeEnemy(
   offset01 = 0.5,
   elite = false,
   elapsedMs = 0,
+  characterLevel = 1,
 ): EnemyState {
   // Legacy grunt-elite requests migrate to the Stage 1 runner archetype.
   if (elite && kind === "grunt") kind = "runner";
@@ -27,17 +31,20 @@ export function createPrototypeEnemy(
     growth *
       (enemyScalingBalance.maxSpeedMultiplier -
         enemyScalingBalance.initialSpeedMultiplier);
-  const hp = (eliteStats?.hp ?? enemyConfigs[kind].hp) * hpMultiplier;
+  const levelHpMultiplier = enemyLevelHpMultiplier(characterLevel);
+  const hp =
+    (eliteStats?.hp ?? enemyConfigs[kind].hp) *
+    hpMultiplier *
+    levelHpMultiplier;
+  const shieldHp =
+    (elite ? eliteBalance.shield.shieldHp : enemyConfigs.shield.shieldHp) *
+    levelHpMultiplier;
   return {
     id,
     ...(kind === "shield"
       ? {
-          shieldHp: elite
-            ? eliteBalance.shield.shieldHp
-            : enemyConfigs.shield.shieldHp,
-          maxShieldHp: elite
-            ? eliteBalance.shield.shieldHp
-            : enemyConfigs.shield.shieldHp,
+          shieldHp,
+          maxShieldHp: shieldHp,
         }
       : {}),
     ...(elite && kind === "runner"

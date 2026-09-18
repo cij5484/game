@@ -84,6 +84,8 @@ describe("Marine M4 growth", () => {
     const p = new MarineProgression(() => roll);
     p.gainXp(8);
     const basic = p.offer()[0]!;
+    if (basic.category === "special-growth")
+      throw new Error("No special weapon is owned");
     roll = 0.05999;
     expect(p.choose(basic.id)).toBe(true);
     expect(p.lastSelection).toMatchObject({
@@ -174,6 +176,24 @@ describe("Marine M4 growth", () => {
     expect(p.offer().map((c) => c.id)).not.toContain("crit-chance");
     expect(p.offer()).toHaveLength(3);
   });
+  it.each([
+    [7, true],
+    [100, false],
+  ] as const)(
+    "offers speed at the Gauss floor only while an owned special still benefits (quality %s)",
+    (quality, eligible) => {
+      const p = new MarineProgression(() => 0);
+      p.ranks["attack-speed"] = 90;
+      p.quality["attack-speed"] = quality;
+      p.special.acquireAtCharacterLevel(5);
+      p.special.choose("grenade");
+      p.pendingChoices = 1;
+      expect(deriveMarineWeaponConfig(p.growth).shotIntervalMs).toBe(100);
+      expect(p.offer().some((card) => card.id === "attack-speed")).toBe(
+        eligible,
+      );
+    },
+  );
   it("preserves XP overflow and never exhausts uncapped growth", () => {
     const p = new MarineProgression(() => 0);
     p.gainXp(22);

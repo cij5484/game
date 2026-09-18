@@ -1,14 +1,18 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.8 — Horde / Marine Weapon Growth](docs/design/GAME_GDD_v0.8.md)**. 목표 설계와 구현 범위를 구분하며 [Current Implementation Gap](docs/design/GAME_GDD_v0.8.md#5-current-implementation-gap)을 따릅니다. [GDD v0.7](docs/design/GAME_GDD_v0.7.md) 및 이전 버전은 historical record로 보존합니다. [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.9 — Marine Special Weapons](docs/design/GAME_GDD_v0.9.md)**. 목표 설계와 구현 범위를 구분하며 [Current Implementation Gap](docs/design/GAME_GDD_v0.9.md#5-current-implementation-gap)을 따릅니다. [GDD v0.8](docs/design/GAME_GDD_v0.8.md) 및 이전 버전은 historical record로 보존합니다. [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
 
-최신 구현은 [Prototype M4 — Horde + Weapon Growth](docs/prototype-m4-horde-weapon-growth.md)입니다. M3는 [PR18](https://github.com/cij5484/game/pull/18)로 main에 merge했고, M4는 `codex/prototype-m4-horde-weapon-growth` 브랜치에 있습니다. 초기80명, 후반cap700, M4 첫안보다 실제 적 공급량 약2.5배로 올렸습니다. HP와 M3의 이동속도1.5배는 유지합니다. 최신 수치와 실측 조건은 M4 기록을 참조하세요.
+최신 구현은 [Prototype M5 — Marine Special Weapons](docs/prototype-m5-special-weapons.md)입니다. M4는 [PR19](https://github.com/cij5484/game/pull/19)로 main `68b9922`에 merge했고, M5는 `codex/prototype-m5-special-weapons`에서 commit/push까지만 합니다. M4 초기80명/후반cap700/Spawn 공급량과 M3 이동속도1.5배를 유지합니다. 추가 요청으로 생성 시 Character Level HP 배율 `1+.015(L−1)+.0005(L−1)²`을 일반·정예 본체와 방패에 적용하며 이미 생성된 적은 바뀌지 않습니다.
 
-공용 공격력/공격속도/치명 확률은 반복 성장합니다. 관통·도탄·점사·다중탄·폭발탄·고위력6종 중 최대3종을 조합하고, 사거리는 별도5Level 카드입니다. 기본3장 선택, 독립 희귀도/누적 quality, 최대2배 투자 가중치,6% 대성공, 대표 전설3종을 구현했습니다. Header에는 공용 강화, 하단 Gauss에는 개조/Level/사거리/전설을 표시합니다. M3의 독립 Header/Battlefield/Bottom과 잠긴 특수2슬롯을 유지합니다.
+공용 공격력/공격속도/치명 확률과 관통·도탄·점사·다중탄·폭발탄·고위력6종 중 최대3종, 별도 사거리5Level 카드, 독립 희귀도/quality/투자 가중치/6% 대성공은 유지합니다. 공용 강화는 특수무기에도 무기별 coefficient로 적용합니다. Header에는 공용 강화, Gauss에는 기본무기 전용 성장, 특수 슬롯에는 해당 무기 전용 성장만 표시하고 Tap/Click으로 상세를 확인합니다.
 
-[M1](docs/prototype-m1-combat-foundation.md)의 기본 Range `progress01 ≥ .55`·단발800ms·피해10, [M2](docs/prototype-m2-stage1-core.md)의 물리 방패·두Elite·20분 임시 종료, [M3](docs/prototype-m3-layout-build-hud.md)의 화면 구조와3~5초 첫 교전을 계승합니다. Marine은 기본 공격·스팀팩·V 필살기를 사용하고 Legacy Magic은 코드만 보존합니다. 특수무기/새 유물·코어/이름 붙은 시너지/Boss/Meta는 아직 구현하지 않았습니다.
+[M1](docs/prototype-m1-combat-foundation.md)의 기본 Range `progress01 ≥ .55`·단발800ms·피해10, [M2](docs/prototype-m2-stage1-core.md)의 물리 방패·두Elite·20분 임시 종료, [M3](docs/prototype-m3-layout-build-hud.md)의 화면 구조와 첫 교전을 계승합니다. Marine은 기본 공격·스팀팩·V 필살기를 사용하고 Legacy Magic은 코드만 보존합니다. 새 유물·코어/명명 시너지/Boss/Meta는 아직 구현하지 않았습니다.
 
-아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다.
+M5는 **수류탄(공간/AoE), 유도 미사일(위험 표적), 드론(지속 유닛)**을 개발 테스트용으로 모두 해금합니다. 시작은 특수2슬롯 Unlocked/Empty, Character Lv5/10에 중복 없이1종씩 획득하며 일반 레벨업을 소비하지 않습니다. 보유 무기의 성장 카드로 독립 Weapon Level을 올리고 Lv3 Tree/Lv6 Branch/Lv10 자동 Completion/Lv15 초월/Lv20 Overclock을 사용합니다. 초월·Overclock은 무기당3종씩 실제 구현했고 전체 Overclock5종 목표 중 나머지2종씩과 드론 요격/점진 해금은 Future입니다. 특별 Queue는 대성공의 잔여 Level을 보존합니다.
+
+Pause 바로 왼쪽 **X1→X2→X4→X1**은 개발용 게임 배속입니다. 전투 시간만 배속하며 실제 터치·Gesture·UI 입력 시간은 유지하고 재시작은X1입니다. 최신 `npm run check`는40개 파일/292개 테스트·TypeScript·Vite build를 통과했습니다(기존 chunk 경고 유지). 438×974 브라우저에서 배속/Lv5·10 획득/대성공 Lv3 Queue/슬롯 상세/지속 드론을 확인했습니다. 모든 분기의 브라우저 순회를 뜻하지 않으며 실제 난이도/성장 체감/모바일 성능은 사용자 Playtest 영역입니다. 장시간 자동 밸런스 분석은 수행하지 않습니다.
+
+아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3/M4/M5 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다. 이 과거 검증 숫자를 현재 검증 결과로 읽지 않습니다.
 
 ## 한 판과 조작
 
@@ -118,4 +122,4 @@ npm run check
 
 `check`는 테스트 후 TypeScript 검사와 프로덕션 빌드를 실행합니다.
 
-현재 작업은 `codex/milestone-12-combat-depth`에서 계속합니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.
+현재 작업은 `codex/prototype-m5-special-weapons`에서 commit/push 후 멈춥니다. main에 merge하거나 다음 Milestone을 시작하지 않고 사용자 플레이테스트를 기다립니다. 이전 구현·검증 기록은 Git 이력과 GDD의 과거 기록을 참고합니다.

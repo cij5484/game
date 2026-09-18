@@ -44,6 +44,7 @@ export function primaryAttack(
     synergyMultiplier?: number;
     branches?: GrowthBranches;
     activeSynergyIds?: ReadonlySet<string>;
+    targetDamageMultiplier?: (targetId: number) => number;
   } = {
     shotIndex: 1,
     random: Math.random,
@@ -191,6 +192,7 @@ export function primaryAttack(
       baseDamage *
       stats.primaryDamageMultiplier *
       (relicModifiers.damageMultiplier ?? 1) *
+      (context.targetDamageMultiplier?.(enemy.id) ?? 1) *
       factor *
       shieldBonus;
     return executions.has(enemy.id) ? Math.max(enemy.hp, amount) : amount;

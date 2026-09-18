@@ -4,14 +4,21 @@ import type { BuildIcon } from "./buildSummary";
 
 export class PauseView {
   private readonly button = document.createElement("button");
+  private readonly speedButton = document.createElement("button");
   private readonly dialog = document.createElement("dialog");
   private readonly details = document.createElement("dl");
   private paused = false;
   private entries: readonly BuildIcon[] = [];
   private readonly keydown: (event: KeyboardEvent) => void;
   private readonly change: (paused: boolean) => void;
+  private speed: 1 | 2 | 4 = 1;
+  private readonly cycleSpeed: () => void;
 
-  constructor(change: (paused: boolean) => void, restart: () => void) {
+  constructor(
+    change: (paused: boolean) => void,
+    restart: () => void,
+    changeSpeed?: (speed: 1 | 2 | 4) => void,
+  ) {
     this.change = change;
     this.button.className = "pause-button";
     this.button.type = "button";
@@ -22,6 +29,16 @@ export class PauseView {
     icon.setAttribute("aria-hidden", "true");
     this.button.append(icon);
     this.button.addEventListener("click", () => this.toggle());
+    this.speedButton.className = "pause-button dev-speed-button";
+    this.speedButton.type = "button";
+    this.renderSpeed();
+    this.cycleSpeed = () => {
+      if (this.speedButton.disabled) return;
+      this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1;
+      this.renderSpeed();
+      changeSpeed?.(this.speed);
+    };
+    this.speedButton.addEventListener("click", this.cycleSpeed);
     this.dialog.className = "level-up pause-dialog";
     this.dialog.setAttribute("aria-label", display.pause);
     const title = document.createElement("h2");
@@ -55,7 +72,13 @@ export class PauseView {
       }
     };
     window.addEventListener("keydown", this.keydown);
-    document.body.append(this.button, this.dialog);
+    document.body.append(this.speedButton, this.button, this.dialog);
+  }
+
+  private renderSpeed(): void {
+    this.speedButton.textContent = `X${this.speed}`;
+    this.speedButton.title = `개발용 게임 속도 X${this.speed} · 클릭하여 변경`;
+    this.speedButton.setAttribute("aria-label", this.speedButton.title);
   }
 
   private toggle(): void {
@@ -70,6 +93,7 @@ export class PauseView {
 
   setBlocked(blocked: boolean): void {
     this.button.disabled = blocked;
+    this.speedButton.disabled = blocked;
   }
 
   inspect(entries: readonly BuildIcon[]): void {
@@ -98,10 +122,14 @@ export class PauseView {
     const safe = readSafeArea();
     this.button.style.right = `${safe.right + 8}px`;
     this.button.style.top = `${safe.top + 8}px`;
+    this.speedButton.style.right = `${safe.right + 60}px`;
+    this.speedButton.style.top = this.button.style.top;
   }
 
   destroy(): void {
     window.removeEventListener("keydown", this.keydown);
+    this.speedButton.removeEventListener("click", this.cycleSpeed);
+    this.speedButton.remove();
     this.button.remove();
     this.dialog.remove();
   }

@@ -79,3 +79,30 @@ it("M4 keeps common stats in Header and all six traits plus range on Gauss", asy
   ]);
   expect(items.find((i) => i.id === "burst")!.title).toContain("전설");
 });
+
+it("special weapon milestones belong only to their own slot", async () => {
+  const { marineBuildSummary } = await import("../../src/game/ui/buildSummary");
+  const items = marineBuildSummary(
+    { ranks: { "primary-damage": 1 }, quality: {}, legendary: new Set() },
+    {},
+    new Set(),
+    [
+      {
+        id: "grenade",
+        level: 20,
+        quality: 20,
+        tree: "cluster",
+        branch: "a",
+        transcendence: "aftershock",
+        overclock: "triple",
+      },
+      { id: "drone", level: 1, quality: 0 },
+    ],
+  );
+  expect(items.filter((e) => e.owner === "global").map((e) => e.id)).toEqual([
+    "primary-damage",
+  ]);
+  expect(items.filter((e) => e.owner === "grenade")).toHaveLength(6);
+  expect(items.find((e) => e.id === "grenade")?.level).toBe(20);
+  expect(items.filter((e) => e.owner === "drone")).toHaveLength(1);
+});

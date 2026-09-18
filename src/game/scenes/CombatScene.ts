@@ -5,6 +5,7 @@ import {
   gaussRifleBalance,
   stimpackBalance,
 } from "../data/balance";
+import { SpecialWeapons } from "../combat/specialWeapons";
 import { GaussRifle } from "../combat/gaussRifle";
 import { Stimpack } from "../combat/stimpack";
 import { SpawnDirector } from "../waves/spawnDirector";
@@ -52,6 +53,7 @@ export class CombatScene extends Phaser.Scene {
     visual: Phaser.GameObjects.Container;
   }[] = [];
   private director = new SpawnDirector();
+  private specialWeapons = new SpecialWeapons();
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
@@ -66,6 +68,7 @@ export class CombatScene extends Phaser.Scene {
   private echoRounds: { dueMs: number; volley: EchoVolley }[] = [];
   private pauseUi!: PauseView;
   private manualPaused = false;
+  private gameSpeed: 1 | 2 | 4 = 1;
   private cancelInput = () => {};
   private evolutions = new Set<string>();
   private notices: string[] = [];
@@ -75,7 +78,9 @@ export class CombatScene extends Phaser.Scene {
   private get choosing(): boolean {
     return (
       this.ultimateRemainingMs === 0 &&
-      (this.progression.pendingChoices > 0 || this.relics.pendingRewards > 0)
+      (this.progression.special.pending ||
+        this.progression.pendingChoices > 0 ||
+        this.relics.pendingRewards > 0)
     );
   }
 
@@ -89,6 +94,7 @@ export class CombatScene extends Phaser.Scene {
     );
     this.enemies = [];
     this.director = new SpawnDirector();
+    this.specialWeapons = new SpecialWeapons();
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
@@ -100,6 +106,7 @@ export class CombatScene extends Phaser.Scene {
     this.focus = new TargetFocus();
     this.echoRounds = [];
     this.manualPaused = false;
+    this.gameSpeed = 1;
     this.evolutions = new Set();
     this.notices = [];
     this.burst = new Burst();
@@ -128,6 +135,9 @@ export class CombatScene extends Phaser.Scene {
         this.renderAbilities();
       },
       () => this.scene.restart(),
+      (speed) => {
+        this.gameSpeed = speed;
+      },
     );
     const resizeBurst = () => {
       this.burstUi.resize(this.scale.width, this.scale.height);
@@ -248,6 +258,7 @@ export class CombatScene extends Phaser.Scene {
           spawn.offset01,
           spawn.elite,
           this.run.elapsedMs,
+          this.progression.level,
         ),
         progress01: spawn.progress01,
       };
@@ -262,7 +273,8 @@ export class CombatScene extends Phaser.Scene {
   update(_time: number, deltaMs: number): void {
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
-    let remaining = Math.max(0, deltaMs);
+    // Sole gameplay speed owner. Input and presentation clocks stay in real time.
+    let remaining = Math.max(0, deltaMs) * this.gameSpeed;
     do {
       const presenting = this.ultimateRemainingMs > 0;
       const step = Math.min(
@@ -294,6 +306,7 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private renderCombat(): void {
+    this.view.renderSpecialWeapons(this.specialWeapons.visuals);
     this.finishRun();
     this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
     this.renderBurst();
@@ -331,6 +344,7 @@ export class CombatScene extends Phaser.Scene {
         wallHp: this.run.wallHp,
         ranks: this.progression.ranks,
         growth: this.progression.growth,
+        specialWeapons: this.progression.special.weapons,
         branches: this.progression.branches,
         activeSynergyIds: this.progression.activeSynergyIds,
         relics: this.relics.levels,
@@ -435,6 +449,8 @@ export class CombatScene extends Phaser.Scene {
           activeSynergyIds: this.progression.activeSynergyIds,
           minTargetProgress01: getMarineStats(this.progression.growth)
             .minTargetProgress01,
+          targetDamageMultiplier: (id) =>
+            this.specialWeapons.gaussDamageMultiplier(id),
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -466,7 +482,13 @@ export class CombatScene extends Phaser.Scene {
           ),
         );
 
-      this.applyEnemyStates(relicResult.enemies);
+      // Drone synchronization is part of this attack transaction, never a recursive primary.
+      const synchronized = this.specialWeapons.onPrimary(target.id, {
+        ...this.specialContext(),
+        enemies: relicResult.enemies,
+      });
+      this.view.showSpecialEffects(synchronized.effects);
+      this.applyEnemyStates(synchronized.enemies);
       if (this.choosing) return false;
     } else
       this.relicCombat.afterPrimary(
@@ -563,6 +585,14 @@ export class CombatScene extends Phaser.Scene {
 
   private showChoices(): void {
     this.cancelInput();
+    const specialOffer = this.progression.special.offer();
+    if (specialOffer) {
+      this.time.paused = true;
+      this.choices.showSpecial(specialOffer, (id) => {
+        if (this.progression.special.choose(id)) this.applyBuildChoice();
+      });
+      return;
+    }
     const relicOffer = this.relics.offer();
     if (relicOffer.length) {
       this.time.paused = true;
@@ -619,9 +649,14 @@ export class CombatScene extends Phaser.Scene {
       this.progression.growth,
       this.relics.levels,
       this.cores.owned,
+      this.progression.special.weapons,
     );
     this.buildBar.render(summary);
     this.burstUi.renderBuild(summary);
+    this.burstUi.renderSpecialWeapons(
+      this.progression.special.weapons,
+      summary,
+    );
     this.pauseUi.setBuildDetails(summary);
   }
 
@@ -717,6 +752,8 @@ export class CombatScene extends Phaser.Scene {
           activeSynergyIds: pending.volley.activeSynergyIds ?? new Set(),
           minTargetProgress01: getMarineStats(this.progression.growth)
             .minTargetProgress01,
+          targetDamageMultiplier: (id) =>
+            this.specialWeapons.gaussDamageMultiplier(id),
           shotIndex: this.shotIndex,
           random: Math.random,
           synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
@@ -739,6 +776,16 @@ export class CombatScene extends Phaser.Scene {
       this.applyEnemyStates(result.enemies, false);
       if (this.choosing || this.run.status !== "running") break;
     }
+  }
+
+  private specialContext() {
+    return {
+      weapons: this.progression.special.weapons,
+      growth: this.progression.growth,
+      enemies: this.enemies.map((e) => e.state),
+      focusId: this.focus.targetId,
+      random: Math.random,
+    };
   }
 
   private advanceWorld(deltaMs: number): number {
@@ -786,6 +833,19 @@ export class CombatScene extends Phaser.Scene {
       this.burst.advanceCharge(step);
       this.run = advanceRun(this.run, step, runBalance.durationMs);
       remaining -= step;
+      if (
+        this.run.status === "running" &&
+        this.progression.special.weapons.length
+      ) {
+        const result = this.specialWeapons.advance(step, this.specialContext());
+        this.view.showSpecialEffects(result.effects);
+        if (
+          result.enemies.some(
+            (state, index) => state !== this.enemies[index]?.state,
+          )
+        )
+          this.applyEnemyStates(result.enemies);
+      }
       if (this.run.status === "running" && !this.choosing) this.fireEchoes();
       if (this.choosing) break;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
