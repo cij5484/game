@@ -127,6 +127,7 @@ canvas {
 }
 
 .pause-button {
+  z-index: 3;
   position: absolute;
   box-sizing: border-box;
   width: 44px;

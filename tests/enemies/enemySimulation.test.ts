@@ -11,20 +11,20 @@ describe("enemy simulation", () => {
     expect(elite.hp).toBe(80);
     expect(
       advanceEnemy(elite, 1000, enemyConfigs.grunt).enemy.progress01,
-    ).toBeCloseTo(0.04875);
+    ).toBeCloseTo(0.073125);
   });
   it("slows travel only, preserves wall attack time, and counts arrival remainder", () => {
     const enemy = createPrototypeEnemy("grunt", "left", 1);
     expect(
       advanceEnemy(enemy, 1000, enemyConfigs.grunt, 0.5).enemy.progress01,
-    ).toBeCloseTo(enemyConfigs.grunt.progressPerSecond * 0.65 * 0.5, 8);
+    ).toBeCloseTo(enemyConfigs.grunt.progressPerSecond * 0.975 * 0.5, 8);
     const atWall = { ...enemy, progress01: 1 };
     expect(advanceEnemy(atWall, 2000, enemyConfigs.grunt, 0.5).wallTimeMs).toBe(
       2000,
     );
     const nearWall = {
       ...enemy,
-      progress01: 1 - enemyConfigs.grunt.progressPerSecond * 0.65 * 0.5,
+      progress01: 1 - enemyConfigs.grunt.progressPerSecond * 0.975 * 0.5,
     };
     const arrived = advanceEnemy(nearWall, 2000, enemyConfigs.grunt, 0.5);
     expect(arrived.enemy.phase).toBe("attacking");
@@ -36,7 +36,7 @@ describe("enemy simulation", () => {
       const enemy = createPrototypeEnemy(kind, "left", 7);
       expect(enemy).toMatchObject({
         id: 7,
-        speedMultiplier: 0.65,
+        speedMultiplier: 0.975,
         hp: enemyConfigs[kind].hp,
         maxHp: enemyConfigs[kind].hp,
         kind,
@@ -47,7 +47,7 @@ describe("enemy simulation", () => {
       });
       const result = advanceEnemy(enemy, 2000, enemyConfigs[kind]);
       expect(result.enemy.progress01).toBeCloseTo(
-        enemyConfigs[kind].progressPerSecond * 0.65 * 2,
+        enemyConfigs[kind].progressPerSecond * 0.975 * 2,
       );
       expect(result.enemy.phase).toBe("moving");
       expect(result.wallTimeMs).toBe(0);

@@ -1,28 +1,30 @@
 .combat-hud.burst-ui {
   z-index: 2;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .combat-hud .ability-circle {
-  position: absolute;
-  top: 1168px;
-  width: 110px;
-  height: 110px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  padding: 8px;
+  padding: 3px;
   border: 1px solid #829aa766;
-  border-radius: 50%;
+  border-radius: 10px;
   background: conic-gradient(
     from 0deg,
     var(--accent, #9db4bd) var(--progress, 0%),
     #49616c 0
   );
   color: #f5fbff;
-  font: 18px sans-serif;
+  font: clamp(10px, 2.7vw, 15px) sans-serif;
   line-height: 1.1;
   white-space: nowrap;
   isolation: isolate;
@@ -31,7 +33,7 @@
 .combat-hud .ability-circle::before {
   content: "";
   position: absolute;
-  inset: 6px;
+  inset: 3px;
   z-index: -1;
   border-radius: inherit;
   background: #172d36;
@@ -39,7 +41,7 @@
 
 .combat-hud .ability-symbol {
   color: var(--accent);
-  font: bold 28px/1 sans-serif;
+  font: bold clamp(20px, 4vw, 28px)/1 sans-serif;
 }
 .combat-hud .ability-circle.ready {
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -52,7 +54,7 @@
 
 .combat-hud .ability-state {
   color: var(--accent);
-  font-size: 17px;
+  font-size: clamp(8px, 2.1vw, 12px);
 }
 
 .combat-hud button.ability-circle {
@@ -69,16 +71,16 @@
 }
 .ultimate-hint {
   position: absolute;
-  left: 160px;
-  top: 910px;
-  width: 400px;
+  right: 8px;
+  bottom: 100%;
+  width: min(260px, 75vw);
   padding: 16px;
   background: #142833ed;
   border: 2px solid #ffe18b;
   border-radius: 16px;
   color: white;
   text-align: center;
-  font: 22px/1.4 sans-serif;
+  font: 14px/1.4 sans-serif;
   pointer-events: none;
 }
 .ultimate-hint[hidden] {
@@ -101,4 +103,99 @@
   .combat-hud .ultimate-ready {
     animation: none;
   }
+}
+
+.loadout-row {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 5px;
+  display: flex;
+  gap: 5px;
+}
+.loadout-row > * {
+  flex: 1;
+  min-width: 0;
+}
+.weapon-slot {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid #7595a6;
+  border-radius: 8px;
+  background: #182e38;
+  color: #dcecf6;
+  overflow: hidden;
+}
+.slot-summary {
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  gap: 2px;
+  touch-action: manipulation;
+  font: clamp(10px, 2.7vw, 15px)/1.1 sans-serif;
+}
+.slot-summary strong {
+  font-size: clamp(18px, 4vw, 26px);
+}
+.slot-summary small {
+  font-size: 9px;
+  color: #a9c4d1;
+}
+.weapon-slot[data-state="locked"] {
+  border-style: dashed;
+  color: #a6b4bd;
+  background: #24333c;
+}
+.weapon-slot[data-state="empty"] {
+  border-color: #95ccb4;
+}
+.slot-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  max-height: 48px;
+  overflow: auto;
+  scrollbar-width: thin;
+  flex-shrink: 1;
+  min-height: 0;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+.slot-badges:empty {
+  display: none;
+}
+.slot-badges .build-icon {
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+}
+.slot-badges .build-icon i {
+  font-size: 17px;
+}
+.slot-badges .build-icon b {
+  font-size: 9px;
+}
+.ability-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ability-slot .ability-circle {
+  flex: 1;
+  height: auto;
+}
+.slot-summary:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -3px;
 }

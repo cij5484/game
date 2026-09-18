@@ -5,7 +5,7 @@ import type { EnemyState } from "../../src/game/enemies/enemySimulation";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import type { GaussRifle } from "../../src/game/combat/gaussRifle";
 import type { Progression } from "../../src/game/progression/progression";
-import type { SpawnDirector } from "../../src/game/waves/spawnDirector";
+import { SpawnDirector } from "../../src/game/waves/spawnDirector";
 import type {
   RelicCombat,
   EchoVolley,
@@ -20,6 +20,7 @@ import type { Relics } from "../../src/game/progression/relics";
 import type { RunState } from "../../src/game/model/runState";
 
 interface SceneHarness {
+  spawnBatch(): void;
   rifle: GaussRifle;
   relics: Relics;
   refreshBuild(): void;
@@ -87,6 +88,7 @@ function scene(): SceneHarness {
     },
     pauseUi: { setBlocked: noop, setBuildDetails: noop },
     buildBar: { render: noop },
+    burstUi: { renderBuild: noop },
     renderCombat: noop,
     renderBurst: noop,
     renderAbilities: noop,
@@ -492,3 +494,19 @@ it("Marine reward growth excludes magic-only relics and exhausts without pausing
   }
   expect(test.relics.pendingRewards).toBe(0);
 });
+
+it.each([0, 0.5, 0.999])(
+  "first normal Gauss shot starts in 3-5s at RNG %s without input",
+  (random) => {
+    const test = scene();
+    test.director = new SpawnDirector(() => random);
+    test.enemies = [];
+    test.spawnBatch();
+    while (test.shotIndex === 0 && test.run.elapsedMs < 6000)
+      test.update(0, 16);
+    expect(test.shotIndex).toBe(1);
+    expect(test.run.elapsedMs).toBeGreaterThanOrEqual(3000);
+    expect(test.run.elapsedMs).toBeLessThanOrEqual(5000);
+    console.log(`First shot at ${test.run.elapsedMs}ms, random=${random}`);
+  },
+);

@@ -1,10 +1,12 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.6 — Prototype Scope / Stage 1 Gameplay Loop](docs/design/GAME_GDD_v0.6.md)**. v0.6은 목표 설계이며 이번 패스에서는 구현하지 않았습니다. 현재 코드와의 차이는 [Current Implementation Gap](docs/design/GAME_GDD_v0.6.md#5-current-implementation-gap)에 기록합니다. [GDD v0.5](docs/design/GAME_GDD_v0.5.md), [GDD v0.4](docs/design/GAME_GDD_v0.4.md), [GDD v0.3](docs/design/GAME_GDD_v0.3.md)과 [GDD v0.2](docs/design/GAME_GDD_v0.2.md)는 과거 기록으로 보존하고, [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.7 — Screen Layout / Build Ownership HUD](docs/design/GAME_GDD_v0.7.md)**. v0.7은 목표 설계와 M3 구현 범위를 구분합니다. 현재 코드와의 차이는 [Current Implementation Gap](docs/design/GAME_GDD_v0.7.md#5-current-implementation-gap)에 기록합니다. [GDD v0.6](docs/design/GAME_GDD_v0.6.md), [GDD v0.5](docs/design/GAME_GDD_v0.5.md), [GDD v0.4](docs/design/GAME_GDD_v0.4.md), [GDD v0.3](docs/design/GAME_GDD_v0.3.md)과 [GDD v0.2](docs/design/GAME_GDD_v0.2.md)는 과거 기록으로 보존하고, [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
 
-현재 브랜치의 최신 구현 변경은 [Prototype M2 — Stage 1 Core](docs/prototype-m2-stage1-core.md)입니다. 20분 임시 종료, Runner/방패 HP/Elite 2종과 단계별 Director를 적용했습니다. Marine active loadout은 기본 공격·스팀팩·V 필살기이며 Legacy Magic은 코드만 보존하고 전투·HUD·성장 후보에서 분리했습니다. [M1](docs/prototype-m1-combat-foundation.md)의 Marine 기본 사거리는 `progress01 ≥ 0.55`, Gauss는 800ms 단발·피해10, Grunt HP8입니다. v0.6 전체 구현은 아닙니다.
+현재 최신 구현은 [Prototype M3 — Layout / Build HUD](docs/prototype-m3-layout-build-hud.md)입니다. Header(Level/XP/시간/Global Build)·Battlefield·Bottom(Wall HP/Loadout)을 독립 영역으로 나눕니다. Gauss/스팀팩 성장은 하단 소유 슬롯, 공용 강화·유물·코어·시너지는 Header에 표시합니다. 특수 슬롯2개는 잠금 상태이며 실제 특수무기는 미구현입니다. 첫 정상 사격은 초기 선두 배치로 약3.4~3.9초에 시작합니다. 추가 플레이 피드백에 따라 일반/정예 이동속도는 M2의1.5배로 조정했습니다.
 
-아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다.
+[M1](docs/prototype-m1-combat-foundation.md)의 Range `progress01 ≥ .55`·Gauss800ms·피해10과 [M2](docs/prototype-m2-stage1-core.md)의 적/방패/Elite·20분 Director를 유지합니다. Marine은 기본 공격·스팀팩·V 필살기를 사용하며 Legacy Magic은 코드만 보존합니다. v0.7 전체 성장/특수무기/Meta가 구현된 것은 아닙니다.
+
+아래 조작·수치·성장 설명은 `0489ef9`의 **이전 구현 스냅샷** (M1/M2/M3 변경 항목은 위 기록 우선)입니다. v0.6의 Stage 1 Prototype Scope나 Future Meta가 구현됐다는 뜻이 아닙니다.
 
 ## 한 판과 조작
 

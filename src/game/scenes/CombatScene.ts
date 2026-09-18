@@ -121,6 +121,7 @@ export class CombatScene extends Phaser.Scene {
     );
     this.view = new EnemyPressureView(this);
     this.burstUi = new BurstView({
+      inspect: (entries) => this.pauseUi.inspect(entries),
       stim: () => {
         this.activateStim();
       },
@@ -141,8 +142,9 @@ export class CombatScene extends Phaser.Scene {
     const resizeBurst = () => {
       this.burstUi.resize(this.scale.width, this.scale.height);
       this.pauseUi.resize(this.scale.width, this.scale.height);
+      this.buildBar.resize(this.scale.width, this.scale.height);
     };
-    this.buildBar = new BuildBar();
+    this.buildBar = new BuildBar((entries) => this.pauseUi.inspect(entries));
     resizeBurst();
     this.scale.on(Phaser.Scale.Events.RESIZE, resizeBurst);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -160,6 +162,7 @@ export class CombatScene extends Phaser.Scene {
         else this.focusAt(x, y);
       },
       (points, displayPoints) => this.handleGesture(points, displayPoints),
+      (x, y) => this.view.isBattlefieldPoint(x, y),
     );
     this.cancelInput = unbindInput.cancel;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unbindInput.destroy);
@@ -643,6 +646,7 @@ export class CombatScene extends Phaser.Scene {
       this.progression.activeSynergyIds,
     );
     this.buildBar.render(summary);
+    this.burstUi.renderBuild(summary);
     this.pauseUi.setBuildDetails(summary);
   }
 

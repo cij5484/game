@@ -1,35 +1,31 @@
 import { expect, it } from "vitest";
 import {
   battlefieldLayout,
-  battlefieldReference,
+  battlefieldPoint,
+  containsPoint,
 } from "../../src/game/battlefield/layout";
-
-it("fits the wall above mobile home indicators without changing logical reference", () => {
-  const layout = battlefieldLayout(390, 844, {
-    top: 47,
-    bottom: 34,
+it.each([
+  [360, 640],
+  [390, 844],
+  [360, 800],
+  [768, 1024],
+])("partitions %sx%s into non-overlapping safe regions", (width, height) => {
+  const l = battlefieldLayout(width, height, {
+    top: 24,
+    bottom: 20,
     left: 0,
     right: 0,
   });
-  expect(layout.y + 1280 * layout.scale).toBeCloseTo(810);
-  expect(layout.y).toBeGreaterThanOrEqual(47);
-  expect(layout.x + 720 * layout.scale).toBeLessThanOrEqual(390);
+  expect(l.header.y).toBe(24);
+  expect(l.header.y + l.header.height).toBe(l.battlefield.y);
+  expect(l.battlefield.y + l.battlefield.height).toBe(l.bottom.y);
+  expect(l.bottom.y + l.bottom.height).toBeCloseTo(height - 20);
+  expect(l.battlefield.height).toBeGreaterThan(height * 0.5);
+  const far = battlefieldPoint(l, 0.5, 0),
+    near = battlefieldPoint(l, 0.5, 1);
+  expect(far.y).toBe(l.battlefield.y);
+  expect(near.y).toBeLessThan(l.bottom.y);
+  expect(containsPoint(l.battlefield, far.x, far.y)).toBe(true);
+  expect(containsPoint(l.battlefield, far.x, l.header.y)).toBe(false);
+  expect(containsPoint(l.battlefield, near.x, l.bottom.y)).toBe(false);
 });
-
-it.each([
-  [720, 1280],
-  [720, 1560],
-  [720, 1600],
-  [768, 1024],
-])(
-  "keeps portrait gameplay visible and wall bottom-anchored at %s x %s",
-  (width, height) => {
-    const layout = battlefieldLayout(width, height);
-    expect(battlefieldReference).toEqual({ width: 720, height: 1280 });
-    expect(layout.x).toBeGreaterThanOrEqual(0);
-    expect(layout.y).toBeGreaterThanOrEqual(0);
-    expect(layout.x * 2 + 720 * layout.scale).toBeCloseTo(width);
-    expect(layout.y + 1280 * layout.scale).toBeCloseTo(height);
-    expect(Math.min(layout.x, layout.y)).toBeCloseTo(0);
-  },
-);

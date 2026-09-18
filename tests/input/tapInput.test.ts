@@ -245,3 +245,55 @@ it("keeps jitter as a tap and does not turn a multi-touch drag into magic", () =
   expect(input.up(1, 80, 0, 300)).toBeNull();
   expect(input.up(2, 20, 0, 320)).toBeNull();
 });
+
+it("rejects UI-region taps and drawings crossing HUD boundaries after canvas coordinate conversion", () => {
+  vi.stubGlobal("window", new EventTarget());
+  const canvas = Object.assign(new EventTarget(), {
+    width: 200,
+    height: 200,
+    setPointerCapture: vi.fn(),
+    getBoundingClientRect: () => ({
+      left: 10,
+      top: 20,
+      width: 100,
+      height: 100,
+    }),
+  }) as unknown as HTMLCanvasElement;
+  const tap = vi.fn(),
+    gesture = vi.fn();
+  const binding = bindTapInput(
+    canvas,
+    tap,
+    gesture,
+    (_x, y) => y >= 40 && y < 160,
+  );
+  const pointer = (type: string, y: number, time: number) => {
+    const event = new Event(type, { cancelable: true });
+    Object.defineProperties(event, {
+      pointerType: { value: "touch" },
+      pointerId: { value: 1 },
+      button: { value: 0 },
+      clientX: { value: 50 },
+      clientY: { value: y },
+      timeStamp: { value: time },
+    });
+    canvas.dispatchEvent(event);
+  };
+  try {
+    pointer("pointerdown", 30, 0);
+    pointer("pointerup", 30, 80);
+    pointer("pointerdown", 110, 100);
+    pointer("pointerup", 110, 180);
+    pointer("pointerdown", 60, 200);
+    pointer("pointermove", 30, 230);
+    pointer("pointerup", 60, 280);
+    expect(tap).not.toHaveBeenCalled();
+    expect(gesture).not.toHaveBeenCalled();
+    pointer("pointerdown", 60, 300);
+    pointer("pointerup", 60, 380);
+    expect(tap).toHaveBeenCalledExactlyOnceWith("primary", 80, 80);
+  } finally {
+    binding.destroy();
+    vi.unstubAllGlobals();
+  }
+});

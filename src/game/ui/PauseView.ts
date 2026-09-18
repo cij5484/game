@@ -7,6 +7,7 @@ export class PauseView {
   private readonly dialog = document.createElement("dialog");
   private readonly details = document.createElement("dl");
   private paused = false;
+  private entries: readonly BuildIcon[] = [];
   private readonly keydown: (event: KeyboardEvent) => void;
   private readonly change: (paused: boolean) => void;
 
@@ -61,15 +62,28 @@ export class PauseView {
     if (this.button.disabled) return;
     this.paused = !this.paused;
     this.change(this.paused);
-    if (this.paused) this.dialog.showModal();
-    else this.dialog.close();
+    if (this.paused) {
+      this.renderDetails(this.entries);
+      this.dialog.showModal();
+    } else this.dialog.close();
   }
 
   setBlocked(blocked: boolean): void {
     this.button.disabled = blocked;
   }
 
+  inspect(entries: readonly BuildIcon[]): void {
+    if (this.button.disabled || this.paused) return;
+    this.toggle();
+    this.renderDetails(entries);
+  }
+
   setBuildDetails(entries: readonly BuildIcon[]): void {
+    this.entries = entries;
+    this.renderDetails(entries);
+  }
+
+  private renderDetails(entries: readonly BuildIcon[]): void {
     this.details.replaceChildren();
     for (const entry of entries) {
       const title = document.createElement("dt");

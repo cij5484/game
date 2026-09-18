@@ -42,7 +42,7 @@ it("slows the whole world including later spawns and restores movement at expiry
     magic.movementMultiplier,
   );
   expect(moved.enemy.progress01).toBeCloseTo(
-    0.8 + enemyConfigs.grunt.progressPerSecond * 0.65 * 0.5,
+    0.8 + enemyConfigs.grunt.progressPerSecond * 0.975 * 0.5,
     8,
   );
   magic.advance(1000);
@@ -50,14 +50,14 @@ it("slows the whole world including later spawns and restores movement at expiry
   expect(
     advanceEnemy(spawned, 1000, enemyConfigs.runner, magic.movementMultiplier)
       .enemy.progress01,
-  ).toBeCloseTo(0.026);
+  ).toBeCloseTo(enemyConfigs.runner.progressPerSecond * 0.975 * 0.5, 8);
   magic.advance(6000);
   expect(magic.frostRemainingMs).toBe(0);
   expect(magic.movementMultiplier).toBe(1);
   expect(
     advanceEnemy(spawned, 1000, enemyConfigs.runner, magic.movementMultiplier)
       .enemy.progress01,
-  ).toBeCloseTo(0.052);
+  ).toBeCloseTo(enemyConfigs.runner.progressPerSecond * 0.975, 8);
 });
 
 it("chains to 30 distinct targets for 75 damage while excluding isolated and dead enemies", () => {
