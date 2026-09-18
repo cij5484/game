@@ -1,8 +1,8 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.4 — Marine Build Growth / Relic / Core](docs/design/GAME_GDD_v0.4.md)**. v0.4는 목표 설계이며 이번 패스에서는 구현하지 않았습니다. 현재 코드와의 차이는 [Current Implementation Gap](docs/design/GAME_GDD_v0.4.md#4-current-implementation-gap)에 기록합니다. [GDD v0.3](docs/design/GAME_GDD_v0.3.md)과 [GDD v0.2](docs/design/GAME_GDD_v0.2.md)는 과거 기록으로 보존하고, [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스의 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.5 — Horde / Range / Stage / Meta Progression](docs/design/GAME_GDD_v0.5.md)**. v0.5는 목표 설계이며 이번 패스에서는 구현하지 않았습니다. 현재 코드와의 차이는 [Current Implementation Gap](docs/design/GAME_GDD_v0.5.md#4-current-implementation-gap)에 기록합니다. [GDD v0.4](docs/design/GAME_GDD_v0.4.md), [GDD v0.3](docs/design/GAME_GDD_v0.3.md)과 [GDD v0.2](docs/design/GAME_GDD_v0.2.md)는 과거 기록으로 보존하고, [Reference Notes](docs/design/REFERENCE_UI_NOTES.md)의 Main Reference는 DRG: Survivor와 20 Minutes Till Dawn입니다.
 
-아래 조작·수치·성장 설명은 `0489ef9`의 **현재 구현 스냅샷**입니다. v0.4의 특수무기·공용 성장·유물·코어·새 UI가 구현됐다는 뜻이 아닙니다.
+아래 조작·수치·성장 설명은 `0489ef9`의 **현재 구현 스냅샷**입니다. v0.5의 특수무기·사거리·Stage·Meta·유물·코어·새 UI가 구현됐다는 뜻이 아닙니다.
 
 ## 한 판과 조작
 
