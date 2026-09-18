@@ -1,4 +1,9 @@
 import {
+  marineUpgrades,
+  marineTraitIds,
+  type MarineGrowthState,
+} from "../data/marineGrowth";
+import {
   upgrades,
   type UpgradeAbility,
   type UpgradeRanks,
@@ -19,6 +24,7 @@ export interface RunResult {
   level: number;
   wallHp: number;
   ranks: UpgradeRanks;
+  growth?: MarineGrowthState;
   branches: GrowthBranches;
   activeSynergyIds: ReadonlySet<string>;
   relics: RelicLevels;
@@ -54,14 +60,21 @@ export class ResultView {
             `${upgrade.title} ${levelLabel(result.ranks[upgrade.id]!)}${result.branches[upgrade.id] && upgrade.id in abilityGrowth ? ` · ${abilityGrowth[upgrade.id as keyof typeof abilityGrowth].branches[result.branches[upgrade.id]!].title}` : ""}`,
         )
         .join(" · ") || display.none;
-    const direction =
-      weaponTraitIds
-        .filter((id) => (result.ranks[id] ?? 0) > 0)
-        .map(
-          (id) =>
-            `${weaponTraits[id].title} ${levelLabel(result.ranks[id]!)}${result.branches[id] ? ` · ${weaponTraits[id].branches[result.branches[id]!].title}` : ""}`,
-        )
-        .join(" · ") || display.baseWeapon;
+    const direction = result.growth
+      ? marineTraitIds
+          .filter((id) => (result.growth!.ranks[id] ?? 0) > 0)
+          .map(
+            (id) =>
+              `${marineUpgrades[id].title} ${levelLabel(result.growth!.ranks[id]!)}${result.growth!.legendary.has(id) ? " ★전설" : ""}`,
+          )
+          .join(" · ") || display.baseWeapon
+      : weaponTraitIds
+          .filter((id) => (result.ranks[id] ?? 0) > 0)
+          .map(
+            (id) =>
+              `${weaponTraits[id].title} ${levelLabel(result.ranks[id]!)}${result.branches[id] ? ` · ${weaponTraits[id].branches[result.branches[id]!].title}` : ""}`,
+          )
+          .join(" · ") || display.baseWeapon;
     const seconds = Math.floor(result.elapsedMs / 1000);
     const rows = [
       [
@@ -71,7 +84,21 @@ export class ResultView {
       [display.killsLevel, `${result.kills} / ${levelLabel(result.level)}`],
       [display.wall, String(Math.ceil(result.wallHp))],
       [`${display.trait} (${result.traitLimit})`, direction],
-      [display.primary, selections(["gauss-rifle"])],
+      [
+        display.primary,
+        result.growth
+          ? Object.values(marineUpgrades)
+              .filter(
+                (c) =>
+                  c.category !== "weapon-trait" &&
+                  (result.growth!.ranks[c.id] ?? 0) > 0,
+              )
+              .map(
+                (c) => `${c.title} ${levelLabel(result.growth!.ranks[c.id]!)}`,
+              )
+              .join(" · ") || display.none
+          : selections(["gauss-rifle"]),
+      ],
       [display.stimpack, selections(["stimpack"])],
       [display.magicGrowth, selections(["frost-nova", "chain-lightning"])],
       [

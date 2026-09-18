@@ -203,3 +203,27 @@ it("partial Echo cannot inherit a branch below level three or unlock an unselect
   expect(echo.branches).toEqual({});
   expect(echo.activeSynergyIds?.size).toBe(0);
 });
+
+it("snapshots Marine quality and legendary behavior for full Echo", () => {
+  const combat = new RelicCombat();
+  combat.setLevels({ "ammo-replicator": 5 });
+  const growth: import("../../src/game/data/marineGrowth").MarineGrowthState = {
+    ranks: { penetration: 12, burst: 6 },
+    quality: { penetration: 20, burst: 9 },
+    legendary: new Set(["penetration"]),
+  };
+  for (let i = 0; i < 3; i++)
+    combat.onVolley({
+      targetId: 1,
+      ranks: growth.ranks,
+      growth,
+      baseDamage: 10,
+    });
+  growth.ranks.penetration = 13;
+  growth.quality.penetration = 21;
+  growth.legendary = new Set();
+  const echo = combat.advance(180)[0]!;
+  expect(echo.growth?.ranks.penetration).toBe(12);
+  expect(echo.growth?.quality.penetration).toBe(20);
+  expect(echo.growth?.legendary.has("penetration")).toBe(true);
+});

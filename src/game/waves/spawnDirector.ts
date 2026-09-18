@@ -123,10 +123,18 @@ export class SpawnDirector {
           (1 + (this.random() * 2 - 1) * hordeBalance.intervalVariation),
       hordeBalance.stages[settings.stage + 1]?.atMs ?? Infinity,
     );
+    const remainingLanes: Record<LaneId, number> = {
+      ...hordeBalance.laneWeights,
+    };
     return [
       ...spawns,
       ...Array.from({ length: count }, (_, index) => {
-        const lane = weightedChoice(hordeBalance.laneWeights, this.random());
+        // First three guarantee simultaneous lanes; the rest keep weighted variety.
+        const lane = weightedChoice(
+          index < 3 ? remainingLanes : hordeBalance.laneWeights,
+          this.random(),
+        );
+        remainingLanes[lane] = 0;
         const role = this.laneRoles[["left", "center", "right"].indexOf(lane)]!;
         const base = initial
           ? hordeBalance.initialEnemyWeights

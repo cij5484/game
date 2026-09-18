@@ -1,4 +1,10 @@
 import {
+  marineTraitIds,
+  marineUpgrades,
+  type MarineRanks,
+  type MarineChoice,
+} from "../data/marineGrowth";
+import {
   upgradeCategory,
   type UpgradeDefinition,
   type UpgradeChoice,
@@ -62,6 +68,40 @@ export class LevelUpView {
         weaponTraitIds
           .filter((id) => (ranks[id] ?? 0) > 0)
           .map((id) => weaponTraits[id].title)
+          .join(" + ") || display.none
+      }`,
+    );
+  }
+
+  showMarine(
+    level: number,
+    choices: readonly MarineChoice[],
+    ranks: MarineRanks,
+    select: (id: string) => void,
+    traitLimit: number,
+  ): void {
+    this.render(
+      `${levelLabel(level)} · ${display.choose}`,
+      choices.map((choice) => ({
+        id: choice.id,
+        title: choice.title,
+        level: levelChange(ranks[choice.id] ?? 0, choice.maxRank),
+        symbol: choice.symbol,
+        compact: choice.description,
+        description: choice.description,
+        rarity: choice.rarity,
+        category:
+          choice.owner === "global"
+            ? "기본 강화 · 공용"
+            : choice.id === "range"
+              ? "사거리 성장 · 가우스"
+              : "무기 특성 · 가우스",
+      })),
+      select,
+      `${display.trait} ${marineTraitIds.filter((id) => (ranks[id] ?? 0) > 0).length}/${traitLimit} · ${
+        marineTraitIds
+          .filter((id) => (ranks[id] ?? 0) > 0)
+          .map((id) => marineUpgrades[id].title)
           .join(" + ") || display.none
       }`,
     );

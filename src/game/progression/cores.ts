@@ -2,6 +2,10 @@ import { coreBalance, cores, type CoreId } from "../data/cores";
 
 export class Cores {
   readonly owned = new Set<CoreId>();
+  private readonly excluded: readonly CoreId[];
+  constructor(excluded: readonly CoreId[] = []) {
+    this.excluded = excluded;
+  }
 
   tryDrop(random = Math.random) {
     if (
@@ -10,7 +14,7 @@ export class Cores {
     )
       return null;
     const pool = Object.values(cores).filter(
-      (core) => !this.owned.has(core.id),
+      (core) => !this.owned.has(core.id) && !this.excluded.includes(core.id),
     );
     let roll = random() * pool.reduce((sum, core) => sum + core.weight, 0);
     const picked =

@@ -51,3 +51,31 @@ it("groups global bonuses separately from weapon and Stim growth", () => {
   expect(items.find((i) => i.id === "tesla-coil")?.owner).toBe("global");
   expect(items.find((i) => i.id === "choice-expansion")?.owner).toBe("global");
 });
+
+it("M4 keeps common stats in Header and all six traits plus range on Gauss", async () => {
+  const { marineBuildSummary } = await import("../../src/game/ui/buildSummary");
+  const { marineTraitIds } = await import("../../src/game/data/marineGrowth");
+  const ranks = Object.fromEntries(
+    [
+      ...marineTraitIds,
+      "range",
+      "primary-damage",
+      "attack-speed",
+      "crit-chance",
+    ].map((id) => [id, 2]),
+  );
+  const items = marineBuildSummary(
+    { ranks, quality: {}, legendary: new Set(["burst"]) },
+    {},
+    new Set(),
+  );
+  expect(
+    items.filter((i) => i.owner === "basicWeapon").map((i) => i.id),
+  ).toEqual([...marineTraitIds, "range"]);
+  expect(items.filter((i) => i.owner === "global").map((i) => i.id)).toEqual([
+    "primary-damage",
+    "attack-speed",
+    "crit-chance",
+  ]);
+  expect(items.find((i) => i.id === "burst")!.title).toContain("전설");
+});

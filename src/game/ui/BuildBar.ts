@@ -14,6 +14,7 @@ export function buildBadge(
   icon.setAttribute("aria-label", icon.title);
   const symbol = document.createElement("i");
   symbol.textContent = entry.symbol;
+  if (entry.symbol.includes("★")) symbol.style.fontSize = "11px";
   symbol.setAttribute("aria-hidden", "true");
   icon.append(symbol);
   if (entry.level !== undefined) {

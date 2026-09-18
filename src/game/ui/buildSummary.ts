@@ -1,3 +1,9 @@
+import {
+  marineUpgrades,
+  describeMarineUpgrade,
+  type MarineGrowthState,
+  type MarineTraitId,
+} from "../data/marineGrowth";
 import { upgrades, type UpgradeRanks } from "../data/upgrades";
 import {
   weaponTraits,
@@ -121,4 +127,28 @@ export function recipeCondition(requires: RecipeRequirements) {
       (id) => `${magicLabels[id as keyof typeof magicLabels] ?? id} 장착`,
     ),
   ].join(" + ");
+}
+
+/** Active Marine ownership; Legacy entries remain available to their existing callers. */
+export function marineBuildSummary(
+  growth: MarineGrowthState,
+  relicLevels: RelicLevels,
+  ownedCores: ReadonlySet<CoreId>,
+): BuildIcon[] {
+  const items: BuildIcon[] = Object.values(marineUpgrades)
+    .filter((card) => (growth.ranks[card.id] ?? 0) > 0)
+    .map((card) => ({
+      id: card.id,
+      owner: card.owner,
+      group: card.category === "weapon-trait" ? "trait" : "upgrade",
+      title:
+        card.title +
+        (growth.legendary.has(card.id as MarineTraitId) ? " · 전설" : ""),
+      symbol:
+        card.symbol +
+        (growth.legendary.has(card.id as MarineTraitId) ? "★" : ""),
+      level: growth.ranks[card.id]!,
+      detail: describeMarineUpgrade(card.id, growth),
+    }));
+  return [...items, ...buildSummary({}, relicLevels, ownedCores)];
 }
