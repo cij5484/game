@@ -1,15 +1,15 @@
 # Prototype Technical Spec v0.1
 
-## Current implementation — Growth / HUD / Horde pass
+## Version notice — historical implementation notes
 
-Current source of truth: [GAME_GDD_v0.2.md](GAME_GDD_v0.2.md). GDD v0.1 remains preserved. Five gameplay minutes, Wall HP12000,300s clear/HP0 failure. Eight weapon traits, eight relics, five rare run-only cores. Initial100 enemies, thirteen encounters, cap130→300; spawn-time HP×1→1.10 and speed×1→1.02. Values are prototype tuning, not mobile performance guarantees.
+**Current design source of truth: [GAME_GDD_v0.3.md](GAME_GDD_v0.3.md).** v0.3 is a target architecture, not an implemented change. Current verified code differences are recorded in its [Current Implementation Gap](GAME_GDD_v0.3.md#18-current-implementation-gap). This technical document contains historical passes and superseded tuning; its older “Current” labels are scoped to their original pass and must not override v0.3. GDD v0.1/v0.2 remain preserved.
 
 Traits have three slots, expandable to four, and Lv1–5. Upgrade kind and rarity are independent: 기본 강화/무기 특성/마법 강화/보조 기술 강화 versus 일반/희귀/유니크/전설. Only 무기 특성 consumes weapon-trait slots. Rapid is removed; COMMON 기본 강화 attack-speed shortens round/recovery intervals while preserving three-round bursts. Base crit chance5%/multiplier1.75 are independent of the critical trait. Every trait level stores its own rarity: RARE at1/2/4 and EPIC at3/5. Korean rarity labels are 일반/희귀/유니크/전설; investment affects weights, without a guaranteed invested candidate slot.
 
 Player text is Korean-first; English IDs and data-owned content remain. Top Build Bar uses compact owned group/trait/relic/core icons and levels; pause shows detail. Bottom wall HUD presents HP/XP/time plus persistent Stim/Frost/Chain/Burst status in four slots. Desktop mouse chord/two-finger 스팀팩, safe-area, Portrait/Full-Bleed and logical coordinates remain. Circle/Z stabilization preserves coalesced and pointer-up samples, raises drawing timeout to5000ms while keeping Tap300ms, and supports Z alignment without changing Circle PCA/thresholds. Focused gesture checks pass38/38; this does not establish the cause of a real-device report. Selection and Pause stop gameplay/rhythm/effect clocks.
 
 > Project phase: Pre-production → Graybox Prototype  
-> Source of truth for implementation details: this file + `GAME_GDD_v0.2.md`
+> Historical implementation reference only. Future design decisions follow `GAME_GDD_v0.3.md`; consult the current code for implemented behavior.
 > Implementation environment: Codex app  
 > Prototype stack: Phaser + TypeScript + Vite  
 > Goal: validate combat fun and mobile viability before final art/audio or backend work.
@@ -788,7 +788,7 @@ When implementation begins:
 
 Current pass verification: `npm.cmd run check` passes29files/143tests, TypeScript and Vite production build. Focused gesture checks pass38/38. Existing500kB bundle warning remains (1291.06kB, gzip348.35kB). These checks do not establish real-device gesture reliability or180-enemy mobile performance.
 
-Current implementation follows GDD v0.2; user playtest determines fun, readability and mobile viability before merge.
+Historical pass note: implementation at that time followed GDD v0.2. New target design is GDD v0.3; no v0.3 gameplay work is included in this documentation pass.
 
 
 ### 추가 플레이테스트 조정
