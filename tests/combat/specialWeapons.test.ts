@@ -28,6 +28,71 @@ const context = (weapons: SpecialWeaponState[], enemies = [enemy(1)]) => ({
   focusId: null,
   random: () => 1,
 });
+it.each([
+  [weapon("grenade"), "Grenade"],
+  [weapon("grenade", { level: 10, tree: "tactical", branch: "a" }), "Grenade"],
+  [weapon("grenade", { level: 10, tree: "cluster", branch: "a" }), "Grenade"],
+  [weapon("missile"), "Missile"],
+  [weapon("drone"), "Drone"],
+  [weapon("drone", { level: 20, overclock: "cruiser" }), "Drone"],
+] as const)(
+  "reports actual %s damage without changing combat",
+  (special, source) => {
+    for (const target of [
+      enemy(1),
+      { ...enemy(1), shieldHp: 10000 },
+      { ...enemy(1), hp: 1 },
+    ]) {
+      const ctx = context([special], [target]);
+      const onDamage = vi.fn();
+      const observed = new SpecialWeapons().advance(2000, { ...ctx, onDamage });
+      expect(observed).toEqual(new SpecialWeapons().advance(2000, ctx));
+      expect(onDamage).toHaveBeenCalled();
+      let body = 0;
+      let shield = 0;
+      for (const [before, after, actualSource] of onDamage.mock.calls) {
+        expect(actualSource).toBe(source);
+        expect(
+          after.hp < before.hp ||
+            (after.shieldHp ?? 0) < (before.shieldHp ?? 0),
+        ).toBe(true);
+        body += before.hp - after.hp;
+        shield += (before.shieldHp ?? 0) - (after.shieldHp ?? 0);
+      }
+      expect(body).toBeCloseTo(target.hp - observed.enemies[0]!.hp);
+      expect(shield).toBeCloseTo(
+        (target.shieldHp ?? 0) - (observed.enemies[0]!.shieldHp ?? 0),
+      );
+    }
+  },
+);
+
+it("reports synchronized drone damage before impact and skips zero damage", () => {
+  const ctx = {
+    ...context([weapon("drone", { level: 20, overclock: "synchronization" })]),
+    relics: new Set<PrototypeRelicId>(["impact"]),
+    random: () => 0,
+  };
+  const onDamage = vi.fn();
+  const result = new SpecialWeapons().onPrimary(1, { ...ctx, onDamage });
+  expect(result).toEqual(new SpecialWeapons().onPrimary(1, ctx));
+  expect(onDamage).toHaveBeenCalled();
+  expect(onDamage.mock.calls[0]![2]).toBe("Drone");
+  expect(onDamage.mock.calls[0]![1].progress01).toBe(
+    ctx.enemies[0]!.progress01,
+  );
+  expect(result.enemies[0]!.progress01).toBeLessThan(
+    ctx.enemies[0]!.progress01,
+  );
+  onDamage.mockClear();
+  new SpecialWeapons().advance(2000, {
+    ...ctx,
+    enemies: [{ ...enemy(1), incomingDamageMultiplier: 0 }],
+    onDamage,
+  });
+  expect(onDamage).not.toHaveBeenCalled();
+});
+
 it("keeps input snapshots when specials are idle or projectiles only move", () => {
   const idle = new SpecialWeapons();
   const ctx = context([]);

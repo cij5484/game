@@ -1,3 +1,4 @@
+import type { BalanceTelemetry } from "../../src/game/dev/BalanceTelemetry";
 import {
   metaStore,
   MetaStore,
@@ -36,6 +37,8 @@ import { createSiegeBoss } from "../../src/game/enemies/siegeBoss";
 import { siegeBossBalance } from "../../src/game/data/boss";
 
 interface SceneHarness {
+  telemetry: BalanceTelemetry;
+  gameSpeed: 1 | 2 | 4;
   spawnBatch(): void;
   rifle: GaussRifle;
   synergies: PrototypeSynergies;
@@ -1047,4 +1050,53 @@ it("M12 primary action snapshots mod branches for the entire burst", () => {
   expect(started.growth.branches).toEqual({ burst: "a" });
   Object.assign(test.progression.branches, { burst: "b" });
   expect(started.growth.branches).toEqual({ burst: "a" });
+});
+
+it("telemetry observes actual Gauss loss once and X4 uses the same Stage clock", () => {
+  const normal = scene(),
+    fast = scene();
+  fast.gameSpeed = 4;
+  const startHp = normal.enemies.reduce(
+    (sum, entry) => sum + entry.state.hp,
+    0,
+  );
+  normal.update(0, 1000);
+  fast.update(0, 250);
+  const a = normal.telemetry.report()!,
+    b = fast.telemetry.report()!;
+  expect(a.metrics.stageMs).toBeCloseTo(1000);
+  expect(b.metrics).toEqual(a.metrics);
+  const damage =
+    startHp - normal.enemies.reduce((sum, entry) => sum + entry.state.hp, 0);
+  expect(a.metrics.sourceDps.Gauss * a.metrics.windowSeconds).toBeCloseTo(
+    damage,
+  );
+  expect(a.metrics.totalDps).toBe(a.metrics.sourceDps.Gauss);
+  normal.manualPaused = true;
+  normal.update(0, 10000);
+  expect(normal.telemetry.report()!.metrics).toEqual(a.metrics);
+});
+
+it("telemetry integrates wall pressure and first mod acquisitions without repeat upgrades", () => {
+  const test = scene();
+  test.enemies[0]!.state.progress01 = 1;
+  test.enemies[0]!.state.phase = "attacking";
+  test.update(0, 1000);
+  const report = test.telemetry.report()!;
+  expect(
+    (report.metrics.wallReachPerMin * report.metrics.windowSeconds) / 60,
+  ).toBe(1);
+  test.update(0, 1000);
+  const later = test.telemetry.report()!;
+  expect(
+    (later.metrics.wallReachPerMin * later.metrics.windowSeconds) / 60,
+  ).toBe(1);
+  expect(later.metrics.wallDamage).toBeGreaterThan(0);
+  test.progression.ranks.burst = 1;
+  test.refreshBuild();
+  test.progression.ranks.burst = 2;
+  test.refreshBuild();
+  expect(
+    test.telemetry.report()!.modEvents.filter((e) => e.id === "burst"),
+  ).toHaveLength(1);
 });

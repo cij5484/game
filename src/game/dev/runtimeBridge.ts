@@ -1,4 +1,5 @@
 import { balanceFields } from "./balanceFields";
+import { parseBalanceReport, type BalanceReport } from "./BalanceTelemetry";
 import {
   configureFields,
   getDefault,
@@ -14,6 +15,7 @@ export interface GameStatus {
   speed: number;
   level: number;
   appliedOverrides?: number;
+  telemetry?: BalanceReport;
   performance?: {
     fps: number;
     enemies: number;
@@ -168,6 +170,8 @@ export function startBalanceBridge(
       };
       const performance = readPerformance(message.performance);
       if (performance) status.performance = performance;
+      const telemetry = parseBalanceReport(message.telemetry);
+      if (telemetry) status.telemetry = telemetry;
       onStatus?.(status);
     }
   };

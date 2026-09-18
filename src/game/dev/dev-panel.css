@@ -153,6 +153,41 @@
   margin: 0;
   font-weight: 700;
 }
+.balance-telemetry {
+  border: 1px solid #599e88;
+  border-radius: 10px;
+  background: #132c2a;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+.balance-telemetry h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.balance-telemetry-status {
+  color: #a2d6bf;
+  font-size: 13px;
+}
+.balance-telemetry .balance-performance {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 10px 18px;
+}
+.balance-telemetry dd {
+  font-weight: 700;
+}
+.balance-telemetry details {
+  margin: 12px 0;
+}
+.balance-telemetry summary {
+  cursor: pointer;
+}
+.balance-telemetry-events {
+  padding-left: 22px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .balance-tabs {
   display: flex;
   gap: 8px;

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GameStatus } from "../../src/game/dev/runtimeBridge";
+import {
+  saveLastBalanceReport,
+  type BalanceReport,
+} from "../../src/game/dev/BalanceTelemetry";
 
 const state = vi.hoisted(() => ({
   values: {
@@ -391,6 +395,73 @@ it("shows read-only performance values and clears missing or disconnected measur
   expect(state.overrides).toEqual({});
 });
 
+const telemetryReport = (): BalanceReport => ({
+  version: 1,
+  result: "in-progress",
+  metrics: {
+    stageMs: 30000,
+    level: 4,
+    wallHp: 90,
+    wallMaxHp: 100,
+    wallPercent: 90,
+    enemies: 8,
+    avgEnemies: 6,
+    windowSeconds: 30,
+    totalDps: 15,
+    sourceDps: { Gauss: 5, Grenade: 4, Missile: 3, Drone: 2, Other: 1 },
+    kills: 30,
+    kpm: 60,
+    wallDamage: 10,
+    wallReachPerMin: 2,
+    lastEliteTtk: 2.5,
+    bossTtk: null,
+  },
+  build: ["점사 Lv1"],
+  eliteSamples: [2.5],
+  eliteSampleCount: 1,
+  eliteAverageTtk: 2.5,
+  modEvents: [
+    {
+      stageMs: 15000,
+      id: "burst",
+      name: "점사",
+      preDps: 10,
+      postDps: 15,
+      deltaPercent: 50,
+    },
+  ],
+  events: [{ stageMs: 15000, type: "mod", label: "점사 Lv1 획득" }],
+  snapshots: [],
+});
+
+it("renders stage-time telemetry, copies reports, and restores the last report without changing balance", async () => {
+  const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+  vi.stubGlobal("navigator", { clipboard });
+  const report = telemetryReport();
+  saveLastBalanceReport(report);
+  mountBalancePanel(new ElementStub() as unknown as HTMLElement);
+  expect(byId("balance-telemetry-dps").textContent).toBe("15.0");
+  state.status({ connected: true, speed: 4, level: 4, telemetry: report });
+  expect(byId("balance-telemetry-stage").textContent).toBe("0:30");
+  expect(byId("balance-telemetry-kpm").textContent).toBe("60.0");
+  expect(byId("balance-telemetry-boss").textContent).toBe("—");
+  expect(byId("balance-telemetry-events").children[0]!.textContent).toContain(
+    "10.0 → 15.0 (+50.0%)",
+  );
+  button("이번 Run 리포트 복사").click();
+  await Promise.resolve();
+  expect(clipboard.writeText).toHaveBeenLastCalledWith(
+    expect.stringContaining("Gauss"),
+  );
+  button("JSON 복사").click();
+  expect(JSON.parse(clipboard.writeText.mock.lastCall![0])).toEqual(report);
+  byId("balance-tab-detail").click();
+  expect(byId("balance-telemetry").hidden).toBe(true);
+  change("balance-category", "Performance / Debug");
+  expect(byId("balance-telemetry").hidden).toBe(false);
+  expect(state.overrides).toEqual({});
+});
+
 it("validates performance messages and keeps the one-second bridge cadence", async () => {
   vi.useFakeTimers();
   const { startBalanceBridge } = await vi.importActual<
@@ -427,6 +498,19 @@ it("validates performance messages and keeps the one-second bridge cadence", asy
   expect(onStatus).toHaveBeenLastCalledWith(
     expect.objectContaining({ performance }),
   );
+  channel.onmessage({
+    data: { type: "status", speed: 4, level: 4, telemetry: telemetryReport() },
+  });
+  expect(onStatus.mock.lastCall?.[0].telemetry).toEqual(telemetryReport());
+  channel.onmessage({
+    data: {
+      type: "status",
+      speed: 4,
+      level: 4,
+      telemetry: { version: 1, metrics: { totalDps: NaN } },
+    },
+  });
+  expect(onStatus.mock.lastCall?.[0].telemetry).toBeUndefined();
   for (const invalid of [
     undefined,
     null,
