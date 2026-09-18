@@ -213,7 +213,15 @@ export class BurstView {
   renderSpecialWeapons(
     weapons: readonly SpecialWeaponState[],
     entries: readonly BuildIcon[],
+    capacity = 2,
   ) {
+    const count = capacity >= 3 ? 3 : 2;
+    while (this.specialSlots.length < count) {
+      const slot = document.createElement("div");
+      this.specialSlots.at(-1)!.after(slot);
+      this.specialSlots.push(slot);
+    }
+    while (this.specialSlots.length > count) this.specialSlots.pop()!.remove();
     this.specialSlots.forEach((slot, index) => {
       const weapon = weapons[index];
       const data = weapon ? specialWeaponDefinitions[weapon.id] : undefined;
@@ -236,7 +244,10 @@ export class BurstView {
                 state: "empty",
                 title: `특수 ${index + 1}`,
                 symbol: "+",
-                detail: `해금됨 · 캐릭터 Lv${index === 0 ? 5 : 10}에 선택`,
+                detail:
+                  index === 2
+                    ? "무장 확장 코어로 해금"
+                    : `해금됨 · 캐릭터 Lv${index === 0 ? 5 : 10}에 선택`,
               },
           this.inspect,
         ),

@@ -4,9 +4,9 @@ import type { SpecialWeaponState } from "./specialWeapons";
 /** Prototype special-weapon tuning; spawn HP scaling lives in enemyScaling.ts. */
 export const specialWeaponBalance = {
   grenade: {
-    damage: 100,
-    cycleMs: 3600,
-    radius: 125,
+    damage: 65,
+    cycleMs: 7800, // 5.2 real seconds at base combat tempo 1.5, before growth.
+    radius: 110,
     damageCoefficient: 0.8,
     speedCoefficient: 0.55,
     critCoefficient: 0.8,

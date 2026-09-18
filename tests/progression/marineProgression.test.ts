@@ -56,7 +56,7 @@ describe("Marine M4 growth", () => {
       ),
     ).toBe(true);
     expect(Object.keys(p.traitLevels)).toHaveLength(3);
-    expect(p.expandTraitLimit()).toBe(false);
+    expect(p.traitLimit).toBe(3);
     expect(p.choose("frost-growth")).toBe(false);
     expect(p.choose("ricochet")).toBe(false);
     expect(p.choose(cards[0]!.id)).toBe(true);
@@ -196,7 +196,7 @@ describe("Marine M4 growth", () => {
   );
   it("preserves XP overflow and never exhausts uncapped growth", () => {
     const p = new MarineProgression(() => 0);
-    p.gainXp(22);
+    p.gainXp(23);
     expect(p.level).toBe(3);
     expect(p.xp).toBe(1);
     expect(p.pendingChoices).toBe(2);

@@ -10,6 +10,9 @@ import type {
 } from "../data/specialWeapons";
 import type { EnemyState } from "../enemies/enemySimulation";
 import { applyPrimaryDamage } from "./damage";
+import { highrollBalance, type PrototypeRelicId } from "../data/highroll";
+import { applyImpact, precisionBonus, startAction } from "./actionRelics";
+import type { PrototypeSynergies } from "./prototypeSynergies";
 
 type Point = { x: number; y: number };
 export interface SpecialEffect extends Point {
@@ -30,6 +33,8 @@ export interface SpecialContext {
   enemies: readonly EnemyState[];
   focusId: number | null;
   random?: () => number;
+  relics?: ReadonlySet<PrototypeRelicId>;
+  synergy?: PrototypeSynergies;
 }
 export interface SpecialResult {
   enemies: EnemyState[];
@@ -46,6 +51,7 @@ interface Grenade extends SpecialVisual {
   damage: number;
   radius: number;
   corrected: boolean;
+  extraSubmunitions: number;
 }
 interface Missile extends SpecialVisual {
   kind: "missile";
@@ -72,6 +78,7 @@ interface Area extends Point {
   bypass: number;
 }
 const origin = { x: combatGeometry.width / 2, y: combatGeometry.depth };
+const noRelics = new Set<PrototypeRelicId>();
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const complete = (w: SpecialWeaponState) => w.level >= 10;
 const branch = (w: SpecialWeaponState, id: string, path: "a" | "b") =>
@@ -157,8 +164,8 @@ export class SpecialWeapons {
           }
         }
       }
-      this.advanceAreas(step, result);
-      this.advanceGrenades(step, result);
+      this.advanceAreas(step, context, result);
+      this.advanceGrenades(step, context, result);
       this.advanceMissiles(step, context, result, indices);
       remaining -= step;
     } while (remaining > 0);
@@ -197,9 +204,44 @@ export class SpecialWeapons {
   }
 
   private critical(stats: Stats, context: SpecialContext) {
-    return (context.random ?? Math.random)() < stats.criticalChance
+    return (context.random ?? Math.random)() <
+      Math.min(
+        1,
+        stats.criticalChance + precisionBonus(context.relics ?? noRelics),
+      )
       ? tune.criticalMultiplier
       : 1;
+  }
+
+  private cycleMultiplier(context: SpecialContext) {
+    return context.relics?.has("loader")
+      ? highrollBalance.loaderCycleMultiplier
+      : 1;
+  }
+
+  private hit(
+    enemy: EnemyState,
+    damage: number,
+    bypass: number,
+    context: SpecialContext,
+    weapon: SpecialWeaponId,
+  ) {
+    const multiplier =
+      weapon === "grenade"
+        ? 1
+        : (context.synergy?.huntDamageMultiplier(enemy) ?? 1) *
+          (weapon === "drone"
+            ? (context.synergy?.killZoneDamageMultiplier(enemy) ?? 1)
+            : 1);
+    const next = applyPrimaryDamage(enemy, damage * multiplier, bypass);
+    if (next.hp < enemy.hp || (next.shieldHp ?? 0) < (enemy.shieldHp ?? 0))
+      context.synergy?.registerHits([enemy.id]);
+    return applyImpact(
+      [enemy],
+      [next],
+      context.relics ?? noRelics,
+      context.random,
+    )[0]!;
   }
 
   private target(
@@ -254,6 +296,7 @@ export class SpecialWeapons {
   ) {
     const points = this.denseAreas(result.enemies);
     if (!points.length) return;
+    const action = startAction(context.relics ?? noRelics, context.random);
     const barrage = weapon.overclock === "barrage",
       triple = weapon.overclock === "triple";
     const count = barrage
@@ -263,7 +306,9 @@ export class SpecialWeapons {
         : 1;
     const nuclear = weapon.overclock === "nuclear";
     this.cooldown.grenade =
-      stats.cycleMs * (nuclear ? grenadeTune.nuclear.cycle : 1);
+      stats.cycleMs *
+      (nuclear ? grenadeTune.nuclear.cycle : 1) *
+      this.cycleMultiplier(context);
     for (let i = 0; i < count; i++) {
       const anchor = points[i % points.length]!;
       const point =
@@ -287,6 +332,7 @@ export class SpecialWeapons {
         weapon: { ...weapon },
         damage:
           stats.damage *
+          action.damageMultiplier *
           this.critical(stats, context) *
           (nuclear
             ? grenadeTune.nuclear.damage
@@ -301,12 +347,17 @@ export class SpecialWeapons {
               ? grenadeTune.barrage.radius
               : 1),
         corrected: false,
+        extraSubmunitions: context.synergy?.grenadeExtraSubmunitions ?? 0,
         size: nuclear ? 1.6 : 1,
       });
     }
   }
 
-  private advanceGrenades(delta: number, result: SpecialResult) {
+  private advanceGrenades(
+    delta: number,
+    context: SpecialContext,
+    result: SpecialResult,
+  ) {
     this.grenades = this.grenades.filter((g) => {
       if (g.delay > 0) {
         g.delay -= delta;
@@ -333,12 +384,16 @@ export class SpecialWeapons {
       g.x = g.from.x + (g.target.x - g.from.x) * t;
       g.y = g.from.y + (g.target.y - g.from.y) * t;
       if (g.elapsed < tune.grenadeFlightMs) return true;
-      this.grenadeImpact(g, result);
+      this.grenadeImpact(g, context, result);
       return false;
     });
   }
 
-  private grenadeImpact(g: Grenade, result: SpecialResult) {
+  private grenadeImpact(
+    g: Grenade,
+    context: SpecialContext,
+    result: SpecialResult,
+  ) {
     const w = g.weapon,
       done = complete(w);
     let damage = g.damage,
@@ -364,9 +419,17 @@ export class SpecialWeapons {
           pull: grenadeTune.magnetic.pull,
           bypass: 0,
         },
+        context,
         result,
       );
     if (w.tree === "tactical") {
+      if (done && w.branch === "a")
+        context.synergy?.addZone(
+          g.target.x,
+          g.target.y,
+          radius * grenadeTune.tactical.radius,
+          grenadeTune.tactical.tickMs * grenadeTune.tactical.ticks[2],
+        );
       this.area(
         {
           ...g.target,
@@ -375,6 +438,7 @@ export class SpecialWeapons {
           pull: grenadeTune.tactical.pull,
           bypass: 0,
         },
+        context,
         result,
       );
       if (w.branch === "b") {
@@ -401,7 +465,11 @@ export class SpecialWeapons {
         });
       }
     } else {
-      this.area({ ...g.target, damage, radius, pull: 0, bypass: 0 }, result);
+      this.area(
+        { ...g.target, damage, radius, pull: 0, bypass: 0 },
+        context,
+        result,
+      );
       if (branch(w, "high-explosive", "b"))
         this.area(
           {
@@ -412,13 +480,16 @@ export class SpecialWeapons {
             pull: 0,
             bypass: grenadeTune.highExplosive.bypass[Number(done)]!,
           },
+          context,
           result,
         );
       if (w.tree === "cluster") {
         const heavy = w.branch === "b";
-        const count = heavy
-          ? grenadeTune.cluster.heavyCount
-          : grenadeTune.cluster.count[done ? 2 : w.branch ? 1 : 0];
+        const count =
+          (heavy
+            ? grenadeTune.cluster.heavyCount
+            : grenadeTune.cluster.count[done ? 2 : w.branch ? 1 : 0]) +
+          (done && w.branch === "a" ? g.extraSubmunitions : 0);
         for (let i = 0; i < count; i++) {
           const angle = (i * Math.PI * 2) / count;
           this.areas.push({
@@ -473,11 +544,15 @@ export class SpecialWeapons {
       });
   }
 
-  private advanceAreas(delta: number, result: SpecialResult) {
+  private advanceAreas(
+    delta: number,
+    context: SpecialContext,
+    result: SpecialResult,
+  ) {
     this.areas = this.areas.filter((area) => {
       area.delay -= delta;
       if (area.delay > 0) return true;
-      this.area(area, result);
+      this.area(area, context, result);
       area.ticks--;
       area.delay += area.interval;
       return area.ticks > 0;
@@ -491,6 +566,7 @@ export class SpecialWeapons {
       pull: number;
       bypass: number;
     },
+    context: SpecialContext,
     result: SpecialResult,
     weapon: SpecialWeaponId = "grenade",
   ) {
@@ -504,7 +580,7 @@ export class SpecialWeapons {
     result.enemies = result.enemies.map((enemy) => {
       if (enemy.hp <= 0 || distance(combatPosition(enemy), area) > area.radius)
         return enemy;
-      let next = applyPrimaryDamage(enemy, area.damage, area.bypass);
+      let next = this.hit(enemy, area.damage, area.bypass, context, weapon);
       if (area.pull) {
         const old = combatPosition(next);
         const x = Math.max(
@@ -536,16 +612,25 @@ export class SpecialWeapons {
     const saturation = weapon.tree === "saturation",
       network = weapon.overclock === "network";
     const spread = network || (saturation && weapon.branch !== "b");
-    const count = network
-      ? missileTune.network.count
-      : saturation
-        ? missileTune.saturation.count[
-            complete(weapon) ? 2 : weapon.branch ? 1 : 0
-          ]
-        : 1;
+    const count =
+      (network
+        ? missileTune.network.count
+        : saturation
+          ? missileTune.saturation.count[
+              complete(weapon) ? 2 : weapon.branch ? 1 : 0
+            ]
+          : 1) +
+      (branch(weapon, "saturation", "a") && complete(weapon)
+        ? (context.synergy?.missileExtraCount ?? 0)
+        : 0);
+    const action = startAction(context.relics ?? noRelics, context.random);
     const excluded = new Set<number>();
     for (let i = 0; i < count; i++) {
-      const target = this.target(result.enemies, context.focusId, excluded);
+      const target = this.target(
+        result.enemies,
+        context.focusId ?? context.synergy?.focusId ?? null,
+        excluded,
+      );
       if (!target) break;
       if (spread) excluded.add(target.id);
       this.missiles.push({
@@ -557,6 +642,7 @@ export class SpecialWeapons {
         weapon: { ...weapon },
         damage:
           stats.damage *
+          action.damageMultiplier *
           this.critical(stats, context) *
           (network
             ? missileTune.network.damage
@@ -589,7 +675,7 @@ export class SpecialWeapons {
         size: weapon.overclock === "hunting" ? 1.4 : 1,
       });
     }
-    this.cooldown.missile = stats.cycleMs;
+    this.cooldown.missile = stats.cycleMs * this.cycleMultiplier(context);
   }
 
   private advanceMissiles(
@@ -604,7 +690,11 @@ export class SpecialWeapons {
       let target = result.enemies[indices.get(missile.targetId) ?? -1];
       if (!target || target.hp <= 0) {
         if (missile.retargets <= 0) return false;
-        target = this.target(result.enemies, context.focusId, missile.hits);
+        target = this.target(
+          result.enemies,
+          context.focusId ?? context.synergy?.focusId ?? null,
+          missile.hits,
+        );
         if (!target) return false;
         missile.targetId = target.id;
         missile.retargets--;
@@ -645,10 +735,12 @@ export class SpecialWeapons {
         damage *=
           missileTune.hunting.damage +
           consecutive * missileTune.hunting.pressure;
-      const next = applyPrimaryDamage(
+      const next = this.hit(
         target,
         damage,
         w.tree === "hunter" ? missileTune.hunter.bypass : 0,
+        context,
+        "missile",
       );
       result.enemies[indices.get(target.id)!] = next;
       result.effects.push({
@@ -684,7 +776,7 @@ export class SpecialWeapons {
       if (next.hp <= 0 && missile.chains > 0) {
         const nextTarget = this.target(
           result.enemies,
-          context.focusId,
+          context.focusId ?? context.synergy?.focusId ?? null,
           missile.hits,
         );
         if (nextTarget) {
@@ -749,13 +841,21 @@ export class SpecialWeapons {
     const packTarget =
       branch(weapon, "squadron", "b") &&
       this.drones.some((drone) => drone.cooldown <= delta)
-        ? this.target(result.enemies, context.focusId)?.id
+        ? this.target(
+            result.enemies,
+            context.focusId ?? context.synergy?.focusId ?? null,
+          )?.id
         : undefined;
     for (const drone of this.drones) {
       drone.cooldown = Math.max(0, drone.cooldown - delta);
       if (drone.cooldown > 0) continue;
       const spread = weapon.tree === "squadron" && weapon.branch !== "b";
       const focus =
+        context.focusId ??
+        context.synergy?.focusId ??
+        (branch(weapon, "gunship", "a")
+          ? context.synergy?.preferredZoneTarget(result.enemies)
+          : null) ??
         packTarget ??
         (weapon.tree === "escort" ||
         weapon.transcendence === "combat-link" ||
@@ -774,7 +874,7 @@ export class SpecialWeapons {
       assigned.add(target.id);
       drone.targetId = target.id;
       this.droneHit(drone, target, weapon, stats, context, result, 1);
-      let cycle = stats.cycleMs;
+      let cycle = stats.cycleMs * this.cycleMultiplier(context);
       if (branch(weapon, "gunship", "a"))
         cycle *= droneTune.gunship.gatlingCycle[Number(complete(weapon))]!;
       if (branch(weapon, "gunship", "b"))
@@ -798,7 +898,12 @@ export class SpecialWeapons {
     result: SpecialResult,
     factor: number,
   ) {
-    let damage = stats.damage * factor * this.critical(stats, context);
+    const action = startAction(context.relics ?? noRelics, context.random);
+    let damage =
+      stats.damage *
+      factor *
+      action.damageMultiplier *
+      this.critical(stats, context);
     let bypass = 0;
     if (weapon.tree === "gunship") damage *= droneTune.gunship.damage;
     if (branch(weapon, "gunship", "b")) {
@@ -821,7 +926,7 @@ export class SpecialWeapons {
     }
     const point = combatPosition(target);
     const index = result.enemies.findIndex((e) => e.id === target.id);
-    result.enemies[index] = applyPrimaryDamage(target, damage, bypass);
+    result.enemies[index] = this.hit(target, damage, bypass, context, "drone");
     result.effects.push({
       kind: "shot",
       weapon: "drone",
@@ -839,6 +944,7 @@ export class SpecialWeapons {
           bypass,
           pull: 0,
         },
+        context,
         result,
         "drone",
       );

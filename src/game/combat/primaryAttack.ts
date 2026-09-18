@@ -45,6 +45,7 @@ export function primaryAttack(
     branches?: GrowthBranches;
     activeSynergyIds?: ReadonlySet<string>;
     targetDamageMultiplier?: (targetId: number) => number;
+    criticalChanceBonus?: number;
   } = {
     shotIndex: 1,
     random: Math.random,
@@ -273,7 +274,9 @@ export function primaryAttack(
         : rootIndex <= traits.multishotTargets
           ? traits.multishotDamageFactor
           : (storm?.rayDamageFactor ?? 1);
-    const critical = context.random() < stats.criticalChance;
+    const critical =
+      context.random() <
+      Math.min(1, stats.criticalChance + (context.criticalChanceBonus ?? 0));
     criticalHit(root, rootFactor, "direct", critical);
     if (hasSynergy("focused-bombardment")) {
       // The central blast reaches a new ring; auxiliary blasts stay deliberately smaller.

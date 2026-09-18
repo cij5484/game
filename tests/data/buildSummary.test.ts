@@ -1,5 +1,33 @@
 import { expect, it } from "vitest";
-import { buildSummary } from "../../src/game/ui/buildSummary";
+import {
+  buildSummary,
+  highrollBuildSummary,
+} from "../../src/game/ui/buildSummary";
+it("prototype relics cores and latched synergies are unlevelled global badges", () => {
+  const icons = highrollBuildSummary(
+    new Set(["capacitor", "reinforcement"]),
+    new Set(["armament"]),
+    new Set(["hunt"]),
+  );
+  expect(icons.map((icon) => icon.group)).toEqual([
+    "relic",
+    "relic",
+    "core",
+    "synergy",
+  ]);
+  expect(
+    icons.every(
+      (icon) =>
+        icon.owner === "global" &&
+        icon.level === undefined &&
+        icon.title &&
+        icon.detail &&
+        icon.symbol,
+    ),
+  ).toBe(true);
+  expect(icons.find((icon) => icon.id === "hunt")?.title).toBe("추적 섬멸망");
+  expect(highrollBuildSummary(new Set(), new Set(), new Set())).toEqual([]);
+});
 it("aggregates basic ranks and distinguishes chosen traits, relics and unlevelled cores", () => {
   const items = buildSummary(
     { "primary-damage": 3, "crit-chance": 2, penetration: 2 },

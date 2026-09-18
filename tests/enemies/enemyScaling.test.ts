@@ -6,10 +6,10 @@ import { advanceEnemy } from "../../src/game/enemies/enemySimulation";
 describe("spawn-time enemy growth", () => {
   it.each([
     [1, 1],
-    [10, 1.1755],
-    [20, 1.4655],
-    [40, 2.3455],
-    [60, 3.6255],
+    [10, 1.2448],
+    [20, 1.6688],
+    [40, 2.9968],
+    [60, 4.9648],
   ])(
     "applies character level %i to body and shield HP only at spawn",
     (level, multiplier) => {

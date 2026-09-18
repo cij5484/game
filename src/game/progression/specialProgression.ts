@@ -1,9 +1,21 @@
 import {
+  specialQualityIncrements,
   specialWeaponDefinitions,
   type SpecialOption,
   type SpecialWeaponId,
   type SpecialWeaponState,
 } from "../data/specialWeapons";
+import { promoteRarity } from "../data/highroll";
+import type { UpgradeRarity } from "../data/upgrades";
+
+export interface SpecialGrowthHistory {
+  weaponId: SpecialWeaponId;
+  levels: number;
+  appliedLevels: number;
+  originalRarity: UpgradeRarity;
+  rarity: UpgradeRarity;
+  amount: number;
+}
 
 export interface SpecialSelection {
   title: string;
@@ -17,7 +29,7 @@ type QueueEntry =
       kind: "growth";
       weaponId: SpecialWeaponId;
       levels: number;
-      quality: number;
+      history: SpecialGrowthHistory;
     }
   | {
       kind: Exclude<SpecialSelection["kind"], "acquire">;
@@ -26,11 +38,33 @@ type QueueEntry =
 
 export class SpecialProgression {
   readonly weapons: SpecialWeaponState[] = [];
+  readonly history: SpecialGrowthHistory[] = [];
+  capacity = 2;
+  private qualityLiberated = false;
   private readonly acquisitions = new Set<number>();
   private readonly queue: QueueEntry[] = [];
 
   get pending(): boolean {
     return this.queue.length > 0;
+  }
+
+  expandCapacity(): boolean {
+    if (this.capacity >= 3) return false;
+    this.capacity = 3;
+    this.queue.push({ kind: "acquire" });
+    return true;
+  }
+
+  liberateQuality(): void {
+    if (this.qualityLiberated) return;
+    this.qualityLiberated = true;
+    for (const entry of this.history) {
+      entry.rarity = promoteRarity(entry.originalRarity);
+      const amount = specialQualityIncrements[entry.rarity];
+      const weapon = this.weapons.find((w) => w.id === entry.weaponId)!;
+      weapon.quality += entry.appliedLevels * (amount - entry.amount);
+      entry.amount = amount;
+    }
   }
 
   acquireAtCharacterLevel(level: number): void {
@@ -47,6 +81,10 @@ export class SpecialProgression {
     id: SpecialWeaponId,
     levels: number,
     qualityPerLevel: number,
+    originalRarity: UpgradeRarity = (
+      Object.keys(specialQualityIncrements) as UpgradeRarity[]
+    ).find((rarity) => specialQualityIncrements[rarity] === qualityPerLevel) ??
+      "COMMON",
   ): void {
     if (
       !this.weapons.some((w) => w.id === id) ||
@@ -56,11 +94,25 @@ export class SpecialProgression {
       qualityPerLevel <= 0
     )
       return;
+    const rarity = this.qualityLiberated
+      ? promoteRarity(originalRarity)
+      : originalRarity;
+    const history: SpecialGrowthHistory = {
+      weaponId: id,
+      levels,
+      appliedLevels: 0,
+      originalRarity,
+      rarity,
+      amount: this.qualityLiberated
+        ? specialQualityIncrements[rarity]
+        : qualityPerLevel,
+    };
+    this.history.push(history);
     this.queue.push({
       kind: "growth",
       weaponId: id,
       levels,
-      quality: qualityPerLevel,
+      history,
     });
     this.applyGrowth();
   }
@@ -83,7 +135,8 @@ export class SpecialProgression {
         milestone ? milestone[0] - weapon.level : growth.levels,
       );
       weapon.level += levels;
-      weapon.quality += levels * growth.quality;
+      weapon.quality += levels * growth.history.amount;
+      growth.history.appliedLevels += levels;
       growth.levels -= levels;
       if (!growth.levels) this.queue.shift();
       if (milestone && weapon.level === milestone[0]) {
@@ -134,7 +187,7 @@ export class SpecialProgression {
     const selection = this.offer();
     if (!selection?.choices.some((c) => c.id === optionId)) return false;
     if (selection.kind === "acquire") {
-      if (this.weapons.length >= 2) return false;
+      if (this.weapons.length >= this.capacity) return false;
       this.weapons.push({
         id: optionId as SpecialWeaponId,
         level: 1,

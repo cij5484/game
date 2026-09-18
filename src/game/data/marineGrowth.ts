@@ -87,8 +87,8 @@ export const marineUpgrades: Record<MarineUpgradeId, MarineUpgradeDefinition> =
   };
 export const marineGrowthBalance = {
   initialXp: 8,
-  xpPerLevel: 4,
-  xpQuadratic: 0.35,
+  xpPerLevel: 5,
+  xpQuadratic: 0.5,
   choiceCount: 3,
   traitLimit: 3,
   investmentPerRank: 0.1,

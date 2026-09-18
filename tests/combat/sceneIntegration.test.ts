@@ -1,3 +1,5 @@
+import type { PrototypeSynergies } from "../../src/game/combat/prototypeSynergies";
+import { deriveMarineWeaponConfig } from "../../src/game/data/marineGrowth";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("phaser", () => ({ default: { Scene: class {} } }));
 import { CombatScene } from "../../src/game/scenes/CombatScene";
@@ -6,27 +8,26 @@ import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import type { GaussRifle } from "../../src/game/combat/gaussRifle";
 import type { MarineProgression as Progression } from "../../src/game/progression/marineProgression";
 import { SpawnDirector } from "../../src/game/waves/spawnDirector";
-import type {
-  RelicCombat,
-  EchoVolley,
-} from "../../src/game/combat/relicCombat";
 import type { Burst } from "../../src/game/combat/burst";
 import type { TargetFocus } from "../../src/game/combat/targeting";
 import type { Point } from "../../src/game/input/gestureRecognizer";
 import { Stimpack } from "../../src/game/combat/stimpack";
 import { stimpackBalance } from "../../src/game/data/balance";
-import type { Relics } from "../../src/game/progression/relics";
+import type { PrototypeRelics } from "../../src/game/progression/highroll";
+import type { SpecialWeapons } from "../../src/game/combat/specialWeapons";
 import type { RunState } from "../../src/game/model/runState";
 
 interface SceneHarness {
   spawnBatch(): void;
   rifle: GaussRifle;
-  relics: Relics;
+  synergies: PrototypeSynergies;
+  relics: PrototypeRelics;
+  specialWeapons: SpecialWeapons;
+  copiedAttacks: unknown[];
   refreshBuild(): void;
   burst: Burst;
   progression: Progression;
   director: SpawnDirector;
-  relicCombat: RelicCombat;
   stimpack: Stimpack;
   focus: TargetFocus;
   shotIndex: number;
@@ -39,16 +40,9 @@ interface SceneHarness {
     attackElapsedMs: number;
     visual: { destroy(): void };
   }[];
-  echoRounds: { dueMs: number; volley: EchoVolley }[];
   advanceWorld(deltaMs: number): number;
-  applyEnemyStates(
-    states: readonly EnemyState[],
-    chargeBurst?: boolean,
-    magicKill?: boolean,
-    allowRelicEnergy?: boolean,
-  ): void;
+  applyEnemyStates(states: readonly EnemyState[], chargeBurst?: boolean): void;
   takeWallDamage(damage: number): void;
-  fireEchoes(): void;
   update(time: number, deltaMs: number): void;
   focusAt(x: number, y: number): void;
   activateStim(): boolean;
@@ -138,7 +132,7 @@ it("scene fires without input and repeated focus taps cannot increase automatic 
   expect(spam.enemies.map((e) => e.state.hp)).toEqual(
     automatic.enemies.map((e) => e.state.hp),
   );
-  expect(spam.run.elapsedMs).toBe(999);
+  expect(spam.run.elapsedMs).toBeCloseTo(999);
 });
 it("focused target survives across shots, blank tap releases it and death resumes smart targeting", () => {
   const test = scene();
@@ -169,21 +163,18 @@ it.each([
   (_id, points) => {
     const test = scene(),
       control = scene();
-    const castHook = vi.spyOn(test.relicCombat, "onMagic");
-    const frostHook = vi.spyOn(test.relicCombat, "onPrimaryFrost");
     const before = test.enemies.map((e) => ({ ...e.state }));
     test.handleGesture(points, points);
     expect(test.enemies.map((e) => e.state)).toEqual(before);
     expect(test.kills).toBe(0);
     expect(test.progression.xp).toBe(0);
     expect(test).not.toHaveProperty("magic");
-    expect(castHook).not.toHaveBeenCalled();
+    expect(test).not.toHaveProperty("relicCombat");
     test.update(0, 800);
     control.update(0, 800);
     expect(test.enemies.map((e) => e.state)).toEqual(
       control.enemies.map((e) => e.state),
     );
-    expect(frostHook).not.toHaveBeenCalled();
   },
 );
 
@@ -234,36 +225,6 @@ it("choice and manual pause halt world, automatic rifle and ability clocks", () 
   test.update(0, 1000);
   expect(test.run.elapsedMs).toBe(before.world);
 });
-it("echo level-up before a pending shot pauses without consuming that shot or extra world time", () => {
-  const test = scene();
-  test.update(0, 0);
-  test.rifle.advance(790, noop);
-  test.progression.xp = test.progression.threshold - 1;
-  test.enemies[1]!.state.hp = 1;
-  test.echoRounds = [
-    {
-      dueMs: 5,
-      volley: {
-        targetId: 1,
-        ranks: {},
-        baseDamage: 1,
-        rounds: 1,
-        damageMultiplier: 1,
-      },
-    },
-  ];
-  Object.assign(test.director, { nextSpawnAtMs: 5 });
-  test.update(0, 16);
-  expect(test.progression.pendingChoices).toBe(1);
-  expect(test.run.elapsedMs).toBe(5);
-  expect(test.shotIndex).toBe(1);
-  test.progression.pendingChoices = 0;
-  Object.assign(test.director, { nextSpawnAtMs: 20000 });
-  test.update(0, 4);
-  expect(test.shotIndex).toBe(1);
-  test.update(0, 1);
-  expect(test.shotIndex).toBe(2);
-});
 it("recovery uses the exact continuous fire-rate integral across fractional boundaries", () => {
   const test = scene();
   test.stimpack = new Stimpack({
@@ -274,11 +235,11 @@ it("recovery uses the exact continuous fire-rate integral across fractional boun
   });
   test.stimpack.activate();
   test.stimpack.advance(30);
-  test.update(0, 2500);
+  test.update(0, 2500 / 1.5);
   // Recovery contributes500 weapon-ms; subsequent1500ms total2000ms => shots at0/800/1600.
   expect(test.shotIndex).toBe(3);
   expect(test.rifle.timeToEventMs).toBeCloseTo(400);
-  expect(test.run.elapsedMs).toBeCloseTo(2500);
+  expect(test.run.elapsedMs).toBeCloseTo(2500 / 1.5);
 });
 it("scene commits a kill reward once when external states are applied again", () => {
   const test = scene(),
@@ -293,90 +254,6 @@ it("scene commits a kill reward once when external states are applied again", ()
   expect(test.kills).toBe(1);
   expect(test.progression.xp).toBe(1);
 });
-it("scene echo rounds retarget, consume a bounded queue and never create new echoes", () => {
-  const test = scene();
-  test.relicCombat.setLevels({ "ammo-replicator": 5 });
-  const volley: EchoVolley = {
-    targetId: 1,
-    ranks: {},
-    baseDamage: 1,
-    rounds: 3,
-    damageMultiplier: 1,
-  };
-  test.echoRounds = Array.from({ length: 20 }, () => ({ dueMs: 0, volley }));
-  test.fireEchoes();
-  expect(test.echoRounds).toHaveLength(14);
-  expect(test.enemies[0]!.state.hp).toBe(10000);
-  expect(test.enemies[1]!.state.hp).toBe(9994);
-  expect(test.relicCombat.advance(1000)).toEqual([]);
-});
-it("ultimate kills salvage wall HP without refilling their own gauge through a relic", () => {
-  const test = scene();
-  test.relicCombat.setLevels({ "emergency-reclaimer": 5 });
-  test.run.wallHp = 100;
-  test.enemies[0]!.state.progress01 = 0.95;
-  test.applyEnemyStates(
-    test.enemies.map((e) => ({
-      ...e.state,
-      hp: e.state.id === 1 ? 0 : e.state.hp,
-    })),
-    false,
-    false,
-    false,
-  );
-  expect(test.run.wallHp).toBe(105);
-  expect(test.burst.gauge).toBe(0);
-});
-it("scene intercepts lethal wall damage before failure and consumes rescue once", () => {
-  const test = scene();
-  test.relicCombat.setLevels({ "emergency-reclaimer": 5 });
-  test.run.wallHp = 1;
-  test.enemies[0]!.state.progress01 = 1;
-  test.takeWallDamage(100);
-  expect(test.run.status).toBe("running");
-  expect(test.run.wallHp).toBe(1);
-  expect(test.enemies[0]!.state.progress01).toBeCloseTo(0.84);
-  test.relicCombat.advance(1200);
-  test.takeWallDamage(100);
-  expect(test.run.status).toBe("failed");
-});
-
-it("ultimate presentation crosses Stim boundaries before delayed echo kills and defers choices until it ends", () => {
-  const test = scene();
-  test.ultimateRemainingMs = 650;
-  test.stimpack.activate();
-  test.stimpack.advance(4999);
-  test.relicCombat.setLevels({ "adrenaline-pump": 5 });
-  test.progression.xp = test.progression.threshold - 1;
-  test.enemies[1]!.state.hp = 1;
-  test.echoRounds = [
-    {
-      dueMs: 8,
-      volley: {
-        targetId: 1,
-        ranks: {},
-        baseDamage: 1,
-        rounds: 1,
-        damageMultiplier: 1,
-      },
-    },
-  ];
-  test.update(0, 16);
-  expect(test.kills).toBe(1);
-  expect(test.stimpack.phase).toBe("crash");
-  expect(test.stimpack.timeToBoundaryMs).toBe(985);
-  expect(test.run.elapsedMs).toBe(16);
-  expect(test.ultimateRemainingMs).toBe(634);
-  expect(test.progression.pendingChoices).toBe(1);
-  test.update(0, 634);
-  expect(test.run.elapsedMs).toBe(650);
-  expect(test.ultimateRemainingMs).toBe(0);
-  expect(test.stimpack.timeToBoundaryMs).toBe(351);
-  expect(test.shotIndex).toBe(1);
-  test.update(0, 1000);
-  expect(test.run.elapsedMs).toBe(650);
-});
-
 it("ultimate visuals never suspend automatic fire, focus input, or ready abilities", () => {
   const ordinary = scene(),
     presenting = scene();
@@ -387,7 +264,7 @@ it("ultimate visuals never suspend automatic fire, focus input, or ready abiliti
   expect(presenting.enemies.map((e) => e.state.hp)).toEqual(
     ordinary.enemies.map((e) => e.state.hp),
   );
-  expect(presenting.ultimateRemainingMs).toBe(250);
+  expect(presenting.ultimateRemainingMs).toBe(50);
   presenting.focusAt(2, 0);
   expect(presenting.focus.targetId).toBe(2);
   expect(presenting.activateStim()).toBe(true);
@@ -404,9 +281,9 @@ it("waits outside range without consuming readiness, then fires once on entry", 
   test.enemies[0]!.state.progress01 = 0.55;
   test.update(0, 0);
   expect(test.shotIndex).toBe(1);
-  test.update(0, 799);
+  test.update(0, 799 / 1.5);
   expect(test.shotIndex).toBe(1);
-  test.update(0, 1);
+  test.update(0, 1 / 1.5);
   expect(test.shotIndex).toBe(2);
 });
 it("out-of-range focus blocks in-range auto fire until entry or blank tap", () => {
@@ -446,23 +323,8 @@ it("Marine offers no magic growth, keeps repeatable growth available while gaini
   expect(test.progression.level).toBeGreaterThan(100);
 });
 
-it("Marine reward growth excludes magic-only relics and exhausts without pausing forever", () => {
-  vi.spyOn(Math, "random").mockReturnValue(0.5);
-  const test = scene();
-  test.relics.expandCapacity();
-  for (let i = 0; i < 25; i++) {
-    test.relics.reward();
-    const cards = test.relics.offer();
-    expect(
-      cards.every((c) => c.id !== "time-gear" && c.id !== "frost-resonator"),
-    ).toBe(true);
-    if (cards[0]) test.relics.choose(cards[0].id);
-  }
-  expect(test.relics.pendingRewards).toBe(0);
-});
-
 it.each([0, 0.5, 0.999])(
-  "first normal Gauss shot starts in 3-5s at RNG %s without input",
+  "first normal Gauss shot starts in 2-3.4s at RNG %s without input",
   (random) => {
     const test = scene();
     test.director = new SpawnDirector(() => random);
@@ -471,9 +333,8 @@ it.each([0, 0.5, 0.999])(
     while (test.shotIndex === 0 && test.run.elapsedMs < 6000)
       test.update(0, 16);
     expect(test.shotIndex).toBe(1);
-    expect(test.run.elapsedMs).toBeGreaterThanOrEqual(3000);
-    expect(test.run.elapsedMs).toBeLessThanOrEqual(5000);
-    console.log(`First shot at ${test.run.elapsedMs}ms, random=${random}`);
+    expect(test.run.elapsedMs).toBeGreaterThanOrEqual(2000);
+    expect(test.run.elapsedMs).toBeLessThanOrEqual(3400);
   },
 );
 
@@ -517,7 +378,7 @@ it("scales gameplay once at update entry while pause and focus input remain unsc
   fast.manualPaused = true;
   fast.update(0, 1000);
   fast.focusAt(1, 0);
-  expect(fast.run.elapsedMs).toBe(800);
+  expect(fast.run.elapsedMs).toBeCloseTo(800);
   expect(fast.focus.targetId).toBeNull();
 });
 
@@ -555,4 +416,102 @@ it("X4 shares special projectile, cooldown and Stim clocks with ordinary simulat
   );
   expect(fast.stimpack.timeToBoundaryMs).toBe(normal.stimpack.timeToBoundaryMs);
   expect(fast.run).toEqual(normal.run);
+});
+
+it("M6 separates 1.5x combat time from the real-time Stage clock", () => {
+  const test = scene();
+  test.update(0, 1000);
+  expect(test.run.elapsedMs).toBeCloseTo(1000);
+  expect(test.director.elapsedMs).toBeCloseTo(1500);
+});
+
+it("M6 capacitor snapshots one roll across every Gauss burst round", () => {
+  const test = scene();
+  test.progression.ranks.burst = 3;
+  test.progression.quality.burst = 3;
+  test.relics.owned.add("capacitor");
+  test.refreshBuild();
+  vi.mocked(Math.random).mockReturnValue(1).mockReturnValueOnce(0);
+  test.update(0, 200);
+  expect(test.shotIndex).toBe(3);
+  const control = scene();
+  control.progression.ranks.burst = 3;
+  control.progression.quality.burst = 3;
+  control.refreshBuild();
+  control.update(0, 200);
+  expect(10000 - test.enemies[0]!.state.hp).toBeCloseTo(
+    2 * (10000 - control.enemies[0]!.state.hp),
+  );
+});
+it("M6 replicator copies the complete burst once and never recursively copies", () => {
+  const test = scene();
+  test.progression.ranks.burst = 3;
+  test.progression.quality.burst = 3;
+  test.relics.owned.add("replicator");
+  test.refreshBuild();
+  vi.mocked(Math.random).mockReturnValue(0);
+  test.update(0, 200);
+  expect(test.shotIndex).toBe(6);
+  const control = scene();
+  control.progression.ranks.burst = 3;
+  control.progression.quality.burst = 3;
+  control.refreshBuild();
+  control.update(0, 200);
+  expect(10000 - test.enemies[0]!.state.hp).toBeCloseTo(
+    2 * (10000 - control.enemies[0]!.state.hp),
+  );
+  expect(test.copiedAttacks).toHaveLength(0);
+});
+it("M6 reinforcement independently fires Gauss without duplicating special synchronization", () => {
+  const test = scene();
+  const sync = vi.spyOn(test.specialWeapons, "onPrimary");
+  test.update(0, 100);
+  expect(test.shotIndex).toBe(1);
+  test.relics.owned.add("reinforcement");
+  test.refreshBuild();
+  test.update(0, 0);
+  expect(test.shotIndex).toBe(2);
+  expect(sync).toHaveBeenCalledTimes(1);
+  test.update(0, 434);
+  expect(test.shotIndex).toBe(3);
+  expect(sync).toHaveBeenCalledTimes(2);
+});
+it("M6 core applies immediately, queues armament before relic reward, and commits the kill once", () => {
+  const test = scene();
+  test.enemies[0]!.state.elite = true;
+  vi.mocked(Math.random).mockReturnValue(0);
+  const states = test.enemies.map((e) => ({
+    ...e.state,
+    hp: e.state.id === 1 ? 0 : e.state.hp,
+  }));
+  test.applyEnemyStates(states);
+  expect(test.progression.core).toBe("armament");
+  expect(test.progression.special.capacity).toBe(3);
+  expect(test.progression.special.offer()?.kind).toBe("acquire");
+  expect(test.relics.pendingRewards).toBe(1);
+  test.applyEnemyStates(states);
+  expect(test.relics.pendingRewards).toBe(1);
+});
+it("M6 has no legacy lethal-damage rescue", () => {
+  const test = scene();
+  test.run.wallHp = 1;
+  test.takeWallDamage(100);
+  expect(test.run.status).toBe("failed");
+  expect(test.run.wallHp).toBe(0);
+});
+
+it("saturation increases even a capped Gauss burst without removing recovery", () => {
+  const test = scene();
+  test.progression.ranks.burst = 100;
+  test.progression.quality.burst = 100;
+  test.progression.legendary.add("burst");
+  test.progression.ranks["attack-speed"] = 100;
+  test.progression.quality["attack-speed"] = 100;
+  test.synergies.active.add("saturation");
+  test.synergies.registerHits(Array.from({ length: 8 }, (_, i) => i));
+  test.refreshBuild();
+  const config = deriveMarineWeaponConfig(test.progression.growth);
+  test.update(0, (config.shotIntervalMs - 100) / 1.5);
+  expect(test.shotIndex).toBe(10);
+  expect(test.rifle.timeToEventMs).toBeCloseTo(100);
 });

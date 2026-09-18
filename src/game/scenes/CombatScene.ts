@@ -15,18 +15,27 @@ import { recognizeGesture } from "../input/gestureRecognizer";
 import { recognizeUltimateGesture } from "../input/ultimateGesture";
 import type { Point } from "../input/gestureRecognizer";
 import { bindTapInput } from "../input/tapInput";
-import { resolveAttackTarget, TargetFocus } from "../combat/targeting";
+import { TargetFocus } from "../combat/targeting";
 import { primaryAttack } from "../combat/primaryAttack";
 import { MarineProgression } from "../progression/marineProgression";
-import { getMarineStats, deriveMarineWeaponConfig } from "../data/marineGrowth";
+import {
+  getMarineStats,
+  deriveMarineWeaponConfig,
+  marineGrowthBalance,
+} from "../data/marineGrowth";
 import { LevelUpView } from "../ui/LevelUpView";
-import { Relics } from "../progression/relics";
-import { Cores } from "../progression/cores";
-import { coreEffects } from "../data/cores";
+import { PrototypeRelics, PrototypeCores } from "../progression/highroll";
+import { prototypeRelics } from "../data/highroll";
+import { PrototypeSynergies } from "../combat/prototypeSynergies";
+import { prototypeSynergyDefinitions } from "../data/prototypeSynergies";
+import {
+  startAction,
+  precisionBonus,
+  applyImpact,
+} from "../combat/actionRelics";
+import type { MarineGrowthState } from "../data/marineGrowth";
 import { BuildBar } from "../ui/BuildBar";
-import { marineBuildSummary } from "../ui/buildSummary";
-import { relicBalance } from "../data/relics";
-import { RelicCombat, type EchoVolley } from "../combat/relicCombat";
+import { marineBuildSummary, highrollBuildSummary } from "../ui/buildSummary";
 import { PauseView } from "../ui/PauseView";
 import { enemyConfigs } from "../data/enemies";
 import { createPrototypeEnemy } from "../enemies/enemyFactory";
@@ -40,6 +49,18 @@ import { burstBalance } from "../data/burst";
 import { BurstView } from "../ui/BurstView";
 import { ResultView } from "../ui/ResultView";
 import { runBalance } from "../data/run";
+
+interface PrimaryAction {
+  growth: MarineGrowthState;
+  damageMultiplier: number;
+  criticalChanceBonus: number;
+  reinforcement: boolean;
+}
+interface CopiedAttack {
+  rifle: GaussRifle;
+  action: PrimaryAction;
+  rounds: number;
+}
 
 export class CombatScene extends Phaser.Scene {
   private run = createRunState(runBalance.wallMaxHp);
@@ -59,13 +80,15 @@ export class CombatScene extends Phaser.Scene {
   private stimpack = new Stimpack(stimpackBalance);
   private progression = new MarineProgression();
   private choices!: LevelUpView;
-  private relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
-  private relicCombat = new RelicCombat();
-  private cores = new Cores(["tactical-expansion", "resonance"]);
+  private relics = new PrototypeRelics();
+  private synergies = new PrototypeSynergies();
+  private companion: GaussRifle | null = null;
+  private primaryActions = new Map<GaussRifle, PrimaryAction>();
+  private copiedAttacks: CopiedAttack[] = [];
+  private cores = new PrototypeCores();
   private buildBar!: BuildBar;
   private shotIndex = 0;
   private focus = new TargetFocus();
-  private echoRounds: { dueMs: number; volley: EchoVolley }[] = [];
   private pauseUi!: PauseView;
   private manualPaused = false;
   private gameSpeed: 1 | 2 | 4 = 1;
@@ -80,7 +103,7 @@ export class CombatScene extends Phaser.Scene {
       this.ultimateRemainingMs === 0 &&
       (this.progression.special.pending ||
         this.progression.pendingChoices > 0 ||
-        this.relics.pendingRewards > 0)
+        this.relics.pending)
     );
   }
 
@@ -99,12 +122,14 @@ export class CombatScene extends Phaser.Scene {
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
     this.progression = new MarineProgression();
-    this.relics = new Relics(Math.random, ["time-gear", "frost-resonator"]);
-    this.relicCombat = new RelicCombat();
-    this.cores = new Cores(["tactical-expansion", "resonance"]);
+    this.relics = new PrototypeRelics();
+    this.synergies = new PrototypeSynergies();
+    this.companion = null;
+    this.primaryActions.clear();
+    this.copiedAttacks = [];
+    this.cores = new PrototypeCores();
     this.shotIndex = 0;
     this.focus = new TargetFocus();
-    this.echoRounds = [];
     this.manualPaused = false;
     this.gameSpeed = 1;
     this.evolutions = new Set();
@@ -112,6 +137,7 @@ export class CombatScene extends Phaser.Scene {
     this.burst = new Burst();
     this.ultimateRemainingMs = 0;
     this.time.paused = false;
+    this.time.timeScale = runBalance.combatTempo;
     this.choices = new LevelUpView();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
       this.choices.destroy(),
@@ -137,6 +163,7 @@ export class CombatScene extends Phaser.Scene {
       () => this.scene.restart(),
       (speed) => {
         this.gameSpeed = speed;
+        this.time.timeScale = speed * runBalance.combatTempo;
       },
     );
     const resizeBurst = () => {
@@ -192,12 +219,6 @@ export class CombatScene extends Phaser.Scene {
 
   private activateStim(): boolean {
     if (!this.canUseAbility || !this.stimpack.activate()) return false;
-    const effect = this.relicCombat.onStim();
-    this.run = {
-      ...this.run,
-      wallHp: Math.max(1, this.run.wallHp - effect.wallCost),
-    };
-
     this.renderBurst();
     this.renderAbilities();
     return true;
@@ -234,7 +255,14 @@ export class CombatScene extends Phaser.Scene {
         return entry ? [entry.visual] : [];
       }),
     );
-    this.applyEnemyStates(result.enemies, false, false, false);
+    this.applyEnemyStates(
+      applyImpact(
+        this.enemies.map((e) => e.state),
+        result.enemies,
+        this.relics.owned,
+      ),
+      false,
+    );
     this.renderBurst();
     this.renderAbilities();
     return true;
@@ -273,8 +301,9 @@ export class CombatScene extends Phaser.Scene {
   update(_time: number, deltaMs: number): void {
     if (this.run.status !== "running" || this.choosing || this.manualPaused)
       return;
-    // Sole gameplay speed owner. Input and presentation clocks stay in real time.
-    let remaining = Math.max(0, deltaMs) * this.gameSpeed;
+    // Sole combat tempo owner. Stage time removes base tempo; developer speed affects both.
+    let remaining =
+      Math.max(0, deltaMs) * this.gameSpeed * runBalance.combatTempo;
     do {
       const presenting = this.ultimateRemainingMs > 0;
       const step = Math.min(
@@ -307,6 +336,11 @@ export class CombatScene extends Phaser.Scene {
 
   private renderCombat(): void {
     this.view.renderSpecialWeapons(this.specialWeapons.visuals);
+    this.view.renderHighroll(
+      this.synergies.visuals,
+      this.companion !== null,
+      this.enemies,
+    );
     this.finishRun();
     this.pauseUi.setBlocked(this.run.status !== "running" || this.choosing);
     this.renderBurst();
@@ -347,58 +381,109 @@ export class CombatScene extends Phaser.Scene {
         specialWeapons: this.progression.special.weapons,
         branches: this.progression.branches,
         activeSynergyIds: this.progression.activeSynergyIds,
-        relics: this.relics.levels,
+        relics: {},
         traitLimit: this.progression.traitLimit,
-        cores: this.cores.owned,
+        cores: new Set(),
+        highroll: highrollBuildSummary(
+          this.relics.owned,
+          this.cores.owned,
+          this.synergies.active,
+        ),
         evolutions: this.evolutions,
       },
       () => this.scene.restart(),
     );
   }
 
-  private advanceCombat(deltaMs: number): number {
-    // Keep a ready weapon ready while waiting for range/focus; world movement still advances.
-    if (
-      this.rifle.timeToEventMs === 0 &&
-      !this.focus.resolve(
-        this.enemies.map((entry) => entry.state),
-        getMarineStats(this.progression.growth).minTargetProgress01,
-      )
-    )
-      return this.advanceWorld(deltaMs);
-    const speed = this.relicCombat.primaryModifiersFor(
-      this.run.wallHp / runBalance.wallMaxHp,
-      this.stimpack.phase === "boost",
-    ).attackSpeedMultiplier;
-    const untilRound = this.stimpack.realTimeFor(
-      this.rifle.timeToEventMs / speed,
+  private primaryTarget(): EnemyState | null {
+    const enemies = this.enemies.map((e) => e.state);
+    const range = getMarineStats(this.progression.growth).minTargetProgress01;
+    const automatic = this.focus.resolve(enemies, range);
+    if (this.focus.targetId !== null) return automatic;
+    const marked = enemies.find(
+      (e) =>
+        e.id === this.synergies.focusId && e.hp > 0 && e.progress01 >= range,
     );
-    const step = Math.min(deltaMs, untilRound);
-    const consumed = this.advanceWorld(step);
-    // Delayed strikes or echoes can open a choice before the firing endpoint.
-    const weaponElapsed =
-      consumed === untilRound
-        ? this.rifle.timeToEventMs
-        : Math.min(
-            this.rifle.timeToEventMs,
-            this.stimpack.weaponTimeFor(consumed) * speed,
-          );
-    this.rifle.advance(weaponElapsed, () => {}, false);
+    return marked ?? automatic;
+  }
+
+  private advanceCombat(deltaMs: number): number {
+    const rifles = [
+      this.rifle,
+      ...(this.companion ? [this.companion] : []),
+      ...this.copiedAttacks.map((copy) => copy.rifle),
+    ];
+    const target = this.primaryTarget();
+    const untilRound = Math.min(
+      ...rifles.map((rifle) =>
+        rifle.timeToEventMs === 0 && !target
+          ? Infinity
+          : this.stimpack.realTimeFor(rifle.timeToEventMs),
+      ),
+    );
+    const consumed = this.advanceWorld(Math.min(deltaMs, untilRound));
+    for (const rifle of rifles) {
+      const elapsed = Math.min(
+        rifle.timeToEventMs,
+        this.stimpack.weaponTimeFor(consumed),
+      );
+      rifle.advance(elapsed, () => {}, false);
+    }
     if (
-      !this.choosing &&
-      this.run.status === "running" &&
-      !(
-        this.stimpack.phase === "boost" &&
-        consumed === this.stimpack.timeToBoundaryMs
-      )
-    ) {
-      if (
-        this.focus.resolve(
-          this.enemies.map((entry) => entry.state),
-          getMarineStats(this.progression.growth).minTargetProgress01,
-        )
-      )
-        this.rifle.advance(0, () => this.firePrimary());
+      this.choosing ||
+      this.run.status !== "running" ||
+      (this.stimpack.phase === "boost" &&
+        consumed === this.stimpack.timeToBoundaryMs)
+    )
+      return consumed;
+    for (const rifle of rifles) {
+      if (rifle.timeToEventMs > 0 || !this.primaryTarget()) continue;
+      const copy = this.copiedAttacks.find(
+        (pending) => pending.rifle === rifle,
+      );
+      if (!copy && rifle.startsAttack) {
+        const growth = this.progression.growth;
+        const config = deriveMarineWeaponConfig(growth);
+        const baseRounds = config.burstRounds ?? 1;
+        config.burstRounds = baseRounds + this.synergies.extraBurstRounds;
+        if (config.burstRounds > baseRounds) {
+          // Fit extra rounds inside the existing cycle, retaining the recovery floor.
+          config.roundIntervalMs = Math.max(
+            1,
+            Math.min(
+              config.roundIntervalMs!,
+              (config.shotIntervalMs - marineGrowthBalance.minimumRecoveryMs) /
+                (config.burstRounds - 1),
+            ),
+          );
+        }
+        rifle.setConfig(config);
+        const roll = startAction(this.relics.owned, Math.random, {
+          basic: true,
+        });
+        const action: PrimaryAction = {
+          growth: {
+            ranks: { ...growth.ranks },
+            quality: { ...growth.quality },
+            legendary: new Set(growth.legendary),
+          },
+          damageMultiplier: roll.damageMultiplier,
+          criticalChanceBonus: precisionBonus(this.relics.owned),
+          reinforcement: rifle === this.companion,
+        };
+        this.primaryActions.set(rifle, action);
+        if (roll.repeat)
+          this.copiedAttacks.push({
+            rifle: new GaussRifle(config),
+            action,
+            rounds: config.burstRounds,
+          });
+      }
+      const action = copy?.action ?? this.primaryActions.get(rifle)!;
+      rifle.advance(0, () => this.firePrimary(action, !!copy));
+      if (copy && --copy.rounds === 0)
+        this.copiedAttacks.splice(this.copiedAttacks.indexOf(copy), 1);
+      if (this.choosing || this.run.status !== "running") break;
     }
     return consumed;
   }
@@ -410,104 +495,73 @@ export class CombatScene extends Phaser.Scene {
     });
   }
 
-  private firePrimary(): void | boolean {
+  private firePrimary(action: PrimaryAction, copied: boolean): void {
     this.refreshProtection();
-    const target = this.focus.resolve(
-      this.enemies.map((entry) => entry.state),
-      getMarineStats(this.progression.growth).minTargetProgress01,
-    );
+    const target = this.primaryTarget();
     this.view.setFocus(this.focus.targetId);
-    if (target) {
-      this.shotIndex++;
-      if (this.shotIndex % relicBalance.echoCycleShots === 0)
-        this.relicCombat.onVolley({
-          targetId: target.id,
-          ranks: this.progression.ranks,
-          growth: this.progression.growth,
-          branches: this.progression.branches,
-          activeSynergyIds: this.progression.activeSynergyIds,
-          baseDamage:
-            gaussRifleBalance.damagePerRound *
-            marineConfig.baseStats.damageMultiplier,
-          rounds: relicBalance.echoCycleShots,
-        });
-      const result = primaryAttack(
-        target,
-        this.enemies.map((entry) => entry.state),
-        this.progression.ranks,
-        gaussRifleBalance.damagePerRound *
-          marineConfig.baseStats.damageMultiplier *
-          this.stimpack.primaryDamageMultiplier,
-        this.relicCombat.primaryModifiersFor(
-          this.run.wallHp / runBalance.wallMaxHp,
-          this.stimpack.phase === "boost",
-        ),
-        [...this.evolutions],
-        {
-          growth: this.progression.growth,
-          branches: this.progression.branches,
-          activeSynergyIds: this.progression.activeSynergyIds,
-          minTargetProgress01: getMarineStats(this.progression.growth)
-            .minTargetProgress01,
-          targetDamageMultiplier: (id) =>
-            this.specialWeapons.gaussDamageMultiplier(id),
-          shotIndex: this.shotIndex,
-          random: Math.random,
-          synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
+    if (!target) return;
+    this.shotIndex++;
+    const before = this.enemies.map((entry) => entry.state);
+    const result = primaryAttack(
+      target,
+      before,
+      action.growth.ranks,
+      gaussRifleBalance.damagePerRound *
+        marineConfig.baseStats.damageMultiplier *
+        this.stimpack.primaryDamageMultiplier,
+      { damageMultiplier: action.damageMultiplier },
+      [],
+      {
+        growth: action.growth,
+        minTargetProgress01: getMarineStats(this.progression.growth)
+          .minTargetProgress01,
+        criticalChanceBonus: action.criticalChanceBonus,
+        targetDamageMultiplier: (id) => {
+          const enemy = before.find((e) => e.id === id);
+          return (
+            this.specialWeapons.gaussDamageMultiplier(id) *
+            (enemy ? this.synergies.targetMultiplier(enemy) : 1)
+          );
         },
-      );
-      this.view.showPrimary(
-        [...result.hitIds, ...result.splashIds].map(
-          (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
-        ),
-        result.ricochetIds,
-        [...result.hitIds, ...result.splashIds],
-        this.progression.legendary.has("penetration") ||
-          (this.progression.ranks.heavy ?? 0) > 0,
-        result.splashIds,
-        result.shotTargetIds,
-        result.criticalIds,
-        result.explosionIds,
-      );
-      const relicResult = this.relicCombat.afterPrimary(
-        result.enemies,
-        result.hitIds,
-        result.criticalIds.length > 0,
-      );
-      if (relicResult.hitIds.length)
-        this.view.showMagic(
-          "chain-lightning",
-          relicResult.hitIds.map(
-            (id) => this.enemies.find((entry) => entry.state.id === id)!.visual,
-          ),
-        );
-
-      // Drone synchronization is part of this attack transaction, never a recursive primary.
+        shotIndex: this.shotIndex,
+        random: Math.random,
+      },
+    );
+    this.view.showPrimary(
+      [...result.hitIds, ...result.splashIds].flatMap((id) => {
+        const enemy = this.enemies.find((entry) => entry.state.id === id);
+        return enemy ? [enemy.visual] : [];
+      }),
+      result.ricochetIds,
+      [...result.hitIds, ...result.splashIds],
+      action.damageMultiplier > 1 || (action.growth.ranks.heavy ?? 0) > 0,
+      result.splashIds,
+      result.shotTargetIds,
+      result.criticalIds,
+      result.explosionIds,
+      copied,
+      action.reinforcement,
+    );
+    const states = applyImpact(before, result.enemies, this.relics.owned);
+    // Extra Marines and copied attacks repeat only Gauss; never duplicate special-weapon actions.
+    if (action.reinforcement || copied) this.applyEnemyStates(states);
+    else {
       const synchronized = this.specialWeapons.onPrimary(target.id, {
         ...this.specialContext(),
-        enemies: relicResult.enemies,
+        enemies: states,
       });
       this.view.showSpecialEffects(synchronized.effects);
       this.applyEnemyStates(synchronized.enemies);
-      if (this.choosing) return false;
-    } else
-      this.relicCombat.afterPrimary(
-        this.enemies.map((entry) => entry.state),
-        [],
-        false,
-      );
+    }
   }
 
   private applyEnemyStates(
     states: readonly EnemyState[],
     chargeBurst = true,
-    _magicKill = false,
-    allowRelicEnergy = true,
   ): void {
     const byId = new Map(states.map((enemy) => [enemy.id, enemy]));
     let buildChanged = false;
     let xp = 0;
-    let nearWallKills = 0;
     let hits = 0;
     let kills = 0;
     let eliteKills = 0;
@@ -515,26 +569,21 @@ export class CombatScene extends Phaser.Scene {
       const oldHp = entry.state.hp;
       const oldShield = entry.state.shieldHp ?? 0;
       entry.state = byId.get(entry.state.id)!;
-      if (entry.state.hp < oldHp || (entry.state.shieldHp ?? 0) < oldShield)
+      if (entry.state.hp < oldHp || (entry.state.shieldHp ?? 0) < oldShield) {
         hits++;
+        this.synergies.registerHits([entry.state.id]);
+      }
       if (entry.state.hp <= 0) {
         kills++;
         xp += enemyConfigs[entry.state.kind].xpOnKill;
-        if (entry.state.progress01 >= relicBalance.nearWallProgress)
-          nearWallKills++;
         if (entry.state.elite) {
-          const core = this.cores.tryDrop();
+          const core = this.cores.tryDrop(this.progression.validCoreIds);
           if (core) {
-            if (core.id === "relic-expansion") {
-              this.relics.expandCapacity();
-              this.relics.reward();
-            }
-            if (core.id === "choice-expansion")
-              this.progression.expandChoices();
+            this.progression.applyCore(core.id);
             this.notices.push(`${core.title}\n${core.description}`);
             buildChanged = true;
           }
-          this.relics.reward();
+          this.relics.onElite();
           eliteKills++;
         }
         entry.visual.destroy();
@@ -545,26 +594,10 @@ export class CombatScene extends Phaser.Scene {
     this.focus.resolve(this.enemies.map((e) => e.state));
     this.view.setFocus(this.focus.targetId);
     this.kills += kills;
-    const reward = this.relicCombat.onKills(kills, {
-      frost: false,
-      boost: this.stimpack.phase === "boost",
-      magic: false,
-      nearWallKills,
-    });
-    this.run = {
-      ...this.run,
-      wallHp: Math.min(
-        runBalance.wallMaxHp,
-        this.run.wallHp + reward.wallHealing,
-      ),
-    };
-    this.stimpack.extendBoost(
-      reward.boostExtensionMs,
-      reward.boostExtensionCapMs,
-      reward.recoveryCostRatio,
+    this.synergies.advance(
+      0,
+      this.enemies.map((e) => e.state),
     );
-    if (allowRelicEnergy)
-      this.burst.credit({ hits: reward.energy / burstBalance.charge.hits });
     if (buildChanged) this.refreshBuild();
     this.progression.gainXp(xp);
     if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
@@ -593,10 +626,24 @@ export class CombatScene extends Phaser.Scene {
       });
       return;
     }
+    if (this.relics.pendingReplacement) {
+      this.time.paused = true;
+      this.choices.showRelicReplacement(
+        prototypeRelics[this.relics.pendingReplacement],
+        [...this.relics.owned].map((id) => prototypeRelics[id]),
+        (id) => {
+          if (this.relics.replace(id)) this.applyBuildChoice();
+        },
+        () => {
+          if (this.relics.skip()) this.applyBuildChoice();
+        },
+      );
+      return;
+    }
     const relicOffer = this.relics.offer();
     if (relicOffer.length) {
       this.time.paused = true;
-      this.choices.showRelics(relicOffer, this.relics.levels, (id) => {
+      this.choices.showPrototypeRelics(relicOffer, (id) => {
         if (this.relics.choose(id)) this.applyBuildChoice();
       });
       return;
@@ -638,144 +685,59 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private refreshBuild(): void {
-    this.relicCombat.setLevels(this.relics.levels);
+    if (this.relics.owned.has("reinforcement"))
+      this.companion ??= new GaussRifle(
+        deriveMarineWeaponConfig(this.progression.growth),
+      );
+    else this.companion = null;
+    for (const id of this.synergies.updateBuild(
+      this.progression.growth,
+      this.progression.special.weapons,
+    ))
+      this.notices.push(
+        `시너지 활성화 · ${prototypeSynergyDefinitions[id].title}`,
+      );
+    this.synergies.advance(
+      0,
+      this.enemies.map((e) => e.state),
+    );
     this.rifle.setConfig(deriveMarineWeaponConfig(this.progression.growth));
 
     this.stimpack.setUpgrades(
       this.progression.ranks,
       this.progression.branches,
     );
-    const summary = marineBuildSummary(
-      this.progression.growth,
-      this.relics.levels,
-      this.cores.owned,
-      this.progression.special.weapons,
-    );
+    const summary = [
+      ...marineBuildSummary(
+        this.progression.growth,
+        {},
+        new Set(),
+        this.progression.special.weapons,
+      ),
+      ...highrollBuildSummary(
+        this.relics.owned,
+        this.cores.owned,
+        this.synergies.active,
+      ),
+    ];
     this.buildBar.render(summary);
     this.burstUi.renderBuild(summary);
     this.burstUi.renderSpecialWeapons(
       this.progression.special.weapons,
       summary,
+      this.progression.special.capacity,
     );
     this.pauseUi.setBuildDetails(summary);
   }
 
-  private showStatusImpacts(
-    kind: "lightning" | "frost" | "emergency",
-    ids: readonly number[],
-  ): void {
-    this.view.showImpacts(
-      kind,
-      ids.slice(0, 12).flatMap((id) => {
-        const entry = this.enemies.find((e) => e.state.id === id);
-        return entry ? [entry.visual] : [];
-      }),
-    );
-  }
-
   private takeWallDamage(damage: number): void {
     if (damage <= 0 || this.run.status !== "running") return;
-    const result = this.relicCombat.onWallDamage(
-      this.run.wallHp,
-      runBalance.wallMaxHp,
-      damage,
-    );
+    const wallHp = Math.max(0, this.run.wallHp - damage);
     this.run = {
       ...this.run,
-      wallHp: result.wallHp,
-      status: result.wallHp > 0 ? "running" : "failed",
+      wallHp,
+      status: wallHp > 0 ? "running" : "failed",
     };
-    if (!result.event) return;
-
-    const pushed = this.enemies
-      .filter(
-        (e) =>
-          e.state.hp > 0 && e.state.progress01 >= relicBalance.nearWallProgress,
-      )
-      .sort((a, b) => b.state.progress01 - a.state.progress01)
-      .slice(0, 24);
-    for (const entry of pushed) {
-      entry.state = {
-        ...entry.state,
-        progress01: Math.max(
-          0,
-          entry.state.progress01 -
-            result.pushback * (entry.state.elite ? 0.5 : 1),
-        ),
-        phase: "moving",
-      };
-      entry.attackElapsedMs = 0;
-    }
-    this.showStatusImpacts(
-      "emergency",
-      pushed.map((e) => e.state.id),
-    );
-    this.view.showNotice(
-      result.event === "emergency"
-        ? "긴급 회수 장치 · 치명 피해 방어!"
-        : "최후의 보루 · 비상 방어 발동!",
-    );
-  }
-
-  private fireEchoes(): void {
-    // Each round is a single primary transaction. It cannot enter relic hooks or queue another echo.
-    const due = this.echoRounds
-      .filter((e) => e.dueMs <= this.run.elapsedMs)
-      .slice(0, 6);
-    if (!due.length) return;
-    this.refreshProtection();
-    for (const pending of due) {
-      this.echoRounds.splice(this.echoRounds.indexOf(pending), 1);
-      const candidates = this.enemies
-        .map((e) => e.state)
-        .filter((e) => e.id !== pending.volley.targetId);
-      const target = resolveAttackTarget(
-        null,
-        candidates,
-        getMarineStats(this.progression.growth).minTargetProgress01,
-      );
-      if (!target) continue;
-      const result = primaryAttack(
-        target,
-        this.enemies.map((e) => e.state),
-        pending.volley.ranks,
-        pending.volley.baseDamage,
-        { damageMultiplier: pending.volley.damageMultiplier },
-        [],
-        {
-          growth: pending.volley.growth ?? {
-            ranks: pending.volley.ranks,
-            quality: {},
-            legendary: new Set(),
-          },
-          branches: pending.volley.branches ?? {},
-          activeSynergyIds: pending.volley.activeSynergyIds ?? new Set(),
-          minTargetProgress01: getMarineStats(this.progression.growth)
-            .minTargetProgress01,
-          targetDamageMultiplier: (id) =>
-            this.specialWeapons.gaussDamageMultiplier(id),
-          shotIndex: this.shotIndex,
-          random: Math.random,
-          synergyMultiplier: coreEffects(this.cores.owned).synergyMultiplier,
-        },
-      );
-      this.view.showPrimary(
-        [...result.hitIds, ...result.splashIds].flatMap((id) => {
-          const enemy = this.enemies.find((e) => e.state.id === id);
-          return enemy ? [enemy.visual] : [];
-        }),
-        result.ricochetIds,
-        [...result.hitIds, ...result.splashIds],
-        false,
-        result.splashIds,
-        result.shotTargetIds,
-        result.criticalIds,
-        result.explosionIds,
-        true,
-      );
-      this.applyEnemyStates(result.enemies, false);
-      if (this.choosing || this.run.status !== "running") break;
-    }
   }
 
   private specialContext() {
@@ -785,6 +747,8 @@ export class CombatScene extends Phaser.Scene {
       enemies: this.enemies.map((e) => e.state),
       focusId: this.focus.targetId,
       random: Math.random,
+      relics: this.relics.owned,
+      synergy: this.synergies,
     };
   }
 
@@ -796,7 +760,7 @@ export class CombatScene extends Phaser.Scene {
         remaining,
         16,
         this.director.timeToSpawnMs,
-        runBalance.durationMs - this.run.elapsedMs,
+        (runBalance.durationMs - this.run.elapsedMs) * runBalance.combatTempo,
       );
       this.refreshProtection();
       for (const entry of this.enemies) {
@@ -820,18 +784,18 @@ export class CombatScene extends Phaser.Scene {
         this.view.renderEnemy(entry.visual, entry.state, false);
         if (this.run.status !== "running") break;
       }
-      const echoes = this.relicCombat.advance(step);
-      for (const volley of echoes) {
-        for (let i = 0; i < volley.rounds && this.echoRounds.length < 24; i++)
-          this.echoRounds.push({
-            dueMs: this.run.elapsedMs + step + i * 40,
-            volley,
-          });
-      }
       this.director.advance(step);
+      this.synergies.advance(
+        step,
+        this.enemies.map((e) => e.state),
+      );
 
       this.burst.advanceCharge(step);
-      this.run = advanceRun(this.run, step, runBalance.durationMs);
+      this.run = advanceRun(
+        this.run,
+        step / runBalance.combatTempo,
+        runBalance.durationMs,
+      );
       remaining -= step;
       if (
         this.run.status === "running" &&
@@ -846,7 +810,6 @@ export class CombatScene extends Phaser.Scene {
         )
           this.applyEnemyStates(result.enemies);
       }
-      if (this.run.status === "running" && !this.choosing) this.fireEchoes();
       if (this.choosing) break;
       if (this.run.status === "running" && this.director.timeToSpawnMs <= 0) {
         this.spawnBatch();

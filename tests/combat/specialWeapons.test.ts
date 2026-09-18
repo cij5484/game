@@ -1,10 +1,12 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { SpecialWeapons } from "../../src/game/combat/specialWeapons";
 import { getSpecialWeaponStats } from "../../src/game/data/specialWeaponBalance";
 import type { SpecialWeaponState } from "../../src/game/data/specialWeapons";
 import type { MarineGrowthState } from "../../src/game/data/marineGrowth";
 import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { combatPosition } from "../../src/game/battlefield/combatGeometry";
+import type { PrototypeRelicId } from "../../src/game/data/highroll";
+import { PrototypeSynergies } from "../../src/game/combat/prototypeSynergies";
 const growth: MarineGrowthState = {
   ranks: {},
   quality: {},
@@ -25,6 +27,137 @@ const context = (weapons: SpecialWeaponState[], enemies = [enemy(1)]) => ({
   growth,
   focusId: null,
   random: () => 1,
+});
+it("saturation adds four carpet submunitions and three swarm missiles", () => {
+  const synergy = new PrototypeSynergies();
+  synergy.active.add("saturation");
+  synergy.registerHits(Array.from({ length: 8 }, (_, i) => i));
+  const grenades = new SpecialWeapons();
+  const carpet = weapon("grenade", { level: 10, tree: "cluster", branch: "a" });
+  const result = grenades.advance(2000, { ...context([carpet]), synergy });
+  expect(
+    result.effects.filter((effect) => effect.weapon === "grenade"),
+  ).toHaveLength(14);
+  const missiles = new SpecialWeapons();
+  missiles.advance(0, {
+    ...context(
+      [weapon("missile", { level: 10, tree: "saturation", branch: "a" })],
+      Array.from({ length: 10 }, (_, i) => enemy(i)),
+    ),
+    synergy,
+  });
+  expect(missiles.visuals).toHaveLength(8);
+});
+
+it("singularity creates a kill zone that draws and boosts Gatling fire", () => {
+  const synergy = new PrototypeSynergies();
+  synergy.active.add("kill-zone");
+  const runtime = new SpecialWeapons();
+  const grenade = weapon("grenade", {
+    level: 10,
+    tree: "tactical",
+    branch: "a",
+  });
+  const initial = runtime.advance(900, { ...context([grenade]), synergy });
+  expect(synergy.inKillZone(initial.enemies[0]!)).toBe(true);
+  const targets = [initial.enemies[0]!, { ...enemy(2, 0.95), elite: true }];
+  const gatling = weapon("drone", { level: 10, tree: "gunship", branch: "a" });
+  const ordinary = new SpecialWeapons().advance(0, {
+    ...context([gatling], targets),
+    focusId: 1,
+  });
+  const boosted = new SpecialWeapons().advance(0, {
+    ...context([gatling], targets),
+    synergy,
+  });
+  expect(targets[0]!.hp - boosted.enemies[0]!.hp).toBeCloseTo(
+    (targets[0]!.hp - ordinary.enemies[0]!.hp) * 1.45,
+  );
+  expect(boosted.enemies[1]!.hp).toBe(1000);
+});
+it("overcharge rolls once for a whole triple throw and snapshots its damage", () => {
+  const run = () => {
+    const runtime = new SpecialWeapons();
+    const random = vi.fn().mockReturnValueOnce(0).mockReturnValue(1);
+    const ctx = {
+      ...context([weapon("grenade", { level: 20, overclock: "triple" })]),
+      relics: new Set<PrototypeRelicId>(["capacitor"]),
+      random,
+    };
+    runtime.advance(0, ctx);
+    expect(random).toHaveBeenCalledTimes(4);
+    return runtime.advance(900, {
+      ...ctx,
+      weapons: [],
+      relics: new Set<PrototypeRelicId>(),
+      random: () => 1,
+    }).enemies[0]!.hp;
+  };
+  const plain = new SpecialWeapons();
+  const ctx = context([weapon("grenade", { level: 20, overclock: "triple" })]);
+  const base = plain.advance(900, ctx).enemies[0]!.hp;
+  expect(1000 - run()).toBeCloseTo((1000 - base) * 2);
+});
+
+it("missile swarm has one capacitor roll while each synchronized drone shot is an action", () => {
+  const missiles = new SpecialWeapons();
+  const random = vi.fn(() => 1);
+  const swarm = weapon("missile", {
+    level: 10,
+    tree: "saturation",
+    branch: "a",
+  });
+  missiles.advance(0, {
+    ...context(
+      [swarm],
+      Array.from({ length: 10 }, (_, i) => enemy(i)),
+    ),
+    relics: new Set<PrototypeRelicId>(["capacitor"]),
+    random,
+  });
+  expect(missiles.visuals).toHaveLength(5);
+  expect(random).toHaveBeenCalledTimes(6);
+  const drones = new SpecialWeapons();
+  random.mockClear();
+  const ctx = {
+    ...context([
+      weapon("drone", {
+        level: 20,
+        tree: "squadron",
+        branch: "b",
+        overclock: "synchronization",
+      }),
+    ]),
+    relics: new Set<PrototypeRelicId>(["capacitor"]),
+    random,
+  };
+  drones.onPrimary(1, ctx);
+  expect(random).toHaveBeenCalledTimes(drones.visuals.length * 2);
+});
+
+it("loader shortens grenade cooldown and precision and impact affect a shield hit", () => {
+  const runtime = new SpecialWeapons();
+  const ctx = {
+    ...context([weapon("grenade")]),
+    relics: new Set<PrototypeRelicId>(["loader"]),
+  };
+  runtime.advance(0, ctx);
+  runtime.advance(
+    getSpecialWeaponStats(ctx.weapons[0]!, growth).cycleMs * 0.8,
+    ctx,
+  );
+  expect(runtime.visuals.some((v) => v.kind === "grenade")).toBe(true);
+  const drone = new SpecialWeapons();
+  const target = { ...enemy(1), shieldHp: 1000 };
+  const hit = drone.advance(0, {
+    ...context([weapon("drone")], [target]),
+    relics: new Set<PrototypeRelicId>(["precision", "impact"]),
+    random: () => 0.1,
+  });
+  expect(hit.enemies[0]!.shieldHp).toBeCloseTo(
+    1000 - getSpecialWeaponStats(weapon("drone"), growth).damage * 1.75,
+  );
+  expect(hit.enemies[0]!.progress01).toBeCloseTo(0.175);
 });
 it("grenades fly to the dense remote group and damage a space, not the focus", () => {
   const runtime = new SpecialWeapons();
@@ -204,4 +337,15 @@ it("Hunter launches a new missile on a kill while Chain Predator continues from 
   expect(hunter.visual.y).toBe(1075);
   expect(tracking.visual.id).toBe(tracking.id);
   expect(tracking.visual.y).toBeCloseTo(860);
+});
+
+it("M6 base grenade launches every 5.2 real seconds at X1 combat tempo", () => {
+  const runtime = new SpecialWeapons();
+  const ctx = context([weapon("grenade")]);
+  runtime.advance(0, ctx);
+  expect(runtime.visuals.filter((v) => v.kind === "grenade")).toHaveLength(1);
+  runtime.advance(5199 * 1.5, ctx);
+  expect(runtime.visuals.filter((v) => v.kind === "grenade")).toHaveLength(0);
+  runtime.advance(1 * 1.5, ctx);
+  expect(runtime.visuals.filter((v) => v.kind === "grenade")).toHaveLength(1);
 });

@@ -1,3 +1,4 @@
+import type { SynergyVisual } from "../combat/prototypeSynergies";
 import { combatGeometry } from "./combatGeometry";
 import type { SpecialVisual, SpecialEffect } from "../combat/specialWeapons";
 import Phaser from "phaser";
@@ -38,6 +39,8 @@ const colors: Record<EnemyKind, number> = {
 
 export class EnemyPressureView {
   private readonly world: Phaser.GameObjects.Container;
+  private readonly highrollGraphics: Phaser.GameObjects.Graphics;
+  private readonly reinforcement: Phaser.GameObjects.Rectangle;
   private readonly specialGraphics: Phaser.GameObjects.Graphics;
   private readonly hud: Phaser.GameObjects.Container;
   private readonly header: Phaser.GameObjects.Container;
@@ -76,6 +79,8 @@ export class EnemyPressureView {
     this.world = scene.add.container();
     this.specialGraphics = scene.add.graphics();
     this.world.add(this.specialGraphics);
+    this.highrollGraphics = scene.add.graphics();
+    this.world.add(this.highrollGraphics);
     this.hud = scene.add.container().setDepth(1);
     this.header = scene.add.container().setDepth(1);
     this.debug = scene.add.container().setDepth(2).setVisible(false);
@@ -168,6 +173,10 @@ export class EnemyPressureView {
       0x77d7a0,
     );
     this.world.add(marine);
+    this.reinforcement = scene.add
+      .rectangle(combatVisual.marineX + 70, this.marineY, 38, 32, 0x8adfff)
+      .setVisible(false);
+    this.world.add(this.reinforcement);
     const clip = scene.make.graphics({ x: 0, y: 0 });
     const mask = clip.createGeometryMask();
     this.world.setMask(mask);
@@ -190,8 +199,9 @@ export class EnemyPressureView {
       this.wallY =
         (battlefieldPoint(layout, 0.5, 1).y - layout.battlefield.y) /
         layout.scale;
-      this.marineY = this.wallY + 22;
+      this.marineY = this.wallY + 22; // Inside the 44-unit strip reserved below the attack line.
       marine.setY(this.marineY);
+      this.reinforcement.setY(this.marineY);
       for (const guide of laneGuides)
         guide.setY(this.wallY / 2).setDisplaySize(guide.width, this.wallY);
       this.stimText.setY(this.wallY - 40);
@@ -277,6 +287,43 @@ export class EnemyPressureView {
       x: field.left + (x / combatGeometry.width) * field.width,
       y: (y / combatGeometry.depth) * this.wallY,
     };
+  }
+
+  renderHighroll(
+    visuals: readonly SynergyVisual[],
+    reinforcement: boolean,
+    enemies: readonly {
+      state: EnemyState;
+      visual: Phaser.GameObjects.Container;
+    }[],
+  ): void {
+    this.reinforcement.setVisible(reinforcement);
+    const graphics = this.highrollGraphics.clear();
+    for (const visual of visuals) {
+      const point =
+        (visual.kind === "hunt"
+          ? enemies.find((e) => e.state.id === visual.targetId)?.visual
+          : undefined) ?? this.specialPoint(visual.x, visual.y);
+      const radiusX = (visual.radius * field.width) / combatGeometry.width;
+      const radiusY = (visual.radius * this.wallY) / combatGeometry.depth;
+      if (visual.kind === "zone") {
+        graphics
+          .fillStyle(0xcb86ff, 0.15)
+          .fillEllipse(point.x, point.y, radiusX * 2, radiusY * 2);
+        graphics
+          .lineStyle(3, 0xcb86ff, 0.8)
+          .strokeEllipse(point.x, point.y, radiusX * 2, radiusY * 2);
+      } else if (visual.kind === "hunt") {
+        graphics.lineStyle(4, 0xff657d).strokeCircle(point.x, point.y, 28);
+        graphics.lineBetween(point.x - 38, point.y, point.x + 38, point.y);
+        graphics.lineBetween(point.x, point.y - 38, point.x, point.y + 38);
+      } else {
+        graphics
+          .lineStyle(5, 0xffd36f)
+          .strokeRect(combatVisual.marineX - 38, this.marineY - 20, 76, 40);
+      }
+    }
+    this.world.bringToTop(graphics);
   }
 
   renderSpecialWeapons(visuals: readonly SpecialVisual[]): void {
@@ -531,13 +578,26 @@ export class EnemyPressureView {
     return closest;
   }
 
-  showShot(target: Phaser.GameObjects.Container, echo = false): void {
+  showShot(
+    target: Phaser.GameObjects.Container,
+    echo = false,
+    reinforcement = false,
+  ): void {
     const effect = this.scene.add.graphics();
     effect.lineStyle(echo ? 4 : 2, echo ? 0xd3a5ff : 0xffe69a, 0.9);
-    effect.lineBetween(combatVisual.marineX, this.marineY, target.x, target.y);
+    effect.lineBetween(
+      combatVisual.marineX + (reinforcement ? 70 : 0),
+      this.marineY,
+      target.x,
+      target.y,
+    );
     effect
       .fillStyle(echo ? 0xd3a5ff : 0xfff4bc)
-      .fillCircle(combatVisual.marineX, this.marineY, 9);
+      .fillCircle(
+        combatVisual.marineX + (reinforcement ? 70 : 0),
+        this.marineY,
+        9,
+      );
     effect.fillCircle(target.x, target.y, 6);
     this.world.add(effect);
     this.scene.time.delayedCall(combatVisual.flashMs, () => effect.destroy());
@@ -587,11 +647,12 @@ export class EnemyPressureView {
     criticalIds: readonly number[] = [],
     explosionIds: readonly number[] = [],
     echo = false,
+    reinforcement = false,
   ): void {
     if (!targets.length) return;
     for (const [index, target] of targets.entries()) {
       if (index === 0 || shotTargetIds.includes(hitIds[index]!))
-        this.showShot(target, echo);
+        this.showShot(target, echo, reinforcement);
     }
     const effect = this.scene.add.graphics();
     this.world.add(effect);
@@ -603,7 +664,7 @@ export class EnemyPressureView {
         0.9,
       );
       effect.lineBetween(
-        combatVisual.marineX,
+        combatVisual.marineX + (reinforcement ? 70 : 0),
         this.marineY,
         targets[0]!.x,
         targets[0]!.y,
