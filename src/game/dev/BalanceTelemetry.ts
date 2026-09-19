@@ -1,4 +1,5 @@
 import type { EnemyState } from "../enemies/enemySimulation";
+import { getOverrides } from "./runtimeBalance";
 
 export type DamageSource = "Gauss" | "Grenade" | "Missile" | "Drone" | "Other";
 const sources: DamageSource[] = [
@@ -1003,6 +1004,9 @@ export function formatAiBalanceReport(r: BalanceReport): string {
         level: r.metrics.level,
         wallPercent: r.metrics.wallPercent,
       },
+
+      BalanceOverrides: getOverrides(),
+
       FinalBuild: r.build,
       Final30s: r.metrics,
       WeaponContribution: v?.weaponContribution ?? null,
