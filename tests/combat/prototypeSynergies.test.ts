@@ -6,7 +6,13 @@ import { createPrototypeEnemy } from "../../src/game/enemies/enemyFactory";
 import { combatPosition } from "../../src/game/battlefield/combatGeometry";
 
 const growth: MarineGrowthState = {
-  ranks: { burst: 1, multishot: 1, penetration: 1, explosive: 1, heavy: 1 },
+  ranks: {
+    burst: 1,
+    multishot: 1,
+    penetration: 1,
+    explosive: 1,
+    incendiary: 1,
+  },
   quality: {},
   legendary: new Set(),
 };
@@ -112,4 +118,21 @@ it("hunt selects danger once, keeps the mark stable, and transfers only when inv
   expect(synergy.focusId).toBe(3);
   synergy.advance(0, []);
   expect(synergy.focusId).toBeNull();
+});
+
+it("hunt specifically requires burst plus incendiary", () => {
+  const synergy = new PrototypeSynergies();
+  const weapons = recipes[2][1];
+  expect(
+    synergy.updateBuild({ ...growth, ranks: { burst: 1 } }, weapons),
+  ).toEqual([]);
+  expect(
+    synergy.updateBuild({ ...growth, ranks: { incendiary: 1 } }, weapons),
+  ).toEqual([]);
+  expect(
+    synergy.updateBuild(
+      { ...growth, ranks: { burst: 1, incendiary: 1 } },
+      weapons,
+    ),
+  ).toEqual(["hunt"]);
 });

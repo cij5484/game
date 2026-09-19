@@ -544,10 +544,11 @@ export class EnemyPressureView {
     visual: Phaser.GameObjects.Container,
     enemy: EnemyState,
     slowed = false,
+    burning = false,
   ): void {
     const point = this.enemyVisualPoint(enemy);
     visual.setPosition(point.x, point.y).setScale(point.scaleX);
-    this.renderEnemyStatus(visual, enemy, slowed);
+    this.renderEnemyStatus(visual, enemy, slowed, burning);
   }
 
   enemyVisualPoint(enemy: EnemyState): EnemyVisualPoint {
@@ -590,6 +591,7 @@ export class EnemyPressureView {
     visual: Phaser.GameObjects.Container,
     enemy: EnemyState,
     slowed = false,
+    burning = false,
   ): void {
     if (enemy.boss) {
       const boss = enemy.boss;
@@ -628,7 +630,15 @@ export class EnemyPressureView {
         charge || stagger,
       );
       (visual.getAt(0) as Phaser.GameObjects.Rectangle)
-        .setFillStyle(stagger ? 0xa88aeb : charge ? 0xe86e49 : 0x9b5550)
+        .setFillStyle(
+          burning
+            ? 0xe87832
+            : stagger
+              ? 0xa88aeb
+              : charge
+                ? 0xe86e49
+                : 0x9b5550,
+        )
         .setStrokeStyle(
           enemy.id === this.focusId ? 7 : 4,
           enemy.id === this.focusId ? 0xffffff : 0xffc08c,
@@ -661,17 +671,19 @@ export class EnemyPressureView {
     }
     (visual.getAt(0) as Phaser.GameObjects.Rectangle)
       .setFillStyle(
-        slowed
-          ? 0xb2f7ff
-          : enemy.chargePhase === "telegraph"
-            ? 0xff674c
-            : enemy.chargePhase === "charging"
-              ? 0xff3428
-              : enemy.kind === "shield" && !enemy.shieldHp
-                ? 0x766880
-                : enemy.elite
-                  ? 0xe8bd50
-                  : colors[enemy.kind],
+        burning
+          ? 0xf28b35
+          : slowed
+            ? 0xb2f7ff
+            : enemy.chargePhase === "telegraph"
+              ? 0xff674c
+              : enemy.chargePhase === "charging"
+                ? 0xff3428
+                : enemy.kind === "shield" && !enemy.shieldHp
+                  ? 0x766880
+                  : enemy.elite
+                    ? 0xe8bd50
+                    : colors[enemy.kind],
       )
       .setStrokeStyle(
         enemy.id === this.focusId

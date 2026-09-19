@@ -36,17 +36,17 @@ function run(owned: number, roll: number, internal = 0, expand = false) {
 it("uses each mod acquisition weight in the unlocked new-mod pool", () => {
   expect(
     marineTraitIds.map((id) => marineModWeights[id].acquisitionWeight),
-  ).toEqual([1, 0.9, 0.6, 0.7, 0.8, 0.9]);
+  ).toEqual([1, 0.9, 0.6, 0.7, 0.8, 0.8]);
   expect(marineTraitIds.map((id) => marineModWeights[id].growthWeight)).toEqual(
     [1, 1, 1, 1, 1, 1],
   );
-  expect(run(0, 3.1 / 3.7, 1.90001 / 4.9).offer()[0]!.id).toBe("burst");
-  expect(run(0, 3.1 / 3.7, 2.50001 / 4.9).offer()[0]!.id).toBe("multishot");
+  expect(run(0, 3.1 / 3.7, 1.90001 / 4.8).offer()[0]!.id).toBe("burst");
+  expect(run(0, 3.1 / 3.7, 2.50001 / 4.8).offer()[0]!.id).toBe("multishot");
   marineModWeights.burst.acquisitionWeight = 20;
   expect(run(0, 3.1 / 3.7, 0.5).offer()[0]!.id).toBe("burst");
 });
 it("weights only unlocked fresh-account mods, even when a locked mod has huge weight", () => {
-  marineModWeights.heavy.acquisitionWeight = 1000;
+  marineModWeights.incendiary.acquisitionWeight = 1000;
   const rolls = [3.1 / 3.7, 0.55, 0];
   const p = new MarineProgression(() => rolls.shift() ?? 0, undefined, 0, {
     ...allUnlocks(),

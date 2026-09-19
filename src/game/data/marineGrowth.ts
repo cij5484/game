@@ -12,7 +12,7 @@ export const marineTraitIds = [
   "burst",
   "multishot",
   "explosive",
-  "heavy",
+  "incendiary",
 ] as const;
 export type MarineTraitId = (typeof marineTraitIds)[number];
 export type MarineModBranch = "a" | "b";
@@ -88,23 +88,23 @@ export const marineModBranches: Record<
       completion: "고폭 탄두",
     },
   },
-  heavy: {
+  incendiary: {
     a: {
-      title: "공성탄",
-      description: "개별 탄환 피해 크게 증가 · 공격주기 대가 증가",
-      completion: "초중량 공성탄",
+      title: "연소 확산",
+      description: "화상 상태인 적 처치 시 주변 전파 · Lv10 전달 중첩 증가",
+      completion: "화염 전염",
     },
     b: {
-      title: "경량화 고위력탄",
-      description: "고위력 피해를 유지하며 공격주기 대가 완화",
-      completion: "고속 중량탄",
+      title: "열축적",
+      description: "화상 최대 중첩 증가 · Lv10 최대 중첩 피해 증폭",
+      completion: "임계 과열",
     },
   },
 };
 export type MarineUpgradeId =
   MarineTraitId | "primary-damage" | "attack-speed" | "crit-chance" | "range";
 export type MarineRanks = UpgradeRanks &
-  Partial<Record<"burst" | "heavy" | "range", number>>;
+  Partial<Record<"burst" | "incendiary" | "range", number>>;
 export interface MarineGrowthState {
   ranks: MarineRanks;
   quality: Partial<Record<MarineUpgradeId, number>>;
@@ -165,7 +165,7 @@ export const marineUpgrades: Record<MarineUpgradeId, MarineUpgradeDefinition> =
     burst: trait("burst", "점사", "≋"),
     multishot: trait("multishot", "다중탄", "⋔"),
     explosive: trait("explosive", "폭발탄", "✹"),
-    heavy: trait("heavy", "고위력 단발", "●"),
+    incendiary: trait("incendiary", "소이탄", "♨"),
     range: {
       id: "range",
       title: "사거리",
@@ -215,7 +215,7 @@ export const marineModWeights = runtimeObject("marineModWeights", {
   burst: { acquisitionWeight: 0.6, growthWeight: 1 },
   multishot: { acquisitionWeight: 0.7, growthWeight: 1 },
   explosive: { acquisitionWeight: 0.8, growthWeight: 1 },
-  heavy: { acquisitionWeight: 0.9, growthWeight: 1 },
+  incendiary: { acquisitionWeight: 0.8, growthWeight: 1 },
 });
 const increments = (
   COMMON: number,
@@ -237,7 +237,7 @@ export const marineQualityIncrements: Record<
   burst: { ...traitQuality },
   multishot: { ...traitQuality },
   explosive: { ...traitQuality },
-  heavy: { ...traitQuality },
+  incendiary: { ...traitQuality },
   range: increments(0, 0.03, 0.045, 0.06),
 });
 const positive = (value: number) =>
@@ -253,15 +253,6 @@ const branchProgress = (state: MarineGrowthState, id: MarineTraitId) =>
   Math.max(0, Math.min(1, ((state.ranks[id] ?? 0) - 5) / 5));
 const branchComplete = (state: MarineGrowthState, id: MarineTraitId) =>
   Number((state.ranks[id] ?? 0) >= 10);
-const heavyBranchDamage = (state: MarineGrowthState) => {
-  const branch = getMarineModBranch(state, "heavy");
-  const progress = branchProgress(state, "heavy");
-  return branch === "a"
-    ? 1.35 + 0.25 * progress + 0.2 * branchComplete(state, "heavy")
-    : branch === "b"
-      ? 1.05 + 0.05 * progress + 0.05 * branchComplete(state, "heavy")
-      : 1;
-};
 export function marineStrength(
   state: MarineGrowthState,
   id: MarineUpgradeId,
@@ -301,10 +292,6 @@ export const marineRarityBalance = runtimeObject("marineRarity", {
 } as const);
 
 export const marineModBalance = runtimeObject("marineMods", {
-  heavyDamagePerQuality: 0.45,
-  heavyPenaltyBase: 1.2,
-  heavyPenaltyExtra: 0.15,
-  heavyPenaltyQualityDecay: 0.15,
   burstDamagePerQuality: 0.035,
   burstAdditionalRoundDamageFactor: 0.65,
   burstAdditionalRoundDamagePerQuality: 0.025,
@@ -374,8 +361,6 @@ export function getMarineStats(state: MarineGrowthState) {
   return {
     primaryDamageMultiplier:
       (1 + strength("primary-damage")) *
-      (1 + marineModBalance.heavyDamagePerQuality * strength("heavy")) *
-      heavyBranchDamage(state) *
       (1 + marineModBalance.burstDamagePerQuality * strength("burst")) *
       (getMarineModBranch(state, "burst") === "a" &&
       branchComplete(state, "burst")
@@ -405,7 +390,6 @@ export function deriveMarineWeaponConfig(
   state: MarineGrowthState,
 ): GaussRifleConfig {
   const burst = marineStrength(state, "burst");
-  const heavy = marineStrength(state, "heavy");
   const burstBranch = getMarineModBranch(state, "burst");
   const burstProgress = branchProgress(state, "burst");
   // ponytail: bounded projectile work; mastery damage keeps growing after the seven-round cap.
@@ -426,22 +410,6 @@ export function deriveMarineWeaponConfig(
         ? 0.7 - 0.15 * burstProgress - 0.1 * branchComplete(state, "burst")
         : 1),
   );
-  let heavyPenalty =
-    heavy > 0
-      ? marineModBalance.heavyPenaltyBase +
-        marineModBalance.heavyPenaltyExtra /
-          (1 + marineModBalance.heavyPenaltyQualityDecay * heavy)
-      : 1;
-  const heavyBranch = getMarineModBranch(state, "heavy");
-  if (heavyBranch === "a")
-    heavyPenalty *= 1.2 + 0.1 * branchProgress(state, "heavy");
-  if (heavyBranch === "b")
-    heavyPenalty =
-      1 +
-      (heavyPenalty - 1) *
-        (0.5 -
-          0.25 * branchProgress(state, "heavy") -
-          0.1 * branchComplete(state, "heavy"));
   return {
     ...gaussRifleBalance,
     burstRounds,
@@ -449,7 +417,7 @@ export function deriveMarineWeaponConfig(
     shotIntervalMs: Math.max(
       (burstRounds - 1) * roundIntervalMs +
         marineGrowthBalance.minimumRecoveryMs,
-      (gaussRifleBalance.shotIntervalMs * heavyPenalty) /
+      gaussRifleBalance.shotIntervalMs /
         getMarineStats(state).attackSpeedMultiplier,
     ),
   };
@@ -613,7 +581,79 @@ export function describeMarineUpgrade(
       return `보조탄 ${effects.multishotTargets}발 동시 발사 · 피해 ${percent(effects.multishotDamageFactor)}`;
     case "explosive":
       return `반경 ${Math.round(effects.explosionRadius)} · 피해 ${percent(effects.explosionDamageFactor)}${state.legendary.has(id) ? " · 처치 2명 1회 재폭발" : ""}`;
-    case "heavy":
-      return `개별 탄환 피해 ×${((1 + marineModBalance.heavyDamagePerQuality * marineStrength(state, id)) * heavyBranchDamage(state)).toFixed(2)} · 주기 ${Math.round(weapon.shotIntervalMs)}ms`;
+    case "incendiary": {
+      const burn = getIncendiaryStats(state);
+      return `화상 ${burn.durationMs / 1000}초 · ${burn.tickMs}ms마다 중첩당 ${percent(burn.tickFactor)} · 최대 ${burn.maxStacks}중첩`;
+    }
   }
+}
+
+export const incendiaryBalance = runtimeObject("incendiary", {
+  tickMs: 500,
+  durationMs: 3000,
+  baseMaxStacks: 2,
+  baseTickFactor: 0.025,
+  tickFactorPerQuality: 0.01,
+  aSpreadTargets: 2,
+  aCompletionSpreadTargets: 4,
+  aSpreadRadius: 90,
+  aCompletionSpreadRadius: 140,
+  aTransferStacks: 1,
+  aCompletionTransferStacks: 2,
+  aSpreadFactor: 0.7,
+  aCompletionSpreadFactor: 0.9,
+  bMaxStacks: 4,
+  bCompletionMaxStacks: 6,
+  bEfficiencyBonus: 0.15,
+  bOverheatMultiplier: 1.6,
+});
+export function getIncendiaryStats(state: MarineGrowthState) {
+  const tuning = incendiaryBalance;
+  const quality = marineStrength(state, "incendiary");
+  const branch = getMarineModBranch(state, "incendiary");
+  const progress = branchProgress(state, "incendiary");
+  const complete = branchComplete(state, "incendiary");
+  const interpolate = (start: number, end: number) =>
+    start + (end - start) * progress;
+  return {
+    tickMs: tuning.tickMs,
+    durationMs: tuning.durationMs,
+    maxStacks: Math.max(
+      1,
+      Math.floor(
+        branch === "b"
+          ? interpolate(tuning.bMaxStacks, tuning.bCompletionMaxStacks)
+          : tuning.baseMaxStacks,
+      ),
+    ),
+    tickFactor:
+      quality > 0
+        ? (tuning.baseTickFactor + tuning.tickFactorPerQuality * quality) *
+          (branch === "b" ? 1 + tuning.bEfficiencyBonus * progress : 1)
+        : 0,
+    spreadTargets:
+      branch === "a"
+        ? Math.floor(
+            interpolate(tuning.aSpreadTargets, tuning.aCompletionSpreadTargets),
+          )
+        : 0,
+    spreadRadius:
+      branch === "a"
+        ? interpolate(tuning.aSpreadRadius, tuning.aCompletionSpreadRadius)
+        : 0,
+    transferStacks:
+      branch === "a"
+        ? Math.floor(
+            complete
+              ? tuning.aCompletionTransferStacks
+              : tuning.aTransferStacks,
+          )
+        : 0,
+    spreadFactor:
+      branch === "a"
+        ? interpolate(tuning.aSpreadFactor, tuning.aCompletionSpreadFactor)
+        : 0,
+    overheatMultiplier:
+      branch === "b" && complete ? tuning.bOverheatMultiplier : 1,
+  };
 }

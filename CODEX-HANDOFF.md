@@ -16,7 +16,9 @@ Preserve uncommitted work before switching/pulling. Never reset or force-push to
 
 ## Current implementation / design
 
-Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It inherits full v0.15, which remains unchanged. Read [M12 implementation](docs/prototype-m12-mastery-unlocks.md). M11 effects/rewards/costs, Stage 1 defaults, M10 missiles and M9 performance remain unchanged.
+Incendiary update: `heavy` is replaced by `incendiary` (acquisition .80 / growth 1.00); Gauss-only burn, Lv5/Lv10 branches, legacy `elite-sniper` unlock preserved. See [implementation](docs/incendiary-basic-mod.md). The M12 entries below are historical baselines where superseded by this update.
+
+Current Source of Truth: [GAME_GDD_v0.17.md](docs/design/GAME_GDD_v0.17.md). It inherits full v0.16, which remains unchanged. Read [M12 implementation](docs/prototype-m12-mastery-unlocks.md). M11 effects/rewards/costs, Stage 1 defaults, M10 missiles and M9 performance remain unchanged.
 
 - Fresh: Gauss, common damage/speed/critical chance, penetration/burst, rare range card, Stimpack/V Ultimate. Special capacity0; relic/core/synergy locked. Initial research: primary damage/speed/wall HP.
 - 28 operation records /40points. Mastery is the sum of completed record points. `data/operations.ts` owns conditions/thresholds/unlock rules; no independent mastery XP or claim. Duplicate three-mod conditions consolidated into one record; actual first critical adds the research unlock record.
@@ -87,4 +89,4 @@ Current Source of Truth: [GAME_GDD_v0.16.md](docs/design/GAME_GDD_v0.16.md). It 
 - Circle tolerances: closure0.22, radial error0.18. Z alignment and negative fixtures retained. Real-device gesture reliability needs playtesting.
 - Desktop secondary input: simultaneous left/right mouse buttons. Mobile: two-finger tap. Pause icon top right; restart resets the run.
 
-Current design source: docs/design/GAME_GDD_v0.16.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.
+Current design source: docs/design/GAME_GDD_v0.17.md. Read its Prototype Scope, Future / Not in Prototype and Current Implementation Gap before continuing. Historical snapshots are not current gameplay or verification. Gameplay tuning lives in src/game/data/.

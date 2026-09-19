@@ -67,7 +67,7 @@ describe("M6 high-roll rewards", () => {
 
   it("opens the fourth mod and uses the slower XP formula", () => {
     const p = new MarineProgression();
-    Object.assign(p.ranks, { burst: 1, heavy: 1, penetration: 1 });
+    Object.assign(p.ranks, { burst: 1, incendiary: 1, penetration: 1 });
     expect(p.applyCore("modification")).toBe(true);
     expect(p.traitLimit).toBe(4);
     for (const level of [1, 5, 10, 20]) {

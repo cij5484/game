@@ -62,7 +62,6 @@ const modCards: QuickCard[] = [
   ["burst", "점사", "burstAdditionalRoundDamageFactor", "burstIntervalMs"],
   ["multishot", "다중탄", "multishotBaseDamage", "multishotDamagePerQuality"],
   ["explosive", "폭발탄", "explosionBaseDamage", "explosionBaseRadius"],
-  ["heavy", "고위력 단발", "heavyDamagePerQuality", "heavyPenaltyExtra"],
 ].map(([id, title, ...power]) => ({
   id: id!,
   title: title!,
@@ -72,6 +71,17 @@ const modCards: QuickCard[] = [
     ...power.map((key) => `marineMods.${key}`),
   ],
 }));
+modCards.push({
+  id: "incendiary",
+  title: "소이탄",
+  fields: [
+    "marineModWeights.incendiary.acquisitionWeight",
+    "marineModWeights.incendiary.growthWeight",
+    "incendiary.baseTickFactor",
+    "incendiary.durationMs",
+    "incendiary.baseMaxStacks",
+  ],
+});
 export const quickSections: readonly QuickSection[] = [
   {
     id: "overview",
@@ -163,6 +173,7 @@ export const detailCategories = [
 ];
 export function detailCategory(field: BalanceField): string {
   const id = field.id;
+  if (id.startsWith("incendiary.")) return "기본무기 개조 · 소이탄";
   if (id.startsWith("boss.")) return "Boss";
   if (/^(horde|enemies|enemyScaling|enemyLevelScaling|elite)\./.test(id))
     return "적 / Horde";

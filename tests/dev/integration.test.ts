@@ -172,7 +172,7 @@ it("exports and reloads per-mod weights and derived efficiency once per runtime 
     "marineMods.burstAdditionalRoundDamageFactor": 0.4,
     "marineMods.burstAdditionalRoundDamagePerQuality": 0.03,
     "marineMods.burstAdditionalRoundDamageMax": 0.9,
-    "marineMods.heavyPenaltyBase": 1.1,
+    "incendiary.baseTickFactor": 0.04,
     "marineGrowth.rangeWeight": 0.15,
   };
   setOverrides(settings);
@@ -184,4 +184,32 @@ it("exports and reloads per-mod weights and derived efficiency once per runtime 
     setOverrides({ "marineMods.burstAdditionalRoundDamageMax": 0.1 }),
   ).toThrow();
   expect(getOverrides()).toEqual(settings);
+});
+
+it("migrates legacy heavy presets, favors explicit incendiary values and still rejects unknown keys", () => {
+  loadPayload({
+    version: 1,
+    overrides: {
+      "marineModWeights.heavy.acquisitionWeight": 0.4,
+      "marineModWeights.heavy.growthWeight": 0.7,
+      "marineModWeights.incendiary.growthWeight": 1.2,
+      "marineMods.heavyDamagePerQuality": 0.9,
+      "marineMods.heavyPenaltyBase": 1.1,
+      "marineMods.heavyPenaltyExtra": 0.2,
+      "marineMods.heavyPenaltyQualityDecay": 0.3,
+      "gauss.damagePerRound": 55,
+    },
+  });
+  expect(getOverrides()).toEqual({
+    "marineModWeights.incendiary.acquisitionWeight": 0.4,
+    "marineModWeights.incendiary.growthWeight": 1.2,
+    "gauss.damagePerRound": 55,
+  });
+  const before = getOverrides();
+  expect(() => setOverrides({ "marineMods.heavyUnknown": 1 })).toThrow();
+  expect(getOverrides()).toEqual(before);
+  expect(() =>
+    setOverrides({ "marineModWeights.heavy.acquisitionWeight": -1 }),
+  ).toThrow();
+  expect(getOverrides()).toEqual(before);
 });

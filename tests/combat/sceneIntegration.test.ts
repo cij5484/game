@@ -1,3 +1,8 @@
+import type { Incendiary } from "../../src/game/combat/incendiary";
+import {
+  getIncendiaryStats,
+  getMarineStats,
+} from "../../src/game/data/marineGrowth";
 import type { BalanceTelemetry } from "../../src/game/dev/BalanceTelemetry";
 import {
   metaStore,
@@ -29,7 +34,11 @@ import type { Burst } from "../../src/game/combat/burst";
 import type { TargetFocus } from "../../src/game/combat/targeting";
 import type { Point } from "../../src/game/input/gestureRecognizer";
 import { Stimpack } from "../../src/game/combat/stimpack";
-import { stimpackBalance } from "../../src/game/data/balance";
+import {
+  stimpackBalance,
+  gaussRifleBalance,
+  marineConfig,
+} from "../../src/game/data/balance";
 import { PrototypeRelics } from "../../src/game/progression/highroll";
 import type { SpecialWeapons } from "../../src/game/combat/specialWeapons";
 import type { RunState } from "../../src/game/model/runState";
@@ -37,6 +46,7 @@ import { createSiegeBoss } from "../../src/game/enemies/siegeBoss";
 import { siegeBossBalance } from "../../src/game/data/boss";
 
 interface SceneHarness {
+  incendiary: Incendiary;
   telemetry: BalanceTelemetry;
   gameSpeed: 1 | 2 | 4 | 8;
   spawnBatch(): void;
@@ -937,7 +947,7 @@ it("M12 actual Gauss damage tracks unique action hits and kills, then survives m
   const marine = store.read().characters.marine;
   expect(marine.operationProgress.primaryKills).toBe(3);
   expect(marine.completedOperationRecords).toEqual(
-    expect.arrayContaining(["penetration-understanding", "elite-sniper"]),
+    expect.arrayContaining(["penetration-understanding"]),
   );
   expect(test.progression.special.capacity).toBe(0);
   test.prepareRun();
@@ -946,7 +956,7 @@ it("M12 actual Gauss damage tracks unique action hits and kills, then survives m
     store.read().characters.marine.completedOperationRecords,
   ).not.toContain("first-operation");
   expect(getUnlocks(store.read()).basicMods).toEqual(
-    expect.arrayContaining(["ricochet", "heavy"]),
+    expect.arrayContaining(["ricochet"]),
   );
 });
 it("M12 repeated hits on one enemy do not unlock three-target record; real critical unlocks research", () => {
@@ -993,7 +1003,7 @@ it("M12 a synergy activated by a mastery unlock is saved before the next frame o
   expect(getUnlocks(store.read()).synergySystem).toBe(false); //21 points
   test.prepareRun();
   test.progression.ranks.burst = 1;
-  test.progression.ranks.heavy = 1;
+  test.progression.ranks.incendiary = 1;
   test.progression.special.acquireWeapon("missile");
   test.progression.special.acquireWeapon("drone");
   Object.assign(test.progression.special.weapons[0]!, {
@@ -1258,4 +1268,104 @@ it("telemetry records actual relic selection, replacement and skip callbacks", (
     "relic-acquisition",
     "relic-replacement",
   ]);
+});
+
+it("incendiary rounds ignite actual Gauss victims; DoT gives primary kill XP without on-hit recursion", () => {
+  const { test, store } = operationScene();
+  test.progression.ranks.incendiary = 1;
+  test.progression.quality.incendiary = 1;
+  test.refreshBuild();
+  test.update(0, 0);
+  expect(test.incendiary.has(1)).toBe(true);
+  const shotIndex = test.shotIndex;
+  const hooks = vi.spyOn(test.specialWeapons, "onPrimary");
+  const synergyHits = vi.spyOn(test.synergies, "registerHits");
+  test.enemies[0]!.state.hp = 0.001;
+  const xpBefore = test.progression.xp;
+  test.advanceWorld(500);
+  expect(test.kills).toBe(1);
+  expect(test.progression.xp).toBeGreaterThan(xpBefore);
+  expect(store.read().characters.marine.operationProgress.primaryKills).toBe(1);
+  expect(test.incendiary.has(1)).toBe(false);
+  expect(test.shotIndex).toBe(shotIndex);
+  expect(hooks).not.toHaveBeenCalled();
+  expect(synergyHits).not.toHaveBeenCalled();
+  expect(test.telemetry.report().metrics.sourceDps.Gauss).toBeGreaterThan(0);
+});
+
+it("incendiary uses combat delta once at X8 and pauses during manual/level-up choice", () => {
+  const a = scene(),
+    b = scene();
+  b.gameSpeed = 8;
+  for (const t of [a, b]) {
+    t.progression.ranks.incendiary = 1;
+    const config = getIncendiaryStats(t.progression.growth);
+    t.incendiary.ignite(1, 10, config);
+  }
+  a.update(0, 1000);
+  b.update(0, 125);
+  expect(b.enemies.map((e) => e.state.hp)).toEqual(
+    a.enemies.map((e) => e.state.hp),
+  );
+  a.manualPaused = true;
+  const hp = a.enemies[0]!.state.hp;
+  a.update(0, 1000);
+  expect(a.enemies[0]!.state.hp).toBe(hp);
+  a.manualPaused = false;
+  a.progression.pendingChoices = 1;
+  a.update(0, 1000);
+  expect(a.enemies[0]!.state.hp).toBe(hp);
+});
+
+it.each(["penetration", "ricochet", "multishot", "explosive"] as const)(
+  "Gauss %s victims ignite once per round even with overlapping explosion hits",
+  (mod) => {
+    const test = scene();
+    test.progression.ranks.incendiary = 1;
+    test.progression.quality.incendiary = 1;
+    test.progression.ranks[mod] = 3;
+    test.progression.quality[mod] = 3;
+    test.progression.ranks.explosive = 3;
+    test.progression.quality.explosive = 3;
+    test.refreshBuild();
+    test.update(0, 0);
+    expect(test.incendiary.has(1)).toBe(true);
+    expect(test.incendiary.has(2)).toBe(true);
+    const before = test.enemies.map((e) => e.state.hp);
+    test.advanceWorld(500);
+    const oneStack =
+      gaussRifleBalance.damagePerRound *
+      marineConfig.baseStats.damageMultiplier *
+      getMarineStats(test.progression.growth).primaryDamageMultiplier *
+      getIncendiaryStats(test.progression.growth).tickFactor;
+    test.enemies.forEach((entry, i) =>
+      expect(before[i]! - entry.state.hp).toBeCloseTo(oneStack),
+    );
+  },
+);
+
+it("the next burst round adds another stack; specials cannot ignite by themselves", () => {
+  const test = scene();
+  test.progression.ranks.incendiary = 1;
+  test.progression.quality.incendiary = 1;
+  test.progression.ranks.burst = 1;
+  test.progression.quality.burst = 1;
+  test.refreshBuild();
+  test.update(0, 0);
+  test.update(0, 150); // second round, still before the first 500ms burn tick
+  expect(test.shotIndex).toBe(2);
+  const before = test.enemies[0]!.state.hp;
+  test.advanceWorld(500);
+  const oneStack =
+    gaussRifleBalance.damagePerRound *
+    marineConfig.baseStats.damageMultiplier *
+    getMarineStats(test.progression.growth).primaryDamageMultiplier *
+    getIncendiaryStats(test.progression.growth).tickFactor;
+  expect(before - test.enemies[0]!.state.hp).toBeCloseTo(oneStack * 2);
+  const special = scene();
+  special.progression.ranks.incendiary = 1;
+  special.progression.special.acquireWeapon("drone");
+  special.advanceWorld(1500);
+  expect(special.enemies.some((e) => e.state.hp < 10000)).toBe(true);
+  expect(special.incendiary.size).toBe(0);
 });

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   deriveMarineWeaponConfig,
   getMarineStats,
+  getIncendiaryStats,
   getMarineTraitEffects,
   marineTraitIds,
   type MarineGrowthState,
@@ -128,29 +129,58 @@ it("separates explosion radius from damage without removing legendary chaining",
   expect(getMarineTraitEffects(state).explosionChainTargets).toBe(2);
 });
 
-it("heavy branches trade shot damage for cycle efficiency and compose with burst and focused multishot", () => {
-  const a = growth("heavy", 10, "a"),
-    b = growth("heavy", 10, "b");
-  expect(getMarineStats(a).primaryDamageMultiplier).toBeGreaterThan(
-    getMarineStats(b).primaryDamageMultiplier,
-  );
-  expect(deriveMarineWeaponConfig(b).shotIntervalMs).toBeLessThan(
-    deriveMarineWeaponConfig(a).shotIntervalMs,
-  );
-  const combined: MarineGrowthState = {
-    ...a,
-    ranks: { heavy: 10, burst: 10, multishot: 10 },
-    branches: { heavy: "a", burst: "b", multishot: "b" },
-  };
-  expect(deriveMarineWeaponConfig(combined).burstRounds).toBeGreaterThan(1);
-  expect(shoot(combined).shotTargetIds.length).toBeGreaterThan(1);
-  expect(shoot(combined).enemies[0]!.hp).toBeLessThan(shoot(a).enemies[0]!.hp);
-  for (const branch of ["a", "b"] as const) {
-    expect(
-      getMarineStats(growth("heavy", 11, branch)).primaryDamageMultiplier,
-    ).toBeGreaterThan(
-      getMarineStats(growth("heavy", 10, branch)).primaryDamageMultiplier,
+it("incendiary branches separate spreading from focused stacks without changing direct Gauss stats", () => {
+  const base = getIncendiaryStats(growth("incendiary", 1));
+  expect(base).toMatchObject({
+    tickMs: 500,
+    durationMs: 3000,
+    maxStacks: 2,
+    spreadTargets: 0,
+    overheatMultiplier: 1,
+  });
+  expect(base.tickFactor).toBeCloseTo(0.035);
+  expect(getIncendiaryStats(growth("incendiary", 0)).tickFactor).toBe(0);
+  for (const branch of ["a", "b"] as const)
+    expect(getIncendiaryStats(growth("incendiary", 4, branch))).toEqual(
+      getIncendiaryStats(growth("incendiary", 4)),
     );
+  expect(getIncendiaryStats(growth("incendiary", 5, "a"))).toMatchObject({
+    spreadTargets: 2,
+    spreadRadius: 90,
+    transferStacks: 1,
+    spreadFactor: 0.7,
+  });
+  expect(getIncendiaryStats(growth("incendiary", 10, "a"))).toMatchObject({
+    spreadTargets: 4,
+    spreadRadius: 140,
+    transferStacks: 2,
+    spreadFactor: 0.9,
+  });
+  expect(getIncendiaryStats(growth("incendiary", 7, "a")).spreadRadius).toBe(
+    110,
+  );
+  expect(getIncendiaryStats(growth("incendiary", 5, "b"))).toMatchObject({
+    maxStacks: 4,
+    overheatMultiplier: 1,
+  });
+  expect(getIncendiaryStats(growth("incendiary", 10, "b"))).toMatchObject({
+    maxStacks: 6,
+    overheatMultiplier: 1.6,
+  });
+  for (const branch of ["a", "b"] as const) {
+    const ten = growth("incendiary", 10, branch);
+    expect(getMarineStats(ten)).toEqual(
+      getMarineStats(growth("incendiary", 0)),
+    );
+    expect(deriveMarineWeaponConfig(ten)).toEqual(
+      deriveMarineWeaponConfig(growth("incendiary", 0)),
+    );
+    expect(
+      getIncendiaryStats(growth("incendiary", 11, branch)).tickFactor,
+    ).toBeGreaterThan(getIncendiaryStats(ten).tickFactor);
+    expect(
+      getIncendiaryStats({ ...ten, legendary: new Set(["incendiary"]) }),
+    ).toEqual(getIncendiaryStats(ten));
   }
 });
 

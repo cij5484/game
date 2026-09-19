@@ -374,7 +374,7 @@ it("common stats and rarity quality affect specials without Gauss-only traits", 
   expect(
     getSpecialWeaponStats(weapon("grenade"), {
       ...growth,
-      ranks: { heavy: 5, burst: 5 },
+      ranks: { incendiary: 5, burst: 5 },
     }).damage,
   ).toBe(base.damage);
 });

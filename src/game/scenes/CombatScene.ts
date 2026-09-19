@@ -1,3 +1,4 @@
+import { Incendiary } from "../combat/incendiary";
 import {
   captureGrowth,
   recordGrowthChanges,
@@ -39,6 +40,7 @@ import { primaryAttack } from "../combat/primaryAttack";
 import { MarineProgression } from "../progression/marineProgression";
 import {
   getMarineStats,
+  getIncendiaryStats,
   deriveMarineWeaponConfig,
   marineGrowthBalance,
   marineTraitIds,
@@ -165,10 +167,16 @@ export class CombatScene extends Phaser.Scene {
   }
   private renderEnemies(): void {
     for (const entry of this.enemies)
-      this.view.renderEnemy(entry.visual, entry.state, false);
+      this.view.renderEnemy(
+        entry.visual,
+        entry.state,
+        false,
+        this.incendiary.has(entry.state.id),
+      );
   }
   private director = new SpawnDirector();
   private specialWeapons = new SpecialWeapons();
+  private incendiary = new Incendiary();
   private nextEnemyId = 0;
   private rifle = new GaussRifle(gaussRifleBalance);
   private stimpack = new Stimpack(stimpackBalance);
@@ -252,6 +260,7 @@ export class CombatScene extends Phaser.Scene {
     this.inFrame = false;
     this.director = new SpawnDirector();
     this.specialWeapons = new SpecialWeapons();
+    this.incendiary.clear();
     this.nextEnemyId = 0;
     this.rifle = new GaussRifle(gaussRifleBalance);
     this.stimpack = new Stimpack(stimpackBalance);
@@ -350,7 +359,13 @@ export class CombatScene extends Phaser.Scene {
     if (previous === this.focus.targetId) return;
     for (const id of [previous, this.focus.targetId]) {
       const entry = id === null ? undefined : this.entriesById.get(id);
-      if (entry) this.view.renderEnemyStatus(entry.visual, entry.state);
+      if (entry)
+        this.view.renderEnemyStatus(
+          entry.visual,
+          entry.state,
+          false,
+          this.incendiary.has(entry.state.id),
+        );
     }
   }
 
@@ -797,7 +812,7 @@ export class CombatScene extends Phaser.Scene {
       }),
       result.ricochetIds,
       [...result.hitIds, ...result.splashIds],
-      action.damageMultiplier > 1 || (action.growth.ranks.heavy ?? 0) > 0,
+      action.damageMultiplier > 1,
       result.splashIds,
       result.shotTargetIds,
       result.criticalIds,
@@ -829,6 +844,7 @@ export class CombatScene extends Phaser.Scene {
     states: readonly EnemyState[],
     chargeBurst = true,
     damageObserved = false,
+    primaryDot = false,
   ): void {
     if (states === this.states) return;
     let byId: Map<number, EnemyState> | undefined;
@@ -838,6 +854,7 @@ export class CombatScene extends Phaser.Scene {
     let hits = 0;
     let kills = 0;
     let eliteKills = 0;
+    const dead: EnemyState[] = [];
     for (const [index, entry] of this.enemies.entries()) {
       let next = states[index];
       if (next?.id !== entry.state.id) {
@@ -848,17 +865,29 @@ export class CombatScene extends Phaser.Scene {
       changed = true;
       if (import.meta.env.DEV && !damageObserved) {
         this.telemetry.setTime(this.run.elapsedMs);
-        this.telemetry.damage(entry.state, next, "Other");
+        this.telemetry.damage(
+          entry.state,
+          next,
+          primaryDot ? "Gauss" : "Other",
+        );
       }
       const oldHp = entry.state.hp;
       const oldShield = entry.state.shieldHp ?? 0;
       entry.state = next;
       if (entry.state.hp < oldHp || (entry.state.shieldHp ?? 0) < oldShield) {
         hits++;
-        this.synergies.registerHits([entry.state.id]);
+        if (!primaryDot) this.synergies.registerHits([entry.state.id]);
       }
       if (entry.state.hp <= 0) {
+        dead.push(entry.state);
         kills++;
+        if (primaryDot) {
+          this.operationEvidence.primaryKills =
+            (this.operationEvidence.primaryKills ?? 0) + 1;
+          if (entry.state.elite)
+            this.operationEvidence.primaryEliteKills =
+              (this.operationEvidence.primaryEliteKills ?? 0) + 1;
+        }
         if (entry.state.boss) {
           this.bossKilled = true;
           this.run = clearRun(this.run);
@@ -898,6 +927,7 @@ export class CombatScene extends Phaser.Scene {
     if (kills)
       this.enemies = this.enemies.filter((entry) => entry.state.hp > 0);
     this.stateSnapshot = undefined;
+    if (dead.length) this.incendiary.processDeaths(dead, this.states);
     this.refreshProtection();
     this.focus.resolve(this.states);
     this.view.setFocus(this.focus.targetId);
@@ -911,7 +941,8 @@ export class CombatScene extends Phaser.Scene {
     this.synergies.advance(0, this.states);
     if (buildChanged) this.refreshBuild();
     this.progression.gainXp(xp * this.progression.meta.xpMultiplier);
-    if (chargeBurst) this.burst.credit({ hits, kills, eliteKills });
+    if (chargeBurst)
+      this.burst.credit({ hits: primaryDot ? 0 : hits, kills, eliteKills });
     this.trackOperations();
     if (hits || kills) this.renderProgression();
     if (this.choosing) this.showChoices();
@@ -926,6 +957,15 @@ export class CombatScene extends Phaser.Scene {
     criticalIds: readonly number[],
   ): void {
     const critical = new Set(criticalIds);
+    const burn = getIncendiaryStats(action.growth);
+    // Snapshot non-critical Gauss power; each affected enemy occurs once in the round result.
+    const burnPower =
+      gaussRifleBalance.damagePerRound *
+      marineConfig.baseStats.damageMultiplier *
+      this.stimpack.primaryDamageMultiplier *
+      getMarineStats(action.growth).primaryDamageMultiplier *
+      action.damageMultiplier *
+      burn.tickFactor;
     for (let i = 0; i < before.length; i++) {
       const old = before[i]!,
         next = after[i]!;
@@ -938,6 +978,17 @@ export class CombatScene extends Phaser.Scene {
         this.telemetry.setTime(this.run.elapsedMs);
         this.telemetry.damage(old, next, "Gauss");
       }
+      if (burnPower > 0)
+        this.incendiary.ignite(
+          old.id,
+          burnPower *
+            (old.elite || old.boss
+              ? (action.growth.meta?.eliteBossDamageMultiplier ?? 1)
+              : 1) *
+            this.specialWeapons.gaussDamageMultiplier(old.id) *
+            this.synergies.targetMultiplier(old),
+          burn,
+        );
       action.hitIds.add(old.id);
       if (critical.has(old.id)) this.operationEvidence.criticalHits = 1;
       if (next.hp <= 0) {
@@ -1456,6 +1507,12 @@ export class CombatScene extends Phaser.Scene {
       this.run = advanceRun(this.run, step / runBalance.combatTempo);
       if (import.meta.env.DEV) this.telemetry.setTime(this.run.elapsedMs);
       remaining -= step;
+      if (this.run.status === "running" && this.incendiary.size) {
+        const burned = this.incendiary.advance(step, this.states);
+        if (burned.enemies !== this.states)
+          this.applyEnemyStates(burned.enemies, true, false, true);
+      }
+      if (this.choosing || this.run.status !== "running") break;
       if (
         this.run.status === "running" &&
         this.progression.special.weapons.length

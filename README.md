@@ -1,6 +1,6 @@
 # Horde Defense Prototype
 
-모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.16 — Mastery / Progressive Unlocks](docs/design/GAME_GDD_v0.16.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.16.md#5-current-implementation-gap)으로 구분합니다. [v0.15](docs/design/GAME_GDD_v0.15.md)와 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
+모바일 웹 호드 디펜스 그레이박스 프로토타입입니다. **Current Source of Truth: [GDD v0.17 — Incendiary Basic Mod](docs/design/GAME_GDD_v0.17.md)**. 전체 목표 설계와 실제 구현은 [Current Implementation Gap](docs/design/GAME_GDD_v0.17.md#5-current-implementation-gap)으로 구분합니다. [v0.16](docs/design/GAME_GDD_v0.16.md)와 이전 문서는 historical record로 보존합니다. Main Reference는 DRG: Survivor와20 Minutes Till Dawn입니다.
 
 최신 작업은 [Prototype M12](docs/prototype-m12-mastery-unlocks.md)입니다. M11 `4b60a461b82b356f6e1d91fc1833f7f115de579e`을 [PR26](https://github.com/cij5484/game/pull/26)으로 main `ed75a424f97421a7aa1c56bac96af66c7cf45e0a`에 병합한 뒤 `codex/prototype-m12-mastery-unlocks`에서 진행합니다. M12는 **commit/push까지만**, main merge와 다음 Milestone 자동 시작은 하지 않습니다.
 

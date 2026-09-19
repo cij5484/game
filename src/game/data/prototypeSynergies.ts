@@ -64,8 +64,8 @@ export const prototypeSynergyDefinitions: Record<
     title: "추적 섬멸망",
     symbol: "⌖",
     description:
-      "점사 + 고위력 단발 · 전술 사냥꾼 + 울프팩 Lv10. 위험 표적에 사냥 표식: 가우스·미사일·드론 집중 및 피해 ×1.4. 처치 후 다음 위험 표적으로 전이. 수동 조준·가우스 사거리 유지.",
-    mods: ["burst", "heavy"],
+      "점사 + 소이탄 · 전술 사냥꾼 + 울프팩 Lv10. 위험 표적에 사냥 표식: 가우스·미사일·드론 집중 및 피해 ×1.4. 처치 후 다음 위험 표적으로 전이. 수동 조준·가우스 사거리 유지.",
+    mods: ["burst", "incendiary"],
     completions: [
       { id: "missile", tree: "hunter", branch: "b" },
       { id: "drone", tree: "squadron", branch: "b" },

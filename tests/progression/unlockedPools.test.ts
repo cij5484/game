@@ -54,7 +54,7 @@ it("filters fresh normal pools and direct acquisition without redrawing an open 
     expect(run.validCoreIds).toEqual([]);
     run.setUnlocks({
       ...unlocks,
-      basicMods: [...unlocks.basicMods, "heavy"],
+      basicMods: [...unlocks.basicMods, "incendiary"],
       specialWeapons: ["grenade"],
       specialCapacity: 1,
     });
@@ -183,7 +183,7 @@ it("rejects locked relic/core events before RNG and freezes unlocked relic offer
 it("gates synergy activation until unlocked", () => {
   const synergies = new PrototypeSynergies();
   const growth = {
-    ranks: { burst: 1, heavy: 1 },
+    ranks: { burst: 1, incendiary: 1 },
     quality: {},
     legendary: new Set<never>(),
   };
