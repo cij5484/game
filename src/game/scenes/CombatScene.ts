@@ -211,25 +211,75 @@ export class CombatScene extends Phaser.Scene {
   }
 
   private prepareRun(): void {
-    this.telemetry = new BalanceTelemetry();
-    this.telemetryBuild = [];
-    this.telemetryFrameNow = null;
-    this.runTicket = metaStore.beginRun();
-    this.unlocks = this.runTicket.unlocks;
-    this.operationEvidence = {};
-    this.latestOperationEvidence = {};
-    this.lastOperationSecond = -1;
-    this.operationSaveError = false;
-    this.wallMaxHp =
-      runBalance.wallMaxHp * this.runTicket.modifiers.wallHpMultiplier;
-    this.run = createRunState(this.wallMaxHp);
-    this.progression = new MarineProgression(
+  this.telemetry = new BalanceTelemetry();
+  this.telemetryBuild = [];
+  this.telemetryFrameNow = null;
+
+  const ticket = metaStore.beginRun();
+
+  this.runTicket = ticket;
+  this.unlocks = ticket.unlocks;
+
+  this.telemetry.startRunContext({
+    runId: ticket.id,
+
+    gitCommit:
+      import.meta.env.VITE_GIT_COMMIT ??
+      "unknown",
+
+    metaModifiers: {
+      ...ticket.modifiers,
+    },
+
+    rerolls: ticket.rerolls,
+
+    unlockSummary: {
+      basicMods: [
+        ...ticket.unlocks.basicMods,
+      ],
+
+      specialWeapons: [
+        ...ticket.unlocks
+          .specialWeapons,
+      ],
+
+      specialCapacity:
+        ticket.unlocks
+          .specialCapacity,
+
+      relicSystem:
+        ticket.unlocks.relicSystem,
+
+      coreSystem:
+        ticket.unlocks.coreSystem,
+
+      synergySystem:
+        ticket.unlocks
+          .synergySystem,
+    },
+  });
+
+  this.operationEvidence = {};
+  this.latestOperationEvidence = {};
+  this.lastOperationSecond = -1;
+  this.operationSaveError = false;
+
+  this.wallMaxHp =
+    runBalance.wallMaxHp *
+    ticket.modifiers.wallHpMultiplier;
+
+  this.run = createRunState(
+    this.wallMaxHp,
+  );
+
+  this.progression =
+    new MarineProgression(
       Math.random,
-      this.runTicket.modifiers,
-      this.runTicket.rerolls,
-      this.unlocks,
+      ticket.modifiers,
+      ticket.rerolls,
+      ticket.unlocks,
     );
-  }
+}
 
   create(): void {
     this.startupError = false;
