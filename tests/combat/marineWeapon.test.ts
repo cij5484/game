@@ -43,17 +43,19 @@ it("ricochet seeks sideways living targets once, multishot uses distinct roots",
   expect(multi.shotTargetIds.length).toBeGreaterThan(1);
   expect(new Set(multi.shotTargetIds).size).toBe(multi.shotTargetIds.length);
 });
-it("heavy increases damage and cycle yet composes with attack speed and timed burst", () => {
-  const heavy = state({ heavy: 1, burst: 2 });
-  expect(shoot(heavy).enemies[0]!.hp).toBeLessThan(
-    shoot(state({})).enemies[0]!.hp,
+it("incendiary leaves direct shot damage and cycle unchanged while composing with burst", () => {
+  const burn = state({ incendiary: 1, burst: 2 });
+  const plain = state({ burst: 2 });
+  expect(shoot(burn).enemies[0]!.hp).toBe(shoot(plain).enemies[0]!.hp);
+  expect(deriveMarineWeaponConfig(burn)).toEqual(
+    deriveMarineWeaponConfig(plain),
   );
-  const c = deriveMarineWeaponConfig(heavy);
+  const c = deriveMarineWeaponConfig(burn);
   expect(c.burstRounds).toBeGreaterThan(1);
-  expect(c.shotIntervalMs).toBeGreaterThan(800);
   expect(
-    deriveMarineWeaponConfig(state({ heavy: 1, burst: 2, "attack-speed": 2 }))
-      .shotIntervalMs,
+    deriveMarineWeaponConfig(
+      state({ incendiary: 1, burst: 2, "attack-speed": 2 }),
+    ).shotIntervalMs,
   ).toBeLessThan(c.shotIntervalMs);
 });
 it("range changes valid roots and high quality actually changes damage without changing rank", () => {

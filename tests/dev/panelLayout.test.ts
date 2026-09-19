@@ -26,7 +26,7 @@ it("keeps Quick controls registered once per section and all fields reachable in
     quickSections
       .find((section) => section.id === "mods")!
       .cards.map((card) => card.fields.length),
-  ).toEqual([4, 4, 4, 4, 4, 4]);
+  ).toEqual([4, 4, 4, 4, 4, 5]);
   expect(
     quickSections
       .find((section) => section.id === "special")!
@@ -43,5 +43,24 @@ it("keeps Quick controls registered once per section and all fields reachable in
   expect(missilePriority.length).toBeGreaterThan(0);
   expect(
     missilePriority.every((field) => detailCategory(field) === "미사일"),
+  ).toBe(true);
+});
+
+it("exposes incendiary in Quick and every burn key in its Detail category", () => {
+  const cards = quickSections.find((section) => section.id === "mods")!.cards;
+  expect(cards.some((card) => card.id === "heavy")).toBe(false);
+  expect(cards.find((card) => card.id === "incendiary")!.fields).toEqual([
+    "marineModWeights.incendiary.acquisitionWeight",
+    "marineModWeights.incendiary.growthWeight",
+    "incendiary.baseTickFactor",
+    "incendiary.durationMs",
+    "incendiary.baseMaxStacks",
+  ]);
+  const burn = balanceFields.filter((field) =>
+    field.id.startsWith("incendiary."),
+  );
+  expect(burn).toHaveLength(17);
+  expect(
+    burn.every((field) => detailCategory(field) === "기본무기 개조 · 소이탄"),
   ).toBe(true);
 });

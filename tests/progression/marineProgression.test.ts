@@ -3,6 +3,7 @@ import { MarineProgression } from "../../src/game/progression/marineProgression"
 import {
   deriveMarineWeaponConfig,
   getMarineStats,
+  getIncendiaryStats,
   getMarineTraitEffects,
   marineTraitIds,
   marineUpgrades,
@@ -37,7 +38,12 @@ describe("Marine M4 growth", () => {
   });
   it("offers cached unique cards, keeps three trait slots and excludes legacy growth", () => {
     const p = new MarineProgression(() => 0.5);
-    Object.assign(p.ranks, { penetration: 11, burst: 12, heavy: 13, range: 5 });
+    Object.assign(p.ranks, {
+      penetration: 11,
+      burst: 12,
+      incendiary: 13,
+      range: 5,
+    });
     p.gainXp(8);
     const cards = p.offer();
     expect(cards).toHaveLength(3);
@@ -51,7 +57,7 @@ describe("Marine M4 growth", () => {
           "crit-chance",
           "penetration",
           "burst",
-          "heavy",
+          "incendiary",
         ].includes(c.id),
       ),
     ).toBe(true);
@@ -69,7 +75,7 @@ describe("Marine M4 growth", () => {
       marineUpgradeWeight(marineUpgrades.penetration, { penetration: 100 }),
     ).toBe(1.4);
     expect(
-      marineUpgradeWeight(marineUpgrades.penetration, { heavy: 100 }),
+      marineUpgradeWeight(marineUpgrades.penetration, { incendiary: 100 }),
     ).toBe(1);
     const p = new MarineProgression(() => 0.1);
     p.ranks.penetration = 100;
@@ -217,12 +223,14 @@ describe("Marine M4 growth", () => {
       expect(
         JSON.stringify([
           getMarineStats(a),
+          getIncendiaryStats(a),
           getMarineTraitEffects(a),
           deriveMarineWeaponConfig(a),
         ]),
       ).not.toBe(
         JSON.stringify([
           getMarineStats(b),
+          getIncendiaryStats(b),
           getMarineTraitEffects(b),
           deriveMarineWeaponConfig(b),
         ]),
@@ -234,7 +242,7 @@ describe("Marine M4 growth", () => {
       burst: 1000,
       multishot: 1000,
       explosive: 1000,
-      heavy: 1000,
+      incendiary: 1000,
       "attack-speed": 1000,
       "crit-chance": 1000,
     });

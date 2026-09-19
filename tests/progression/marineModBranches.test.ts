@@ -93,3 +93,17 @@ it.each(marineTraitIds)(
     expect(p.branches[id]).toBe("b");
   },
 );
+
+it("holds incendiary Great Success at Lv5 before branch selection releases Lv6", () => {
+  const rolls = [0.9, 0, 0, 0, 0, 0, 0];
+  const p = new MarineProgression(() => rolls.shift() ?? 0);
+  p.ranks.incendiary = p.quality.incendiary = 4;
+  p.pendingChoices = 1;
+  expect(p.offer()[0]!.id).toBe("incendiary");
+  expect(p.choose("incendiary")).toBe(true);
+  expect(p.ranks.incendiary).toBe(5);
+  expect(p.offerModBranch()?.traitId).toBe("incendiary");
+  expect(p.chooseModBranch("b")).toBe(true);
+  expect(p.ranks.incendiary).toBe(6);
+  expect(p.quality.incendiary).toBe(6);
+});

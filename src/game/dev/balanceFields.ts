@@ -409,10 +409,6 @@ for (const [id, label] of [
   }
 }
 for (const [id, label, max] of [
-  ["heavyDamagePerQuality", "고위력 · 숙련 피해 계수", 5],
-  ["heavyPenaltyBase", "고위력 · 기본 주기 배율", 5],
-  ["heavyPenaltyExtra", "고위력 · 추가 주기 대가", 5],
-  ["heavyPenaltyQualityDecay", "고위력 · 숙련 주기 대가 완화", 5],
   ["burstAdditionalRoundDamageFactor", "점사 · 추가탄 기본 피해율", 1],
   ["burstAdditionalRoundDamagePerQuality", "점사 · 추가탄 숙련 피해 증가", 1],
   ["burstAdditionalRoundDamageMax", "점사 · 추가탄 피해율 상한", 1],
@@ -437,19 +433,43 @@ for (const [id, label, max] of [
     "기본무기",
     id.startsWith("burstAdditionalRound")
       ? "첫 탄은 100%이며 추가탄에만 기본율 + 숙련 증가 × max(0,품질−1)을 상한까지 적용합니다. 피해·치명타와 합성하고 파생 효과에도 한 번만 곱합니다."
-      : id === "heavyPenaltyBase"
-        ? "고위력 공격주기의 기준 배율입니다. 1은 기본 주기이며 숙련 대가와 A/B 분기 배율이 추가 합성됩니다."
-        : id === "heavyPenaltyExtra"
-          ? "고위력 기준 주기에 더하는 대가입니다. 실제 추가량은 이 값을 (1 + 숙련 완화 계수 × 품질)로 나눕니다."
-          : id === "heavyPenaltyQualityDecay"
-            ? "고위력 품질이 높을 때 추가 주기 대가를 줄이는 계수입니다. 높이면 숙련에 따라 추가 대가가 더 빠르게 줄어듭니다."
-            : id === "burstIntervalMs"
-              ? "점사 안에서 탄환 사이의 기준 간격입니다. 낮추면 점사가 빨라지며 기존 최소 간격 안전장치는 유지됩니다."
-              : "보유한 개조의 실제 행동에 사용되는 계수입니다. 높이면 해당 피해·대상 수·범위 성장이 커지며 안전 상한은 유지됩니다.",
+      : id === "burstIntervalMs"
+        ? "점사 안에서 탄환 사이의 기준 간격입니다. 낮추면 점사가 빨라지며 기존 최소 간격 안전장치는 유지됩니다."
+        : "보유한 개조의 실제 행동에 사용되는 계수입니다. 높이면 해당 피해·대상 수·범위 성장이 커지며 안전 상한은 유지됩니다.",
     "다음 공격부터",
-    id === "burstIntervalMs" ? 55 : id === "heavyPenaltyBase" ? 1 : 0,
+    id === "burstIntervalMs" ? 55 : 0,
     max,
     id === "burstIntervalMs" ? 5 : 0.005,
+  );
+
+for (const [id, label, min, max, step] of [
+  ["tickMs", "소이탄 · Tick 간격", 1, 10000, 1],
+  ["durationMs", "소이탄 · 지속시간", 1, 60000, 1],
+  ["baseTickFactor", "소이탄 · 기본 Tick 피해율", 0, 5, 0.005],
+  ["tickFactorPerQuality", "소이탄 · 숙련당 Tick 피해 증가", 0, 1, 0.005],
+  ["baseMaxStacks", "소이탄 · 기본 최대 중첩", 1, 100, 1],
+  ["aSpreadTargets", "소이탄 · A 전파 대상 수", 0, 100, 1],
+  ["aCompletionSpreadTargets", "소이탄 · A Lv10 전파 대상 수", 0, 100, 1],
+  ["aSpreadRadius", "소이탄 · A 전파 반경", 0, 1000, 1],
+  ["aCompletionSpreadRadius", "소이탄 · A Lv10 전파 반경", 0, 1000, 1],
+  ["aTransferStacks", "소이탄 · A 전달 중첩", 1, 100, 1],
+  ["aCompletionTransferStacks", "소이탄 · A Lv10 전달 중첩", 1, 100, 1],
+  ["aSpreadFactor", "소이탄 · A 전달 피해율", 0, 5, 0.01],
+  ["aCompletionSpreadFactor", "소이탄 · A Lv10 전달 피해율", 0, 5, 0.01],
+  ["bMaxStacks", "소이탄 · B 최대 중첩", 1, 100, 1],
+  ["bCompletionMaxStacks", "소이탄 · B Lv10 최대 중첩", 1, 100, 1],
+  ["bEfficiencyBonus", "소이탄 · B 숙련 효율 증가", 0, 5, 0.01],
+  ["bOverheatMultiplier", "소이탄 · B Lv10 최대 중첩 피해 배율", 0, 10, 0.05],
+] as const)
+  field(
+    `incendiary.${id}`,
+    label,
+    "기본무기 · 소이탄",
+    "Gauss 화상의 중첩·지속시간·Tick 피해와 A/B 성장에 쓰이는 값입니다. 새 화상 적용부터 반영됩니다.",
+    "다음 화상 적용부터",
+    min,
+    max,
+    step,
   );
 
 for (const [id, label] of [
@@ -458,7 +478,7 @@ for (const [id, label] of [
   ["burst", "점사"],
   ["multishot", "다중탄"],
   ["explosive", "폭발탄"],
-  ["heavy", "고위력"],
+  ["incendiary", "소이탄"],
 ] as const) {
   for (const [kind, kindLabel] of [
     ["acquisitionWeight", "신규 획득 가중치"],

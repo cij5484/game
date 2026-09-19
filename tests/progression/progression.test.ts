@@ -126,7 +126,7 @@ describe("run progression", () => {
     const removed = [
       "critical",
       "split",
-      "heavy",
+      "incendiary",
       "incendiary",
       "marking",
       "suppression",

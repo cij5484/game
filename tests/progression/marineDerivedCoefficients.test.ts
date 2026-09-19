@@ -3,13 +3,17 @@ import {
   deriveMarineWeaponConfig,
   getBurstRoundDamageFactor,
   marineModBalance,
+  incendiaryBalance,
+  getIncendiaryStats,
   type MarineGrowthState,
 } from "../../src/game/data/marineGrowth";
+const initialBurn = { ...incendiaryBalance };
+afterEach(() => Object.assign(incendiaryBalance, initialBurn));
 const initial = { ...marineModBalance };
 afterEach(() => Object.assign(marineModBalance, initial));
 const state = (quality: number): MarineGrowthState => ({
-  ranks: { burst: quality, heavy: quality },
-  quality: { burst: quality, heavy: quality },
+  ranks: { burst: quality, incendiary: quality },
+  quality: { burst: quality, incendiary: quality },
   legendary: new Set(),
 });
 it("keeps first rounds at full damage and grows additional rounds from .65 to the configured cap", () => {
@@ -24,18 +28,18 @@ it("keeps first rounds at full damage and grows additional rounds from .65 to th
   expect(getBurstRoundDamageFactor(state(20), 1)).toBe(0.7);
   expect(getBurstRoundDamageFactor(state(20), 0)).toBe(1);
 });
-it("uses runtime heavy cycle penalty coefficients", () => {
+it("uses live burn tuning without changing the Gauss attack cycle", () => {
   const build = state(1);
-  build.ranks.burst = 0;
-  const before = deriveMarineWeaponConfig(build).shotIntervalMs;
-  marineModBalance.heavyPenaltyBase = 2;
-  marineModBalance.heavyPenaltyExtra = 0;
-  expect(deriveMarineWeaponConfig(build).shotIntervalMs).toBeGreaterThan(
-    before,
-  );
-  marineModBalance.heavyPenaltyExtra = 1;
-  marineModBalance.heavyPenaltyQualityDecay = 0;
-  const noDecay = deriveMarineWeaponConfig(build).shotIntervalMs;
-  marineModBalance.heavyPenaltyQualityDecay = 1;
-  expect(deriveMarineWeaponConfig(build).shotIntervalMs).toBeLessThan(noDecay);
+  const before = deriveMarineWeaponConfig(build);
+  expect(getIncendiaryStats(build).tickFactor).toBeCloseTo(0.035);
+  incendiaryBalance.baseTickFactor = 0.05;
+  incendiaryBalance.tickFactorPerQuality = 0.02;
+  incendiaryBalance.durationMs = 4500;
+  incendiaryBalance.baseMaxStacks = 3;
+  expect(getIncendiaryStats(build)).toMatchObject({
+    tickFactor: 0.07,
+    durationMs: 4500,
+    maxStacks: 3,
+  });
+  expect(deriveMarineWeaponConfig(build)).toEqual(before);
 });

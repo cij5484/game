@@ -178,13 +178,13 @@ export const operationRecords: readonly OperationRecord[] = [
   ),
   record(
     "elite-sniper",
-    "강적 저격",
+    "점화 실험",
     "기본무기 / 특수무기",
-    "Gauss로 정예 최초 처치",
+    "한 Run에서 기본무기로 적 50명 처치",
     1,
-    "primaryEliteKills",
-    1,
-    ["고위력 단발"],
+    "primaryKills",
+    50,
+    ["소이탄"],
   ),
   record(
     "mass-kills",
@@ -460,7 +460,7 @@ export function getUnlocks(save: OperationSaveSource): UnlockState {
   }
   if (has("penetration-understanding")) result.basicMods.push("ricochet");
   if (has("continuous-fire")) result.basicMods.push("multishot");
-  if (has("elite-sniper")) result.basicMods.push("heavy");
+  if (has("elite-sniper")) result.basicMods.push("incendiary");
   if (has("mass-kills")) result.basicMods.push("explosive");
   if (has("powerful-choice")) result.relics.push("capacitor");
   if (has("complete-rifle")) result.relics.push("replicator");
@@ -532,7 +532,7 @@ const labels: Record<string, string> = {
   "mod/burst": "점사",
   "mod/ricochet": "도탄",
   "mod/multishot": "다중탄",
-  "mod/heavy": "고위력 단발",
+  "mod/incendiary": "소이탄",
   "mod/explosive": "폭발탄",
   "weapon/grenade": "수류탄",
   "weapon/missile": "유도 미사일",
@@ -612,7 +612,7 @@ export const unlockRequirements: Record<string, string> = {
   "mod/burst": "기본 해금",
   "mod/ricochet": "관통의 이해",
   "mod/multishot": "연속 사격",
-  "mod/heavy": "강적 저격",
+  "mod/incendiary": "점화 실험",
   "mod/explosive": "대량 살상",
   "weapon/grenade": "첫 작전 종료",
   "weapon/missile": "숙련 9",

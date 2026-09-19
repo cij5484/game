@@ -96,6 +96,23 @@ export function setOverrides(input: unknown): void {
       if (!entries.some(([key]) => key === id)) entries.push([id, legacy[1]]);
     }
   }
+  // Heavy weights retain their meaning; its removed damage/cycle knobs do not.
+  const removedHeavyKeys = new Set([
+    "marineMods.heavyDamagePerQuality",
+    "marineMods.heavyPenaltyBase",
+    "marineMods.heavyPenaltyExtra",
+    "marineMods.heavyPenaltyQualityDecay",
+  ]);
+  entries = entries.filter(([id]) => !removedHeavyKeys.has(id));
+  for (const kind of ["acquisitionWeight", "growthWeight"]) {
+    const oldId = `marineModWeights.heavy.${kind}`;
+    const newId = `marineModWeights.incendiary.${kind}`;
+    const old = entries.find(([id]) => id === oldId);
+    if (old && fields.has(newId)) {
+      entries = entries.filter(([id]) => id !== oldId);
+      if (!entries.some(([id]) => id === newId)) entries.push([newId, old[1]]);
+    }
+  }
   const next: Overrides = {};
   for (const [id, value] of entries) {
     const field = fields.get(id);

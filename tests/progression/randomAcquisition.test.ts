@@ -122,18 +122,18 @@ describe("M7 random acquisition categories", () => {
 
   it("blocks new mods at three, reopens a fourth with Core, and leaves range independent", () => {
     const p = offerAt(1, 3.05 / 3.97);
-    Object.assign(p.ranks, { penetration: 1, burst: 1, heavy: 1 });
+    Object.assign(p.ranks, { penetration: 1, burst: 1, incendiary: 1 });
     expect(
       p
         .offer()
         .filter((c) => c.category === "weapon-trait")
-        .every((c) => ["penetration", "burst", "heavy"].includes(c.id)),
+        .every((c) => ["penetration", "burst", "incendiary"].includes(c.id)),
     ).toBe(true);
     p.applyCore("modification");
     expect(p.offer()[0]!.category).toBe("weapon-trait");
-    expect(["penetration", "burst", "heavy"]).not.toContain(p.offer()[0]!.id);
+    expect(["penetration", "burst", "incendiary"]).not.toContain(p.offer()[0]!.id);
     const range = offerAt(1);
-    range.ranks.penetration = range.ranks.burst = range.ranks.heavy = 1;
+    range.ranks.penetration = range.ranks.burst = range.ranks.incendiary = 1;
     expect(range.offer()[0]).toMatchObject({
       id: "range",
       rarity: "LEGENDARY",

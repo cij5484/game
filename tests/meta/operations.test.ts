@@ -94,7 +94,7 @@ it("keeps this-Run records in settlement receipts after reload and awards clear 
       "first-victory",
     ]),
   );
-  expect(result.operations.points).toBe(7);
+  expect(result.operations.points).toBe(8);
   expect(result.operations.unlocked.length).toBeGreaterThan(0);
   expect(getUnlocks(result.save).coreSystem).toBe(true);
   expect(new MetaStore(memory).settleRun(run.id, failed)).toEqual(result);
@@ -274,4 +274,27 @@ it("unlocks third trees and overclocks from their actual records, and rejects ma
     expect(() => store.importSave(JSON.stringify(corrupt))).toThrow();
   }
   expect(store.exportSave()).toBe(saved);
+});
+
+it("unlocks incendiary at 50 primary kills and inherits completed legacy elite-sniper saves", () => {
+  const memory = storage(),
+    store = new MetaStore(memory),
+    run = store.beginRun();
+  expect(
+    store.recordProgress(run.id, { primaryKills: 49, primaryEliteKills: 1 })
+      .unlocks.basicMods,
+  ).not.toContain("incendiary");
+  const unlocked = store.recordProgress(run.id, { primaryKills: 50 });
+  expect(unlocked.completed).toContain("elite-sniper");
+  expect(unlocked.unlocks.basicMods).toContain("incendiary");
+  expect(unlocked.unlocks.basicMods).not.toContain("explosive");
+  const save = store.read();
+  save.characters.marine.operationProgress = {};
+  memory.setItem(META_STORAGE_KEY, JSON.stringify(save));
+  expect(getUnlocks(new MetaStore(memory).read()).basicMods).toContain(
+    "incendiary",
+  );
+  expect(
+    store.recordProgress(run.id, { primaryKills: 100 }).unlocks.basicMods,
+  ).toContain("explosive");
 });
